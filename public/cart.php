@@ -157,7 +157,7 @@ unset($_SESSION['msg']);
             <nav class="hidden md:flex items-center gap-6 font-semibold text-sm">
                 <a href="index.php" class="hover:text-agro-600 transition">Home</a>
                 <a href="shop.php" class="hover:text-agro-600 transition">Shop</a>
-                <a href="dashboard.php" class="hover:text-agro-600 transition">Dashboard</a>
+                <a href="buyer_dashboard.php" class="hover:text-agro-600 transition">Dashboard</a>
             </nav>
             
             <a href="cart.php" class="relative text-[var(--text-main)]">
@@ -181,7 +181,7 @@ unset($_SESSION['msg']);
             <nav class="flex flex-col gap-4 font-medium">
                 <a href="index.php">Home</a>
                 <a href="shop.php">Shop</a>
-                <a href="dashboard.php">Dashboard</a>
+                <a href="buyer_dashboard.php">Dashboard</a>
                 <a href="logout.php" class="text-red-500">Logout</a>
             </nav>
         </div>

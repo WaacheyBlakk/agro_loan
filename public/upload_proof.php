@@ -325,6 +325,10 @@ $stages = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <i data-feather="upload-cloud"></i>
                 <span>Upload Proof</span>
             </a>
+            <a href="farmer_repayment.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'farmer_repayment.php' ? 'active' : '' ?>">
+                <i data-feather="credit-card"></i>
+                <span>Repayments</span>
+            </a>
             <a href="farmer_profile.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'farmer_profile.php' ? 'active' : '' ?>">
                 <i data-feather="user"></i>
                 <span>Profile</span>

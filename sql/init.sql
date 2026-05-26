@@ -23,6 +23,20 @@ CREATE TABLE agent_profiles (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS buyer_profiles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL UNIQUE,
+    address TEXT,
+    city VARCHAR(100),
+    region VARCHAR(100),
+    gps_address VARCHAR(100),
+    digital_address VARCHAR(100),
+    alternate_phone VARCHAR(30),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- farmer profiles (one-to-one with users where role='farmer')
 CREATE TABLE farmer_profiles (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -89,3 +103,42 @@ CREATE TABLE agent_actions (
   FOREIGN KEY (agent_id) REFERENCES users(id),
   FOREIGN KEY (stage_id) REFERENCES loan_stages(id)
 );
+
+CREATE TABLE IF NOT EXISTS wishlist_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    product_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_wishlist_item (user_id, product_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES produce_listings(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS loan_repayments (
+  id                INT AUTO_INCREMENT PRIMARY KEY,
+  loan_id           INT NOT NULL,
+  farmer_id         INT NOT NULL,
+  amount_paid       DECIMAL(12,2) NOT NULL,
+  balance_before    DECIMAL(12,2) NOT NULL,
+  balance_after     DECIMAL(12,2) NOT NULL, 
+  repayment_type    ENUM('partial','full') NOT NULL,
+  proof_filename    VARCHAR(255) DEFAULT NULL, 
+  proof_file_type   ENUM('image','document') DEFAULT 'image',
+  status            ENUM('pending','confirmed','rejected') DEFAULT 'pending',
+  notes             TEXT DEFAULT NULL,
+  agent_note        TEXT DEFAULT NULL, 
+  submitted_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  reviewed_at       TIMESTAMP NULL DEFAULT NULL,
+  reviewed_by       INT DEFAULT NULL,
+
+  FOREIGN KEY (loan_id)    REFERENCES loan_applications(id) ON DELETE CASCADE,
+  FOREIGN KEY (farmer_id)  REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+ALTER TABLE loan_applications
+  ADD COLUMN IF NOT EXISTS outstanding_balance DECIMAL(12,2) DEFAULT NULL COMMENT 'Remaining repayable amount (principal + interest). NULL = not yet calculated';
+
+CREATE INDEX IF NOT EXISTS idx_repayments_loan    ON loan_repayments(loan_id);
+CREATE INDEX IF NOT EXISTS idx_repayments_farmer  ON loan_repayments(farmer_id);
+CREATE INDEX IF NOT EXISTS idx_repayments_status  ON loan_repayments(status);

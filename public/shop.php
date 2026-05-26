@@ -124,9 +124,6 @@ function buildUrl($newParams = []) {
 $is_logged = isset($_SESSION['user_id']) || isset($_SESSION['id']);
 $user_role = $_SESSION['role'] ?? null;
 
-// Determine Dashboard Link based on role
-$dashboard_link = ($user_role === 'farmer') ? 'farmer/farmer_dashboard.php' : 'dashboard.php';
-
 function getStarRating($id) {
     $rating = 3 + ($id % 3); 
     $count = ($id * 12) % 200;
@@ -410,10 +407,11 @@ function getStarRating($id) {
                     <span class="absolute -top-2 -right-2 bg-jumia-orange text-white text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center">2</span>
                 </a>
 
-                <a href="<?= $dashboard_link ?>" title="Dashboard"><i class="ri-user-line text-xl"></i></a>
+                <a href="buyer_dashboard.php" title="Dashboard"><i class="ri-user-line text-xl"></i></a>
                 <a href="logout.php" class="text-red-500 hover:text-red-600"><i class="ri-logout-box-r-line text-xl"></i></a>
             <?php else: ?>
                 <a href="buyers_login.php" class="btn-login">Login</a>
+                <a href="buyers_registration.php" class="btn-login">Register</a>
             <?php endif; ?>
         </nav>
         
@@ -439,7 +437,7 @@ function getStarRating($id) {
     <?php if ($is_logged): ?>
         <a href="wishlist.php">Saved Items</a>
         <a href="cart.php">My Cart</a>
-        <a href="<?= $dashboard_link ?>">Dashboard</a>
+        <a href="buyer_dashboard.php">Dashboard</a>
         <a href="logout.php" style="color:#ef4444;">Logout</a>
     <?php else: ?>
         <a href="buyers_login.php">Login</a>
@@ -579,18 +577,38 @@ function getStarRating($id) {
                                 <span class="text-xs text-[var(--text-muted)] ml-1">(<?= $ratingData['count'] ?>)</span>
                             </div>
 
-                            <div class="mt-2 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
-                                <?php if ($inStock && $user_role !== 'farmer'): ?>
-                                    <form onsubmit="addToCart(event, this)">
-                                        <input type="hidden" name="product_id" value="<?= $p['id'] ?>">
-                                        <button type="submit" class="w-full bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold py-2 rounded shadow-md uppercase tracking-wide transition transform active:scale-95">
-                                            Add To Cart
+                            <div class="mt-2 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200 space-y-2">
+                                <?php if ($user_role === 'farmer'): ?>
+
+                                    <a href="edit_produce.php?id=<?= (int)$p['id'] ?>" 
+                                    class="block text-center w-full border border-[var(--border)] text-[var(--text-muted)] text-sm font-bold py-2 rounded hover:bg-[var(--bg-body)]">
+                                        Edit
+                                    </a>
+
+                                <?php else: ?>
+
+                                    <?php if ($inStock): ?>
+                                        <form onsubmit="addToCart(event, this)">
+                                            <input type="hidden" name="product_id" value="<?= (int)$p['id'] ?>">
+                                            <button type="submit" 
+                                                class="w-full bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold py-2 rounded shadow-md uppercase tracking-wide transition transform active:scale-95">
+                                                Add To Cart
+                                            </button>
+                                        </form>
+                                    <?php else: ?>
+                                        <button disabled 
+                                            class="w-full bg-gray-200 text-gray-400 text-sm font-bold py-2 rounded cursor-not-allowed">
+                                            Sold Out
+                                        </button>
+                                    <?php endif; ?>
+
+                                    <form onsubmit="addToWishlist(event, this)">
+                                        <input type="hidden" name="product_id" value="<?= (int)$p['id'] ?>">
+                                        <button type="submit" 
+                                            class="w-full border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)] hover:text-white text-sm font-bold py-2 rounded transition transform active:scale-95">
+                                            <i class="ri-heart-line"></i> Add To Wishlist
                                         </button>
                                     </form>
-                                <?php elseif($user_role === 'farmer'): ?>
-                                     <a href="edit_produce.php?id=<?=$p['id']?>" class="block text-center w-full border border-[var(--border)] text-[var(--text-muted)] text-sm font-bold py-2 rounded hover:bg-[var(--bg-body)]">Edit</a>
-                                <?php else: ?>
-                                    <button disabled class="w-full bg-gray-200 text-gray-400 text-sm font-bold py-2 rounded cursor-not-allowed">Sold Out</button>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -782,6 +800,39 @@ function getStarRating($id) {
         })
         .catch(err => {
             showToast('Something went wrong', 'error');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        });
+    }
+
+    // --- AJAX Add To Wishlist ---
+    function addToWishlist(e, form) {
+        e.preventDefault();
+
+        const btn = form.querySelector('button');
+        const originalText = btn.innerHTML;
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ri-loader-4-line animate-spin"></i> Saving...';
+
+        const formData = new FormData(form);
+
+        fetch('wishlist_add.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (response.redirected) {
+                window.location.href = response.url;
+                return;
+            }
+
+            showToast('Product added to wishlist!', 'success');
+        })
+        .catch(err => {
+            showToast('Could not add to wishlist', 'error');
         })
         .finally(() => {
             btn.disabled = false;

@@ -284,6 +284,10 @@ $total_proofs = count($proofs);
                 <i data-feather="dollar-sign"></i>
                 <span>Disbursement</span>
             </a>
+             <a href="agent_repayments.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'agent_repayments.php' ? 'active' : '' ?>">
+                <i data-feather="credit-card"></i>
+                <span>Repayments</span>
+            </a>
             <a href="agent_profile.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'agent_profile.php' ? 'active' : '' ?>">
                 <i data-feather="user"></i>
                 <span>My Profile</span>

@@ -377,6 +377,10 @@ if ($id && $app && $app['status'] !== 'completed') {
                 <i data-feather="upload-cloud"></i>
                 <span>Upload Proof</span>
             </a>
+            <a href="farmer_repayment.php" class="nav-link">
+                <i data-feather="credit-card"></i>
+                <span>Repayments</span>
+            </a>
             <a href="farmer_profile.php" class="nav-link">
                 <i data-feather="user"></i>
                 <span>Profile</span>

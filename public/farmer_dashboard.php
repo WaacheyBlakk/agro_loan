@@ -48,7 +48,6 @@ $pending_loans = count(array_filter($loans, function($l){ return !isset($l['stat
 <script src="https://unpkg.com/feather-icons"></script>
 
 <style>
-    /* --- COPIED & ADAPTED FROM ADMIN DASHBOARD --- */
     :root {
         --primary: #059669; /* Emerald 600 */
         --primary-dark: #064e3b; /* Emerald 900 */
@@ -279,6 +278,10 @@ $pending_loans = count(array_filter($loans, function($l){ return !isset($l['stat
             <a href="upload_proof.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'upload_proof.php' ? 'active' : '' ?>">
                 <i data-feather="upload-cloud"></i>
                 <span>Upload Proof</span>
+            </a>
+            <a href="farmer_repayment.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'farmer_repayment.php' ? 'active' : '' ?>">
+                <i data-feather="credit-card"></i>
+                <span>Repayments</span>
             </a>
             <a href="farmer_profile.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'farmer_profile.php' ? 'active' : '' ?>">
                 <i data-feather="user"></i>

@@ -16,9 +16,6 @@ $agentDir  = __DIR__ . '/../uploads/agents/';
 if (!is_dir($farmerDir)) mkdir($farmerDir, 0777, true);
 if (!is_dir($agentDir))  mkdir($agentDir, 0777, true);
 
-/**
- * Upload a single file safely.
- */
 function uploadSingleFile(string $fieldName, string $targetDir): ?string {
     if (empty($_FILES[$fieldName]) || $_FILES[$fieldName]['error'] !== UPLOAD_ERR_OK) {
         return null;
@@ -47,9 +44,6 @@ function uploadSingleFile(string $fieldName, string $targetDir): ?string {
     return 'uploads/' . basename($targetDir) . '/' . $safeName;
 }
 
-/**
- * Upload multiple files.
- */
 function uploadMultipleFiles(string $fieldName, string $targetDir): array {
     if (empty($_FILES[$fieldName]) || !is_array($_FILES[$fieldName]['name'])) {
         return [];
