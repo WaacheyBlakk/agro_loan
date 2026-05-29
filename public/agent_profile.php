@@ -408,10 +408,6 @@ if (!isset($mode)) {
                 <i data-feather="check-square"></i>
                 <span>Proof Verify</span>
             </a>
-            <a href="agent_approve_stage.php" class="nav-link">
-                <i data-feather="dollar-sign"></i>
-                <span>Disbursement</span>
-            </a>
             <a href="agent_repayments.php" class="nav-link">
                 <i data-feather="credit-card"></i>
                 <span>Repayments</span>

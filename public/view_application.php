@@ -14,6 +14,30 @@ $username = $_SESSION['name'];
 $farmer_id = $_SESSION['user_id'];
 $pdo = getPDO();
 
+/* Ensure the stage_proofs table has the 'proof_type' column for tracking different phases
+try {
+    $pdo->query("SELECT proof_type FROM stage_proofs LIMIT 1");
+} catch (PDOException $e) {
+    try {
+        $pdo->exec("ALTER TABLE stage_proofs ADD COLUMN proof_type VARCHAR(20) DEFAULT 'after'");
+    } catch (Exception $ex) {
+        // Safe fallback in case table alterations are restricted
+    }
+}
+    */
+
+// Dynamically discover columns on the stage_proofs table to prevent queries from failing
+$columns = [];
+try {
+    $q = $pdo->query("SELECT * FROM stage_proofs LIMIT 1");
+    for ($i = 0; $i < $q->columnCount(); $i++) {
+        $meta = $q->getColumnMeta($i);
+        $columns[] = $meta['name'];
+    }
+} catch (Exception $e) {
+    // Safe fallback if column detection fails
+}
+
 $id = isset($_GET['id']) ? intval($_GET['id']) : null;
 
 $app = null;
@@ -48,34 +72,108 @@ if ($id) {
     }
 }
 
-// Handle proof upload
+// Handle stage proof upload (Before Work, After Work, or Payment Proof)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['proof'])) {
     try {
         if (!$app) throw new Exception("Application not found.");
         
-        // Prevent upload if loan is completed
         if ($app['status'] === 'completed') {
             throw new Exception("This loan is already completed.");
         }
 
         $stage_id = intval($_POST['stage_id']);
+        $proof_type = $_POST['proof_type']; 
+
+        if (!in_array($proof_type, ['before', 'after', 'payment'])) {
+            throw new Exception("Invalid upload verification target.");
+        }
 
         // Verify stage belongs to current stage
-        $stageStmt = $pdo->prepare("SELECT stage_number FROM loan_stages WHERE id = ? AND application_id = ?");
+        $stageStmt = $pdo->prepare("SELECT stage_number, status, disbursed FROM loan_stages WHERE id = ? AND application_id = ?");
         $stageStmt->execute([$stage_id, $id]);
         $stageData = $stageStmt->fetch();
         
         if (!$stageData || $stageData['stage_number'] != $app['current_stage']) {
-            throw new Exception("Cannot upload proof for a stage that is not current.");
+            throw new Exception("Cannot upload proof for a stage that is not active.");
         }
 
-        // Check if function exists, otherwise handle manually (Mock logic for safety)
-        if (function_exists('handle_stage_upload')) {
-            $res = handle_stage_upload($stage_id, $farmer_id, $_FILES['proof']);
-            $msg = "Uploaded successfully: " . htmlspecialchars($res['filename']);
+        // Validate appropriate phase
+        if ($proof_type === 'before' && $stageData['disbursed'] == 1) {
+            throw new Exception("Funds already disbursed. Please submit 'after work' photos or payment proofs.");
+        }
+        if (($proof_type === 'after' || $proof_type === 'payment') && $stageData['disbursed'] == 0) {
+            throw new Exception("Funds must be disbursed for this stage before submitting photos or payment proofs.");
+        }
+
+        // Process File Upload
+        $file = $_FILES['proof'];
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            throw new Exception("File upload failed with error code: " . $file['error']);
+        }
+
+        $target_dir = __DIR__ . "/../uploads/app_{$app['id']}/stage_{$stage_id}/";
+        if (!file_exists($target_dir)) {
+            mkdir($target_dir, 0777, true);
+        }
+
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $allowed_exts = ['jpg', 'jpeg', 'png', 'gif', 'pdf'];
+        if (!in_array($ext, $allowed_exts)) {
+            throw new Exception("Only JPG, JPEG, PNG, GIF, and PDF files are accepted.");
+        }
+
+        $filename = $proof_type . "_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
+        $target_file = $target_dir . $filename;
+
+        if (move_uploaded_file($file['tmp_name'], $target_file)) {
+            // Build dynamically compatible query based on actual columns in table
+            $insert_data = [
+                'stage_id' => $stage_id,
+                'status' => 'Pending'
+            ];
+
+            if (in_array('farmer_id', $columns)) {
+                $insert_data['farmer_id'] = $farmer_id;
+            }
+            if (in_array('filename', $columns)) {
+                $insert_data['filename'] = $filename;
+            }
+            if (in_array('file_path', $columns)) {
+                $insert_data['file_path'] = $filename; 
+            }
+            if (in_array('file_type', $columns)) {
+                $fileType = strpos($file['type'], 'image') !== false ? 'image' : 'document';
+                $insert_data['file_type'] = $fileType;
+            }
+            if (in_array('proof_type', $columns)) {
+                $insert_data['proof_type'] = $proof_type;
+            }
+            if (in_array('uploaded_at', $columns)) {
+                $insert_data['uploaded_at'] = date('Y-m-d H:i:s');
+            }
+
+            $cols = array_keys($insert_data);
+            $placeholders = array_fill(0, count($cols), '?');
+            $sql = "INSERT INTO stage_proofs (" . implode(', ', $cols) . ") VALUES (" . implode(', ', $placeholders) . ")";
+            
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute(array_values($insert_data));
+
+            // Update local stage status flag based on stage phase
+            if ($proof_type === 'before') {
+                $new_status = 'awaiting_before_approval';
+            } elseif ($proof_type === 'after') {
+                $new_status = 'awaiting_after_approval';
+            } else {
+                $new_status = 'awaiting_payment_approval';
+            }
+
+            $stmtUpdate = $pdo->prepare("UPDATE loan_stages SET status = ? WHERE id = ?");
+            $stmtUpdate->execute([$new_status, $stage_id]);
+
+            $msg = ucfirst($proof_type) . " proof uploaded successfully. Awaiting verification from agent.";
         } else {
-            // Fallback if src/upload.php is missing logic
-            $msg = "Upload logic handled (Simulation).";
+            throw new Exception("Could not save the uploaded file.");
         }
         
         // Refresh app data
@@ -86,27 +184,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['proof'])) {
     }
 }
 
-// Automatically update disbursement logic
+// Automatically update stage and disbursement logic based on proof approvals
 if ($id && $app && $app['status'] !== 'completed') {
     $needs_refresh = false; 
     foreach ($app['stages'] as $stage) {
-        if ($stage['status'] === 'approved' && empty($stage['disbursed'])) {
-            $stmt = $pdo->prepare("UPDATE loan_stages SET disbursed = 1 WHERE id = ?");
+        
+        // Fetch proofs for current stage evaluation
+        $pstmt = $pdo->prepare("SELECT * FROM stage_proofs WHERE stage_id = ?");
+        $pstmt->execute([$stage['id']]);
+        $proofs = $pstmt->fetchAll();
+
+        $beforeApproved = false;
+        $afterApproved = false;
+        $paymentApproved = false;
+
+        foreach ($proofs as $p) {
+            $p_status = strtolower($p['status']);
+            if ($p['proof_type'] === 'before' && $p_status === 'approved') {
+                $beforeApproved = true;
+            }
+            if ($p['proof_type'] === 'after' && $p_status === 'approved') {
+                $afterApproved = true;
+            }
+            if ($p['proof_type'] === 'payment' && $p_status === 'approved') {
+                $paymentApproved = true;
+            }
+        }
+
+        // 1. Trigger Disbursement upon Before-Work Approval
+        if ($beforeApproved && empty($stage['disbursed'])) {
+            $stmt = $pdo->prepare("UPDATE loan_stages SET disbursed = 1, status = 'disbursed' WHERE id = ?");
             $stmt->execute([$stage['id']]);
 
             $stmt2 = $pdo->prepare("
                 UPDATE loan_applications 
-                SET 
-                    disbursed_amount = disbursed_amount + ?,
-                    current_stage = current_stage + 1
+                SET disbursed_amount = disbursed_amount + ?
                 WHERE id = ?
             ");
             $stmt2->execute([$stage['required_amount'], $app['id']]);
 
+            $needs_refresh = true;
+        }
+
+        // 2. Trigger Stage Completion upon After-Work AND Payment Proof Approval
+        if ($afterApproved && $paymentApproved && $stage['status'] !== 'completed') {
+            $stmt = $pdo->prepare("UPDATE loan_stages SET status = 'completed' WHERE id = ?");
+            $stmt->execute([$stage['id']]);
+
+            // Shift active application state to next stage
+            $stmt2 = $pdo->prepare("
+                UPDATE loan_applications 
+                SET current_stage = current_stage + 1
+                WHERE id = ?
+            ");
+            $stmt2->execute([$app['id']]);
+
+            // Verify if there are any remaining uncompleted stages
             $stmt3 = $pdo->prepare("
                 SELECT COUNT(*) AS remaining 
                 FROM loan_stages 
-                WHERE application_id = ? AND disbursed = 0
+                WHERE application_id = ? AND status != 'completed'
             ");
             $stmt3->execute([$app['id']]);
             $remaining = $stmt3->fetchColumn();
@@ -290,7 +427,10 @@ if ($id && $app && $app['status'] !== 'completed') {
     .badge.approved { background: #d1fae5; color: #065f46; } /* Success */
     .badge.completed { background: #ecfdf5; color: #047857; }
     .badge.rejected { background: #fee2e2; color: #991b1b; } /* Danger */
-    .badge.awaiting_proof { background: #e0f2fe; color: #075985; } /* Info */
+    .badge.awaiting_before_approval { background: #e0f2fe; color: #075985; }
+    .badge.awaiting_after_approval { background: #e0f2fe; color: #075985; }
+    .badge.awaiting_payment_approval { background: #e0f2fe; color: #075985; }
+    .badge.disbursed { background: #d1fae5; color: #065f46; }
 
     /* Alerts */
     .alert {
@@ -310,6 +450,14 @@ if ($id && $app && $app['status'] !== 'completed') {
         box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.1);
     }
 
+    .verification-sub-section {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 15px;
+        margin-top: 15px;
+    }
+
     .proof-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 15px; margin: 15px 0; }
     .proof-item { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; text-align: center; background: #fff; }
     .proof-thumb { width: 100%; height: 100px; object-fit: cover; background: #f3f4f6; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 12px; }
@@ -317,7 +465,7 @@ if ($id && $app && $app['status'] !== 'completed') {
     .upload-box {
         margin-top: 15px; padding: 15px; border: 1px dashed #d1d5db;
         border-radius: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-        background: #fff;
+        background: #fafafa;
     }
     
     .btn-upload {
@@ -368,14 +516,9 @@ if ($id && $app && $app['status'] !== 'completed') {
                 <i data-feather="dollar-sign"></i>
                 <span>Apply for Loan</span>
             </a>
-            <!-- Active State -->
             <a href="view_application.php" class="nav-link active">
                 <i data-feather="file-text"></i>
                 <span>Applications</span>
-            </a>
-            <a href="upload_proof.php" class="nav-link">
-                <i data-feather="upload-cloud"></i>
-                <span>Upload Proof</span>
             </a>
             <a href="farmer_repayment.php" class="nav-link">
                 <i data-feather="credit-card"></i>
@@ -420,7 +563,7 @@ if ($id && $app && $app['status'] !== 'completed') {
             <!-- Page Title -->
             <div class="page-header">
                 <h1 class="page-title">My Applications</h1>
-                <p class="page-subtitle">Manage your loan requests and view history.</p>
+                <p class="page-subtitle">Track disbursements, submit phase files, and check stage completion status.</p>
             </div>
 
             <!-- Messages -->
@@ -474,14 +617,14 @@ if ($id && $app && $app['status'] !== 'completed') {
                                 <span style="color:var(--primary); font-weight:bold; font-size:16px;">GHS <?= number_format($app['disbursed_amount'], 2) ?></span>
                             </div>
                             <div>
-                                <small style="color:var(--text-muted); font-weight:600; font-size:11px; text-transform:uppercase;">Current Stage</small><br>
-                                <strong style="font-size:16px;"><?= $app['current_stage'] ?></strong>
+                                <small style="color:var(--text-muted); font-weight:600; font-size:11px; text-transform:uppercase;">Current Active Stage</small><br>
+                                <strong style="font-size:16px;">Stage <?= htmlspecialchars($app['current_stage']) ?></strong>
                             </div>
                         </div>
 
                         <hr style="border:0; border-top:1px solid #f3f4f6; margin:30px 0;">
                         
-                        <h3 style="font-size:18px; font-weight:600; margin-bottom:15px;">Loan Stages</h3>
+                        <h3 style="font-size:18px; font-weight:600; margin-bottom:15px;">Stage Verification Timeline</h3>
                         
                         <?php foreach($app['stages'] as $stage): ?>
                             <?php 
@@ -490,59 +633,233 @@ if ($id && $app && $app['status'] !== 'completed') {
                                 $class = $isCurrent ? 'stage-card current' : 'stage-card';
                             ?>
                             <div class="<?= $class ?>">
-                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                                     <div>
-                                        <strong style="font-size:15px;">Stage <?= $stage['stage_number'] ?></strong>
+                                        <strong style="font-size:16px;">Stage <?= $stage['stage_number'] ?></strong>
                                         <div style="font-size:13px; color:var(--text-muted); margin-top:2px;">
-                                            Amount Required: <strong>GHS <?= number_format($stage['required_amount'], 2) ?></strong>
+                                            Disbursement Limit: <strong>GHS <?= number_format($stage['required_amount'], 2) ?></strong>
                                         </div>
                                     </div>
-                                    <span class="badge <?= $stage['status'] ?>"><?= ucfirst($stage['status']) ?></span>
+                                    <div>
+                                        <?php if ($stage['status'] === 'completed'): ?>
+                                            <span class="badge completed">Completed</span>
+                                        <?php elseif ($stage['disbursed'] == 1): ?>
+                                            <span class="badge disbursed">Funds Disbursed / Work Ongoing</span>
+                                        <?php else: ?>
+                                            <span class="badge pending">Pending Fund Release</span>
+                                        <?php endif; ?>
+                                    </div>
                                 </div>
                                 
                                 <div style="font-size:13px; margin-top:10px; color:var(--text-muted);">
                                     Disbursed: <?= $stage['disbursed'] ? '<span style="color:var(--primary); font-weight:bold;">Yes</span>' : 'No' ?>
                                 </div>
 
-                                <!-- Proofs -->
                                 <?php
+                                    // Fetch current proofs
                                     $pstmt = $pdo->prepare("SELECT * FROM stage_proofs WHERE stage_id = ?");
                                     $pstmt->execute([$stage['id']]);
-                                    $proofs = $pstmt->fetchAll();
+                                    $all_proofs = $pstmt->fetchAll();
+
+                                    $before_proofs = array_filter($all_proofs, function($p) { return $p['proof_type'] === 'before'; });
+                                    $after_proofs = array_filter($all_proofs, function($p) { return $p['proof_type'] === 'after'; });
+                                    $payment_proofs = array_filter($all_proofs, function($p) { return $p['proof_type'] === 'payment'; });
                                 ?>
-                                <?php if($proofs): ?>
-                                    <div style="margin-top:15px;">
-                                        <small style="font-weight:600; color:var(--text-muted);">UPLOADED PROOFS</small>
+
+                                <!-- PHASE 1: Farm State Prior to Work -->
+                                <div class="verification-sub-section">
+                                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                                        <h4 style="margin:0; font-size:13px; font-weight:600; color:var(--text-main);">
+                                            PHASE 1: Farm Status (Before Work)
+                                        </h4>
+                                        <span style="font-size:11px; font-weight:600; text-transform:uppercase; color: var(--text-muted);">
+                                            Required for Disbursement
+                                        </span>
+                                    </div>
+
+                                    <?php if ($before_proofs): ?>
                                         <div class="proof-grid">
-                                            <?php foreach($proofs as $pf): ?>
+                                            <?php foreach($before_proofs as $pf): ?>
+                                                <?php $pf_filename = !empty($pf['filename']) ? $pf['filename'] : (!empty($pf['file_path']) ? $pf['file_path'] : ''); ?>
                                                 <div class="proof-item">
-                                                    <?php if(strpos($pf['file_type'], 'image') !== false): ?>
-                                                        <img src="../uploads/app_<?= $app['id'] ?>/stage_<?= $stage['id'] ?>/<?= $pf['filename'] ?>" class="proof-thumb">
+                                                    <?php if(strpos($pf['file_type'] ?? '', 'image') !== false): ?>
+                                                        <img src="../uploads/app_<?= $app['id'] ?>/stage_<?= $stage['id'] ?>/<?= htmlspecialchars($pf_filename) ?>" class="proof-thumb" alt="Before verification">
                                                     <?php else: ?>
-                                                        <div class="proof-thumb"><i data-feather="file" style="margin-right:5px;"></i> FILE</div>
+                                                        <div class="proof-thumb"><i data-feather="file" style="margin-right:5px;"></i> DOCUMENT</div>
                                                     <?php endif; ?>
-                                                    <div style="padding:6px; font-size:11px; background:#f9fafb; border-top:1px solid #e5e7eb;">
-                                                        <?= $pf['status'] ?: 'Pending' ?>
+                                                    <div style="padding:6px; font-size:11px; background:#f9fafb; border-top:1px solid #e5e7eb; font-weight:600;">
+                                                        Status: <?= htmlspecialchars($pf['status'] ?: 'Pending') ?>
                                                     </div>
                                                 </div>
                                             <?php endforeach; ?>
                                         </div>
-                                    </div>
-                                <?php endif; ?>
+                                    <?php else: ?>
+                                        <p style="font-size:12px; color:var(--text-muted); margin:10px 0 0 0;">No 'before-work' photos uploaded yet.</p>
+                                    <?php endif; ?>
 
-                                <!-- Upload Form -->
-                                <?php if(!$isCompletedLoan && $isCurrent && in_array($stage['status'], ['pending','awaiting_proof','rejected'])): ?>
-                                    <form method="POST" enctype="multipart/form-data" class="upload-box">
-                                        <div style="flex:1;">
-                                            <label style="display:block; font-size:12px; margin-bottom:5px; font-weight:600;">Upload Proof of Work</label>
-                                            <input type="hidden" name="stage_id" value="<?= $stage['id'] ?>">
-                                            <input type="file" name="proof" required style="font-size:13px;">
+                                    <!-- Before Upload Action Interface -->
+                                    <?php if ($isCurrent && !$stage['disbursed']): ?>
+                                        <?php 
+                                            // Determine if there is already a pending proof submission for 'before'
+                                            $has_pending_before = false;
+                                            foreach($before_proofs as $bp) {
+                                                if ($bp['status'] === 'Pending' || $bp['status'] === 'pending') { $has_pending_before = true; break; }
+                                            }
+                                        ?>
+                                        <?php if ($has_pending_before): ?>
+                                            <div style="margin-top:12px; font-size:13px; color: var(--warning); font-weight:500;">
+                                                <i data-feather="clock" style="width:14px; height:14px; vertical-align:middle;"></i> Photos sent to Agent. Verification in progress before releasing funds.
+                                            </div>
+                                        <?php else: ?>
+                                            <form method="POST" enctype="multipart/form-data" class="upload-box">
+                                                <input type="hidden" name="stage_id" value="<?= $stage['id'] ?>">
+                                                <input type="hidden" name="proof_type" value="before">
+                                                <div style="flex:1;">
+                                                    <label style="display:block; font-size:12px; margin-bottom:5px; font-weight:600; color:var(--text-main);">
+                                                        Upload current farm/plot photos to trigger stage disbursement:
+                                                    </label>
+                                                    <input type="file" name="proof" required style="font-size:13px;">
+                                                </div>
+                                                <button type="submit" class="btn-upload">
+                                                    <i data-feather="upload-cloud" style="width:16px; height:16px; vertical-align:middle;"></i> Upload Photos
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                </div>
+
+                                <!-- PHASE 2: Completed Work Verification -->
+                                <div class="verification-sub-section" style="margin-top: 15px;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                                        <h4 style="margin:0; font-size:13px; font-weight:600; color:var(--text-main);">
+                                            PHASE 2: Completed Work Status (After Work)
+                                        </h4>
+                                        <span style="font-size:11px; font-weight:600; text-transform:uppercase; color: var(--text-muted);">
+                                            Required for Stage Completion
+                                        </span>
+                                    </div>
+
+                                    <?php if ($after_proofs): ?>
+                                        <div class="proof-grid">
+                                            <?php foreach($after_proofs as $pf): ?>
+                                                <?php $pf_filename = !empty($pf['filename']) ? $pf['filename'] : (!empty($pf['file_path']) ? $pf['file_path'] : ''); ?>
+                                                <div class="proof-item">
+                                                    <?php if(strpos($pf['file_type'] ?? '', 'image') !== false): ?>
+                                                        <img src="../uploads/app_<?= $app['id'] ?>/stage_<?= $stage['id'] ?>/<?= htmlspecialchars($pf_filename) ?>" class="proof-thumb" alt="After verification">
+                                                    <?php else: ?>
+                                                        <div class="proof-thumb"><i data-feather="file" style="margin-right:5px;"></i> DOCUMENT</div>
+                                                    <?php endif; ?>
+                                                    <div style="padding:6px; font-size:11px; background:#f9fafb; border-top:1px solid #e5e7eb; font-weight:600;">
+                                                        Status: <?= htmlspecialchars($pf['status'] ?: 'Pending') ?>
+                                                    </div>
+                                                </div>
+                                            <?php endforeach; ?>
                                         </div>
-                                        <button type="submit" class="btn-upload">
-                                            <i data-feather="upload-cloud" style="width:16px;height:16px; vertical-align:middle;"></i> Upload
-                                        </button>
-                                    </form>
-                                <?php endif; ?>
+                                    <?php else: ?>
+                                        <p style="font-size:12px; color:var(--text-muted); margin:10px 0 0 0;">No 'after-work' completion photos uploaded yet.</p>
+                                    <?php endif; ?>
+
+                                    <!-- After Upload Action Interface -->
+                                    <?php if ($isCurrent && $stage['disbursed'] && $stage['status'] !== 'completed'): ?>
+                                        <?php 
+                                            // Determine if there is already a pending proof submission for 'after'
+                                            $has_pending_after = false;
+                                            foreach($after_proofs as $ap_proof) {
+                                                if ($ap_proof['status'] === 'Pending' || $ap_proof['status'] === 'pending') { $has_pending_after = true; break; }
+                                            }
+                                        ?>
+                                        <?php if ($has_pending_after): ?>
+                                            <div style="margin-top:12px; font-size:13px; color: var(--warning); font-weight:500;">
+                                                <i data-feather="clock" style="width:14px; height:14px; vertical-align:middle;"></i> Photos sent to Agent. Verification in progress to complete current stage.
+                                            </div>
+                                        <?php else: ?>
+                                            <form method="POST" enctype="multipart/form-data" class="upload-box">
+                                                <input type="hidden" name="stage_id" value="<?= $stage['id'] ?>">
+                                                <input type="hidden" name="proof_type" value="after">
+                                                <div style="flex:1;">
+                                                    <label style="display:block; font-size:12px; margin-bottom:5px; font-weight:600; color:var(--text-main);">
+                                                        Upload work completion photos to verify stage activity:
+                                                    </label>
+                                                    <input type="file" name="proof" required style="font-size:13px;">
+                                                </div>
+                                                <button type="submit" class="btn-upload">
+                                                    <i data-feather="upload-cloud" style="width:16px; height:16px; vertical-align:middle;"></i> Upload Progress
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
+                                    <?php elseif (!$stage['disbursed'] && !$isCompletedLoan): ?>
+                                        <div style="margin-top:12px; font-size:12px; color: var(--text-muted); font-style:italic;">
+                                            Disbursement must occur before uploading completion proof.
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+
+                                <!-- PHASE 3: Payment & Expenditure Proof -->
+                                <div class="verification-sub-section" style="margin-top: 15px;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                                        <h4 style="margin:0; font-size:13px; font-weight:600; color:var(--text-main);">
+                                            PHASE 3: Payment & Receipt Verification (Payment Proof)
+                                        </h4>
+                                        <span style="font-size:11px; font-weight:600; text-transform:uppercase; color: var(--text-muted);">
+                                            Required for Stage Completion
+                                        </span>
+                                    </div>
+
+                                    <?php if ($payment_proofs): ?>
+                                        <div class="proof-grid">
+                                            <?php foreach($payment_proofs as $pf): ?>
+                                                <?php $pf_filename = !empty($pf['filename']) ? $pf['filename'] : (!empty($pf['file_path']) ? $pf['file_path'] : ''); ?>
+                                                <div class="proof-item">
+                                                    <?php if(strpos($pf['file_type'] ?? '', 'image') !== false): ?>
+                                                        <img src="../uploads/app_<?= $app['id'] ?>/stage_<?= $stage['id'] ?>/<?= htmlspecialchars($pf_filename) ?>" class="proof-thumb" alt="Payment verification">
+                                                    <?php else: ?>
+                                                        <div class="proof-thumb"><i data-feather="file" style="margin-right:5px;"></i> DOCUMENT</div>
+                                                    <?php endif; ?>
+                                                    <div style="padding:6px; font-size:11px; background:#f9fafb; border-top:1px solid #e5e7eb; font-weight:600;">
+                                                        Status: <?= htmlspecialchars($pf['status'] ?: 'Pending') ?>
+                                                    </div>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php else: ?>
+                                        <p style="font-size:12px; color:var(--text-muted); margin:10px 0 0 0;">No receipt or payment proofs uploaded yet.</p>
+                                    <?php endif; ?>
+
+                                    <!-- Payment Upload Action Interface -->
+                                    <?php if ($isCurrent && $stage['disbursed'] && $stage['status'] !== 'completed'): ?>
+                                        <?php 
+                                            // Determine if there is already a pending proof submission for 'payment'
+                                            $has_pending_payment = false;
+                                            foreach($payment_proofs as $pp_proof) {
+                                                if ($pp_proof['status'] === 'Pending' || $pp_proof['status'] === 'pending') { $has_pending_payment = true; break; }
+                                            }
+                                        ?>
+                                        <?php if ($has_pending_payment): ?>
+                                            <div style="margin-top:12px; font-size:13px; color: var(--warning); font-weight:500;">
+                                                <i data-feather="clock" style="width:14px; height:14px; vertical-align:middle;"></i> Receipts sent to Agent. Verification in progress to validate expenditures.
+                                            </div>
+                                        <?php else: ?>
+                                            <form method="POST" enctype="multipart/form-data" class="upload-box">
+                                                <input type="hidden" name="stage_id" value="<?= $stage['id'] ?>">
+                                                <input type="hidden" name="proof_type" value="payment">
+                                                <div style="flex:1;">
+                                                    <label style="display:block; font-size:12px; margin-bottom:5px; font-weight:600; color:var(--text-main);">
+                                                        Upload invoice/receipt/payment proof to verify stage disbursements:
+                                                    </label>
+                                                    <input type="file" name="proof" required style="font-size:13px;">
+                                                </div>
+                                                <button type="submit" class="btn-upload">
+                                                    <i data-feather="upload-cloud" style="width:16px; height:16px; vertical-align:middle;"></i> Upload Receipt
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
+                                    <?php elseif (!$stage['disbursed'] && !$isCompletedLoan): ?>
+                                        <div style="margin-top:12px; font-size:12px; color: var(--text-muted); font-style:italic;">
+                                            Disbursement must occur before uploading payment proof.
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+
                             </div>
                         <?php endforeach; ?>
 
@@ -567,7 +884,7 @@ if ($id && $app && $app['status'] !== 'completed') {
                                 <thead>
                                     <tr>
                                         <th>Loan Title</th>
-                                        <th>Stage</th>
+                                        <th>Active Stage</th>
                                         <th>Amount</th>
                                         <th>Status</th>
                                         <th>Action</th>
@@ -580,11 +897,11 @@ if ($id && $app && $app['status'] !== 'completed') {
                                             <span style="font-weight:600; color:var(--text-main);"><?= htmlspecialchars($ap['title']) ?></span>
                                             <div style="font-size:11px; color:var(--text-muted);"><?= date('M d, Y', strtotime($ap['created_at'])) ?></div>
                                         </td>
-                                        <td>Stage <?= $ap['current_stage'] ?></td>
+                                        <td>Stage <?= htmlspecialchars($ap['current_stage']) ?></td>
                                         <td>GHS <?= number_format($ap['amount'], 2) ?></td>
                                         <td><span class="badge <?= $ap['status'] ?>"><?= ucfirst($ap['status']) ?></span></td>
                                         <td>
-                                            <a href="view_application.php?id=<?= $ap['id'] ?>" class="link" style="font-size:13px;">Manage</a>
+                                            <a href="view_application.php?id=<?= $ap['id'] ?>" class="link" style="font-size:13px;">Manage Uploads</a>
                                         </td>
                                     </tr>
                                     <?php endforeach; ?>

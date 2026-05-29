@@ -315,10 +315,6 @@ $applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <i data-feather="check-square"></i>
                 <span>Proof Verify</span>
             </a>
-            <a href="agent_approve_stage.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'agent_approve_stage.php' ? 'active' : '' ?>">
-                <i data-feather="dollar-sign"></i>
-                <span>Disbursement</span>
-            </a>
             <a href="agent_repayments.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'agent_repayments.php' ? 'active' : '' ?>">
                 <i data-feather="credit-card"></i>
                 <span>Repayments</span>

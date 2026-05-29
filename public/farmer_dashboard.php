@@ -275,10 +275,6 @@ $pending_loans = count(array_filter($loans, function($l){ return !isset($l['stat
                 <i data-feather="file-text"></i>
                 <span>Applications</span>
             </a>
-            <a href="upload_proof.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'upload_proof.php' ? 'active' : '' ?>">
-                <i data-feather="upload-cloud"></i>
-                <span>Upload Proof</span>
-            </a>
             <a href="farmer_repayment.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'farmer_repayment.php' ? 'active' : '' ?>">
                 <i data-feather="credit-card"></i>
                 <span>Repayments</span>

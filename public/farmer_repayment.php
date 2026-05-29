@@ -440,9 +440,6 @@ $selected_loan_id = isset($_GET['loan_id']) ? (int)$_GET['loan_id'] : null;
         <a href="view_application.php" class="nav-link">
             <i data-feather="file-text"></i><span>Applications</span>
         </a>
-        <a href="upload_proof.php" class="nav-link">
-            <i data-feather="upload-cloud"></i><span>Upload Proof</span>
-        </a>
         <a href="farmer_repayment.php" class="nav-link active">
             <i data-feather="credit-card"></i><span>Repayments</span>
         </a>

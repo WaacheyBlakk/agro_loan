@@ -425,10 +425,6 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
                 <i data-feather="file-text"></i>
                 <span>Applications</span>
             </a>
-            <a href="upload_proof.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'upload_proof.php' ? 'active' : '' ?>">
-                <i data-feather="upload-cloud"></i>
-                <span>Upload Proof</span>
-            </a>
             <a href="farmer_repayment.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'farmer_repayment.php' ? 'active' : '' ?>">
                 <i data-feather="credit-card"></i>
                 <span>Repayments</span>
