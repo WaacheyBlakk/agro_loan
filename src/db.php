@@ -1,8 +1,5 @@
 <?php
 // src/db.php
-// --------------------------------------
-// Central PDO database connection file
-// --------------------------------------
 
 $config = require __DIR__ . '/config.php';
 
@@ -21,8 +18,7 @@ function getPDO(): PDO {
                 $db['options']
             );
         } catch (PDOException $e) {
-            // Graceful error handling
-            die("❌ Database connection failed: " . htmlspecialchars($e->getMessage()));
+            die("Database connection failed: " . htmlspecialchars($e->getMessage()));
         }
     }
 

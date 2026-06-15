@@ -12,6 +12,7 @@ require_once '../src/db.php';
 $errors = [];
 $name_val = '';
 $email_val = '';
+$phone_val = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pdo = getPDO();
@@ -19,15 +20,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Sanitize and capture inputs
     $name = trim(filter_input(INPUT_POST, 'name', FILTER_SANITIZE_SPECIAL_CHARS));
     $email = trim(filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL));
+    $phone = trim(filter_input(INPUT_POST, 'phone', FILTER_SANITIZE_SPECIAL_CHARS));
     $password = $_POST['password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
 
     // Retain values for the form
     $name_val = htmlspecialchars($name);
     $email_val = htmlspecialchars($email);
+    $phone_val = htmlspecialchars($phone);
 
     // 2. Validation Logic
-    if (empty($name) || empty($email) || empty($password)) {
+    if (empty($name) || empty($email) || empty($phone) || empty($password)) {
         $errors[] = "All fields are required.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $errors[] = "Please enter a valid email address.";
@@ -45,12 +48,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($stmt->fetch()) {
             $errors[] = "This email is already registered. Please login.";
         } else {
-            // Create Account
+            // Create Account (Set status as 'pending' for Admin verification)
             $hash = password_hash($password, PASSWORD_BCRYPT);
-            $stmt = $pdo->prepare("INSERT INTO buyers (name, email, password) VALUES (?, ?, ?)");
+            $stmt = $pdo->prepare("INSERT INTO buyers (name, email, phone, password, status) VALUES (?, ?, ?, ?, 'pending')");
             
             try {
-                $stmt->execute([$name, $email, $hash]);
+                $stmt->execute([$name, $email, $phone, $hash]);
                 // Redirect to login with success flag
                 header('Location: buyers_login.php?registered=1');
                 exit;
@@ -158,6 +161,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <input type="email" name="email" required value="<?= $email_val ?>"
                                class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-agro-500 focus:bg-white focus:border-transparent outline-none transition text-gray-800 placeholder-gray-400"
                                placeholder="you@example.com">
+                    </div>
+                </div>
+
+                <!-- Phone -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Phone Number</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                            <i class="ri-phone-line"></i>
+                        </div>
+                        <input type="text" name="phone" required value="<?= $phone_val ?>"
+                               class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-agro-500 focus:bg-white focus:border-transparent outline-none transition text-gray-800 placeholder-gray-400"
+                               placeholder="+1 (555) 000-0000">
                     </div>
                 </div>
 

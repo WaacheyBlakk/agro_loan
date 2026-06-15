@@ -4,8 +4,11 @@ require_once __DIR__ . '/../src/db.php';
 $pdo = getPDO();
 
 $token = $_GET['token'] ?? '';
+$type = $_GET['type'] ?? ''; // 'user' or 'buyer'
 $error = '';
 $success = false;
+$user = null;
+$table_to_update = '';
 
 // 1. Validate Token Presence
 if (!$token) {
@@ -16,9 +19,37 @@ if (!$token) {
 if (!$error) {
     $token_hash = hash('sha256', $token);
     
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE reset_token_hash = ? AND reset_token_expires_at > NOW()");
-    $stmt->execute([$token_hash]);
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    // First, try searching using the 'type' parameter if present to reduce DB lookups
+    if ($type === 'buyer') {
+        $stmt = $pdo->prepare("SELECT * FROM buyers WHERE reset_token_hash = ? AND reset_token_expires_at > NOW() LIMIT 1");
+        $stmt->execute([$token_hash]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($user) {
+            $table_to_update = 'buyers';
+        }
+    } elseif ($type === 'user') {
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE reset_token_hash = ? AND reset_token_expires_at > NOW() LIMIT 1");
+        $stmt->execute([$token_hash]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($user) {
+            $table_to_update = 'users';
+        }
+    } else {
+        // Fallback: If no type parameter was passed in the URL, search both tables sequentially
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE reset_token_hash = ? AND reset_token_expires_at > NOW() LIMIT 1");
+        $stmt->execute([$token_hash]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($user) {
+            $table_to_update = 'users';
+        } else {
+            $stmt = $pdo->prepare("SELECT * FROM buyers WHERE reset_token_hash = ? AND reset_token_expires_at > NOW() LIMIT 1");
+            $stmt->execute([$token_hash]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($user) {
+                $table_to_update = 'buyers';
+            }
+        }
+    }
 
     if (!$user) {
         $error = "This password reset link is invalid or has expired.";
@@ -38,8 +69,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
         // 4. Update Password & Clear Token
         $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
         
-        // --- FIXED SQL QUERY BELOW ---
-        $update = $pdo->prepare("UPDATE users SET password_hash = ?, reset_token_hash = NULL, reset_token_expires_at = NULL WHERE id = ?");
+        // Determine the correct password column name based on the table
+        $password_column = ($table_to_update === 'buyers') ? 'password' : 'password_hash';
+        
+        $update = $pdo->prepare("UPDATE {$table_to_update} SET {$password_column} = ?, reset_token_hash = NULL, reset_token_expires_at = NULL WHERE id = ?");
         $update->execute([$hashed_password, $user['id']]);
         
         $success = true;
@@ -75,7 +108,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
 
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
-            /* Update this URL to your actual local image path if needed */
             background: var(--bg-gradient), url('../assets/images/farm-bg.jpg') center/cover no-repeat;
             min-height: 100vh;
             display: flex;

@@ -1,13 +1,12 @@
 <?php
 // src/config.php
-// Database configuration file for Agro Loan App
 
 return [
     'db' => [
         // Database name must match what you created in phpMyAdmin
         'dsn' => 'mysql:host=127.0.0.1;dbname=agro_loan;charset=utf8mb4',
 
-        // ✅ Default XAMPP MySQL credentials
+        //Default XAMPP MySQL credentials
         'user' => 'root',
         'pass' => '',
 

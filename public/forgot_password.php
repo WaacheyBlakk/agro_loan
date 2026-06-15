@@ -1,7 +1,7 @@
 <?php
 // public/forgot_password.php
 require_once __DIR__ . '/../src/db.php';
- $pdo = getPDO(); 
+$pdo = getPDO(); 
 
 $message = '';
 $msgType = ''; 
@@ -15,21 +15,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $token_hash = hash('sha256', $token);
         $expiry = date("Y-m-d H:i:s", time() + 60 * 60);
 
-        // 2. Update Database
-        $stmt = $pdo->prepare("UPDATE users SET reset_token_hash = ?, reset_token_expires_at = ? WHERE email = ?");
-        $stmt->execute([$token_hash, $expiry, $email]);
-
-        $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
-        $host = $_SERVER['HTTP_HOST'];
-        $dir = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
+        // 2. Identify the correct table (users or buyers)
+        $target_table = '';
         
-        $resetLink = "$protocol://$host$dir/reset_password.php?token=" . $token;
+        // Check the users table first
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
+        $stmt->execute([$email]);
+        if ($stmt->fetch()) {
+            $target_table = 'users';
+        } else {
+            // Check the buyers table if not found in users
+            $stmt = $pdo->prepare("SELECT id FROM buyers WHERE email = ? LIMIT 1");
+            $stmt->execute([$email]);
+            if ($stmt->fetch()) {
+                $target_table = 'buyers';
+            }
+        }
 
-        $message = "We have sent a password reset link to <b>" . htmlspecialchars($email) . "</b>.";
+        // If the email belongs to an existing account
+        if ($target_table !== '') {
+            $stmt = $pdo->prepare("UPDATE {$target_table} SET reset_token_hash = ?, reset_token_expires_at = ? WHERE email = ?");
+            $stmt->execute([$token_hash, $expiry, $email]);
+
+            $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
+            $host = $_SERVER['HTTP_HOST'];
+            $dir = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
+            
+            // Appending a 'type' parameter allows reset_password.php to know which table to query
+            $type_param = ($target_table === 'buyers') ? 'buyer' : 'user';
+            $resetLink = "$protocol://$host$dir/reset_password.php?token=" . $token . "&type=" . $type_param;
+
+            // Demo Link for testing
+            $demoLink = $resetLink; 
+        }
+
+        // Standard security practice: display the confirmation message regardless of whether the email was found
+        $message = "We have sent a password reset link to <b>" . htmlspecialchars($email) . "</b> if it is registered in our system.";
         $msgType = 'success';
         
-        // Demo Link
-        $demoLink = $resetLink; 
     } else {
         $message = "Please enter your email address.";
         $msgType = 'error';

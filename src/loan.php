@@ -3,7 +3,6 @@
 require_once __DIR__ . '/db.php';
 
 function create_application($farmer_id, $agent_id, $title, $amount, $purpose, $stages) {
-    // $stages : array of ['stage_number'=>1, 'required_amount'=>123.45]
     $pdo = getPDO();
     $pdo->beginTransaction();
     $stmt = $pdo->prepare("INSERT INTO loan_applications (farmer_id, agent_id, title, amount, purpose) VALUES (?, ?, ?, ?, ?)");
@@ -41,7 +40,6 @@ function get_application($id) {
     return $app;
 }
 
-
 function set_stage_status($stage_id, $status) {
     $pdo = getPDO();
     $stmt = $pdo->prepare("UPDATE loan_stages SET status = ? WHERE id = ?");
@@ -56,7 +54,6 @@ function disburse_stage($stage_id, $amount) {
 
 function approve_stage_by_agent($agent_id, $stage_id, $action, $notes = null) {
     $pdo = getPDO();
-    // action: 'approved' or 'rejected'
     $pdo->beginTransaction();
     $stmt = $pdo->prepare("INSERT INTO agent_actions (agent_id, stage_id, action, notes) VALUES (?, ?, ?, ?)");
     $stmt->execute([$agent_id, $stage_id, $action, $notes]);
@@ -64,7 +61,6 @@ function approve_stage_by_agent($agent_id, $stage_id, $action, $notes = null) {
     if ($action === 'approved') {
         $stmt2 = $pdo->prepare("UPDATE loan_stages SET status = 'approved' WHERE id = ?");
         $stmt2->execute([$stage_id]);
-        // move application to next stage if any
         $stmt3 = $pdo->prepare("SELECT application_id, stage_number FROM loan_stages WHERE id = ?");
         $stmt3->execute([$stage_id]);
         $s = $stmt3->fetch();
@@ -75,11 +71,9 @@ function approve_stage_by_agent($agent_id, $stage_id, $action, $notes = null) {
             $stmt4->execute([$app_id, $nextStageNum]);
             $next = $stmt4->fetch();
             if ($next) {
-                // mark next as pending -> investor/disbursement step could be triggered here
                 $stmt5 = $pdo->prepare("UPDATE loan_applications SET current_stage = ? WHERE id = ?");
                 $stmt5->execute([$nextStageNum, $app_id]);
             } else {
-                // no next stage => application completed
                 $stmt6 = $pdo->prepare("UPDATE loan_applications SET status = 'completed' WHERE id = ?");
                 $stmt6->execute([$app_id]);
             }

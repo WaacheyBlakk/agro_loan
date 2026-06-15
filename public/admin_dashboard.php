@@ -10,13 +10,23 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
 
 $pdo = getPDO();
 
-// Count data
+// Count aggregated system data
 $stats = [
-    'farmers' => $pdo->query("SELECT COUNT(*) FROM users WHERE role='farmer'")->fetchColumn(),
-    'agents' => $pdo->query("SELECT COUNT(*) FROM users WHERE role='agent'")->fetchColumn(),
-    'pending' => $pdo->query("SELECT COUNT(*) FROM users WHERE status='pending'")->fetchColumn(),
-    'verified' => $pdo->query("SELECT COUNT(*) FROM users WHERE status='verified'")->fetchColumn(),
-    'rejected' => $pdo->query("SELECT COUNT(*) FROM users WHERE status='rejected'")->fetchColumn(),
+    'farmers'  => (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role='farmer'")->fetchColumn(),
+    'agents'   => (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role='agent'")->fetchColumn(),
+    'buyers'   => (int)$pdo->query("SELECT COUNT(*) FROM buyers")->fetchColumn(),
+    
+    // Aggregates pending profiles from both users and buyers tables
+    'pending'  => (int)$pdo->query("SELECT COUNT(*) FROM users WHERE status IN ('pending', 'unverified', 'submitted')")->fetchColumn() +
+                  (int)$pdo->query("SELECT COUNT(*) FROM buyers WHERE status IN ('pending', 'unverified', 'submitted')")->fetchColumn(),
+                  
+    // Aggregates verified farmers/agents and approved buyers
+    'verified' => (int)$pdo->query("SELECT COUNT(*) FROM users WHERE status='verified'")->fetchColumn() +
+                  (int)$pdo->query("SELECT COUNT(*) FROM buyers WHERE status='approved'")->fetchColumn(),
+                  
+    // Aggregates rejected accounts from both tables
+    'rejected' => (int)$pdo->query("SELECT COUNT(*) FROM users WHERE status='rejected'")->fetchColumn() +
+                  (int)$pdo->query("SELECT COUNT(*) FROM buyers WHERE status='rejected'")->fetchColumn(),
 ];
 
 $username = $_SESSION['name'] ?? "Admin";
@@ -256,6 +266,7 @@ $username = $_SESSION['name'] ?? "Admin";
     /* Card Themes */
     .theme-blue { background: #eff6ff; color: #2563eb; }
     .theme-green { background: #ecfdf5; color: #059669; }
+    .theme-purple { background: #f5f3ff; color: #7c3aed; }
     .theme-orange { background: #fff7ed; color: #ea580c; }
     .theme-teal { background: #f0fdfa; color: #0d9488; }
     .theme-red { background: #fef2f2; color: #dc2626; }
@@ -348,6 +359,17 @@ $username = $_SESSION['name'] ?? "Admin";
                     <div class="stat-info">
                         <h3>Active Agents</h3>
                         <p><?= number_format($stats['agents']); ?></p>
+                    </div>
+                </div>
+
+                <!-- Buyers -->
+                <div class="stat-card">
+                    <div class="icon-box theme-purple">
+                        <i data-feather="shopping-bag"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3>Total Buyers</h3>
+                        <p><?= number_format($stats['buyers']); ?></p>
                     </div>
                 </div>
 

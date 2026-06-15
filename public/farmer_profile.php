@@ -18,7 +18,7 @@ $msgType = "";
 // Fetch User + Farmer Profile
 $stmt = $pdo->prepare("
     SELECT 
-        u.name, u.email, u.phone,
+        u.name, u.email, u.phone, u.momo_phone,
         p.id_card, p.id_card_number,
         p.passport_photo, p.house_address,
         p.farmland_photos, p.gps_coordinates, 
@@ -507,6 +507,10 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
                     <h3>Personal Information</h3>
                     <div class="info-grid">
                         <div class="info-item">
+                            <label>Momo Number</label>
+                            <div class="value"><?= htmlspecialchars($user['momo_phone'] ?: 'Not set') ?></div>
+                        </div>
+                        <div class="info-item">
                             <label>House Address</label>
                             <div class="value"><?= htmlspecialchars($user['house_address'] ?: 'Not set') ?></div>
                         </div>
@@ -580,6 +584,10 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
                             <div class="form-group">
                                 <label>Phone Number</label>
                                 <input type="text" name="phone" maxlength="10" pattern="\d{10}" value="<?= htmlspecialchars($user['phone']) ?>">
+                            </div>
+                            <div class="form-group">
+                                <label>Momo Number</label>
+                                <input type="text" name="momo_phone" maxlength="10" pattern="\d{10}" value="<?= htmlspecialchars($user['momo_phone']) ?>">
                             </div>
                             <div class="form-group">
                                 <label>House Address</label>

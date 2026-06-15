@@ -23,20 +23,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($email) || empty($pass)) {
         $error = "Please fill in all fields.";
     } else {
-        // Fetch user
+        // Fetch user (including status field to check approval)
         $stmt = $pdo->prepare("SELECT * FROM buyers WHERE email = ? LIMIT 1");
         $stmt->execute([$email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($user && password_verify($pass, $user['password'])) {
-            session_regenerate_id(true); 
-            $_SESSION['id'] = $user['id'];
-            $_SESSION['name'] = $user['name']; // Or produce_name/first_name
-            $_SESSION['role'] = 'buyer';      // Explicitly set role
-            
-            // Redirect
-            header('Location: shop.php');
-            exit;
+            // Check verification status
+            if ($user['status'] !== 'approved') {
+                if ($user['status'] === 'pending' || $user['status'] === 'submitted' || $user['status'] === 'unverified') {
+                    $error = "Your profile is awaiting administrator verification. Access is restricted until approved.";
+                } elseif ($user['status'] === 'denied' || $user['status'] === 'rejected') {
+                    $error = "Your account application has been declined. Please contact administration support.";
+                } else {
+                    $error = "Your account is unverified. Please check back later.";
+                }
+            } else {
+                session_regenerate_id(true); 
+                $_SESSION['id'] = $user['id'];
+                $_SESSION['name'] = $user['name']; 
+                $_SESSION['role'] = 'buyer';      // Explicitly set role
+                
+                // Redirect to shop
+                header('Location: shop.php');
+                exit;
+            }
         } else {
             $error = "Invalid email or password.";
         }
@@ -103,11 +114,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <p class="text-sm text-gray-500 mt-1">Login to continue shopping</p>
             </div>
 
+            <!-- Registration Success Alert -->
+            <?php if (isset($_GET['registered']) && $_GET['registered'] == 1): ?>
+                <div class="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center gap-3 text-emerald-700 text-sm font-medium">
+                    <i class="ri-checkbox-circle-fill text-lg"></i>
+                    Registration complete. Your profile has been sent to the administrator for verification.
+                </div>
+            <?php endif; ?>
+
             <!-- Error Message -->
             <?php if ($error): ?>
-                <div class="mb-6 p-4 rounded-xl bg-red-50 border border-red-100 flex items-center gap-3 text-red-600 text-sm font-medium animate-pulse">
-                    <i class="ri-error-warning-fill text-lg"></i>
-                    <?= htmlspecialchars($error) ?>
+                <div class="mb-6 p-4 rounded-xl bg-red-50 border border-red-100 flex items-start gap-3 text-red-600 text-sm font-medium">
+                    <i class="ri-error-warning-fill text-lg mt-0.5"></i>
+                    <div><?= htmlspecialchars($error) ?></div>
                 </div>
             <?php endif; ?>
 

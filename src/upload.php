@@ -52,7 +52,6 @@ function handle_stage_upload($stage_id, $farmer_id, $file) {
         throw new Exception('Failed to move uploaded file');
     }
 
-    // ✅ Insert proof with 'pending' status
     $stmt = $pdo->prepare("
         INSERT INTO stage_proofs (stage_id, farmer_id, filename, file_type, status)
         VALUES (?, ?, ?, ?, 'pending')

@@ -15,8 +15,12 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
-// Fetch users awaiting verification
+// Fetch users and buyers awaiting verification using a UNION query
 $query = "
+    SELECT id, name, email, phone, 'buyer' AS role, status, created_at 
+    FROM buyers 
+    WHERE status IN ('pending', 'unverified', 'submitted')
+    UNION ALL
     SELECT id, name, email, phone, role, status, created_at 
     FROM users 
     WHERE status IN ('pending', 'unverified', 'submitted')
@@ -305,7 +309,6 @@ $username = $_SESSION['name'] ?? "Admin";
                     <h1 class="page-title">Verification Center</h1>
                     <p class="page-subtitle">Review and approve new user applications.</p>
                 </div>
-                <!-- Optional: Add a filter button here if needed later -->
             </div>
 
             <?php if (isset($_GET['msg'])): ?>
@@ -356,7 +359,7 @@ $username = $_SESSION['name'] ?? "Admin";
                                 </td>
                                 <td><?= date("M d, Y", strtotime($row['created_at'])); ?></td>
                                 <td>
-                                    <a href="admin_user_details.php?id=<?= $row['id']; ?>" class="btn-action">
+                                    <a href="admin_user_details.php?id=<?= $row['id']; ?>&role=<?= urlencode($row['role']); ?>" class="btn-action">
                                         <i data-feather="eye" style="width:14px;"></i> View
                                     </a>
                                 </td>

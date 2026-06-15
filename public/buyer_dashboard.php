@@ -2,1265 +2,541 @@
 session_start();
 require_once __DIR__ . '/../src/db.php';
 
-$pdo = getPDO();
+$user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
+if (!$user_id) { header('Location: buyers_login.php'); exit; }
 
-$buyer_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
-$role = $_SESSION['role'] ?? null;
+$pdo       = getPDO();
+$user_role = $_SESSION['role'] ?? 'buyer';
+$is_logged = true;
+if ($user_role === 'farmer') { header('Location: seller_dashboard.php'); exit; }
 
-if (!$buyer_id || $role !== 'buyer') {
-    header("Location: buyers_login.php");
-    exit;
-}
+// Cart count
+$cStmt = $pdo->prepare("SELECT COALESCE(SUM(quantity),0) FROM cart WHERE user_id=?");
+$cStmt->execute([$user_id]);
+$cart_count = (int)$cStmt->fetchColumn();
 
-$username = $_SESSION['name'] ?? 'Buyer';
+// Buyer profile
+$buyer = $pdo->prepare("SELECT id,name,email,phone,momo_phone,location,profile_bio,created_at FROM buyers WHERE id=?");
+$buyer->execute([$user_id]);
+$buyer = $buyer->fetch(PDO::FETCH_ASSOC);
 
-$successMessage = '';
-$errorMessage = '';
+// Stats
+$stats = $pdo->prepare("
+    SELECT
+        COUNT(*)                                                           AS total_orders,
+        COALESCE(SUM(total_amount),0)                                     AS total_spent,
+        SUM(order_status='delivered')                                     AS delivered,
+        SUM(order_status IN ('pending_payment','payment_confirmed','preparing','in_transit','ready_for_pickup')) AS active
+    FROM orders WHERE buyer_id=?
+");
+$stats->execute([$user_id]);
+$stats = $stats->fetch(PDO::FETCH_ASSOC);
 
-function h($value) {
-    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
-}
+// All orders
+$ordersStmt = $pdo->prepare("
+    SELECT o.*,
+           COUNT(oi.id) AS item_count
+    FROM orders o
+    LEFT JOIN order_items oi ON o.id = oi.order_id
+    WHERE o.buyer_id = ?
+    GROUP BY o.id
+    ORDER BY o.created_at DESC
+");
+$ordersStmt->execute([$user_id]);
+$orders = $ordersStmt->fetchAll(PDO::FETCH_ASSOC);
 
-function money($amount) {
-    return 'GH₵ ' . number_format((float)$amount, 2);
-}
+// Handle profile update
+$profileError = ''; $profileSuccess = '';
+if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['update_profile'])) {
+    $name     = trim(filter_input(INPUT_POST,'name',FILTER_SANITIZE_SPECIAL_CHARS));
+    $phone    = trim(filter_input(INPUT_POST,'phone',FILTER_SANITIZE_SPECIAL_CHARS));
+    $momo     = trim(filter_input(INPUT_POST,'momo_phone',FILTER_SANITIZE_SPECIAL_CHARS));
+    $location = trim(filter_input(INPUT_POST,'location',FILTER_SANITIZE_SPECIAL_CHARS));
+    $bio      = trim(filter_input(INPUT_POST,'profile_bio',FILTER_SANITIZE_SPECIAL_CHARS));
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-
-    try {
-        if ($action === 'update_profile') {
-            $name = trim($_POST['name'] ?? '');
-            $email = trim($_POST['email'] ?? '');
-            $phone = trim($_POST['phone'] ?? '');
-            $address = trim($_POST['address'] ?? '');
-            $city = trim($_POST['city'] ?? '');
-            $region = trim($_POST['region'] ?? '');
-            $gps_address = trim($_POST['gps_address'] ?? '');
-            $digital_address = trim($_POST['digital_address'] ?? '');
-            $alternate_phone = trim($_POST['alternate_phone'] ?? '');
-
-            if ($name === '' || $email === '') {
-                throw new Exception("Name and email are required.");
-            }
-
-            $pdo->beginTransaction();
-
-            $stmt = $pdo->prepare("
-                UPDATE users 
-                SET name = ?, email = ?, phone = ?
-                WHERE id = ? AND role = 'buyer'
-            ");
-            $stmt->execute([$name, $email, $phone, $buyer_id]);
-
-            $check = $pdo->prepare("SELECT id FROM buyer_profiles WHERE user_id = ?");
-            $check->execute([$buyer_id]);
-
-            if ($check->fetch()) {
-                $stmt = $pdo->prepare("
-                    UPDATE buyer_profiles
-                    SET address = ?, city = ?, region = ?, gps_address = ?, digital_address = ?, alternate_phone = ?
-                    WHERE user_id = ?
-                ");
-                $stmt->execute([
-                    $address,
-                    $city,
-                    $region,
-                    $gps_address,
-                    $digital_address,
-                    $alternate_phone,
-                    $buyer_id
-                ]);
-            } else {
-                $stmt = $pdo->prepare("
-                    INSERT INTO buyer_profiles 
-                    (user_id, address, city, region, gps_address, digital_address, alternate_phone)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ");
-                $stmt->execute([
-                    $buyer_id,
-                    $address,
-                    $city,
-                    $region,
-                    $gps_address,
-                    $digital_address,
-                    $alternate_phone
-                ]);
-            }
-
-            $pdo->commit();
-
-            $_SESSION['name'] = $name;
-            $username = $name;
-
-            $successMessage = "Profile updated successfully.";
-        }
-
-        if ($action === 'update_cart') {
-            $quantities = $_POST['quantity'] ?? [];
-
-            foreach ($quantities as $cart_id => $qty) {
-                $cart_id = (int)$cart_id;
-                $qty = max(1, (int)$qty);
-
-                $stmt = $pdo->prepare("
-                    SELECT c.product_id, p.bags
-                    FROM cart c
-                    JOIN products p ON c.product_id = p.id
-                    WHERE c.id = ? AND c.user_id = ?
-                ");
-                $stmt->execute([$cart_id, $buyer_id]);
-                $item = $stmt->fetch(PDO::FETCH_ASSOC);
-
-                if ($item) {
-                    $max_qty = max(1, (int)$item['bags']);
-                    $qty = min($qty, $max_qty);
-
-                    $update = $pdo->prepare("
-                        UPDATE cart 
-                        SET quantity = ?
-                        WHERE id = ? AND user_id = ?
-                    ");
-                    $update->execute([$qty, $cart_id, $buyer_id]);
-                }
-            }
-
-            $successMessage = "Cart updated successfully.";
-        }
-
-        if ($action === 'remove_cart_item') {
-            $cart_id = (int)($_POST['cart_id'] ?? 0);
-
-            $stmt = $pdo->prepare("DELETE FROM cart WHERE id = ? AND user_id = ?");
-            $stmt->execute([$cart_id, $buyer_id]);
-
-            $successMessage = "Item removed from cart.";
-        }
-
-        if ($action === 'remove_wishlist_item') {
-            $wishlist_id = (int)($_POST['wishlist_id'] ?? 0);
-
-            $stmt = $pdo->prepare("DELETE FROM wishlist_items WHERE id = ? AND user_id = ?");
-            $stmt->execute([$wishlist_id, $buyer_id]);
-
-            $successMessage = "Item removed from wishlist.";
-        }
-
-        if ($action === 'move_wishlist_to_cart') {
-            $product_id = (int)($_POST['product_id'] ?? 0);
-
-            $stock = $pdo->prepare("SELECT bags FROM products WHERE id = ?");
-            $stock->execute([$product_id]);
-            $available = (int)$stock->fetchColumn();
-
-            if ($available <= 0) {
-                throw new Exception("This product is currently out of stock.");
-            }
-
-            $stmt = $pdo->prepare("
-                INSERT INTO cart (user_id, product_id, quantity)
-                VALUES (?, ?, 1)
-                ON DUPLICATE KEY UPDATE quantity = quantity + 1
-            ");
-            $stmt->execute([$buyer_id, $product_id]);
-
-            $stmt = $pdo->prepare("DELETE FROM wishlist_items WHERE user_id = ? AND product_id = ?");
-            $stmt->execute([$buyer_id, $product_id]);
-
-            $successMessage = "Wishlist item moved to cart.";
-        }
-
-        if ($action === 'cancel_order') {
-            $order_id = (int)($_POST['order_id'] ?? 0);
-
-            $stmt = $pdo->prepare("
-                UPDATE orders
-                SET status = 'cancelled'
-                WHERE id = ? 
-                  AND user_id = ?
-                  AND status IN ('pending', 'processing')
-            ");
-            $stmt->execute([$order_id, $buyer_id]);
-
-            $successMessage = "Order cancelled successfully.";
-        }
-
-    } catch (Exception $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-
-        $errorMessage = $e->getMessage();
+    if (!$name) { $profileError = 'Name is required.'; }
+    else {
+        $upd = $pdo->prepare("UPDATE buyers SET name=?,phone=?,momo_phone=?,location=?,profile_bio=? WHERE id=?");
+        $upd->execute([$name,$phone,$momo,$location,$bio,$user_id]);
+        $_SESSION['user_name'] = $name;
+        $profileSuccess = 'Profile updated successfully!';
+        $buyer['name']=$name; $buyer['phone']=$phone; $buyer['momo_phone']=$momo;
+        $buyer['location']=$location; $buyer['profile_bio']=$bio;
     }
 }
 
-/*
-|--------------------------------------------------------------------------
-| Fetch Buyer Profile
-|--------------------------------------------------------------------------
-*/
-$stmt = $pdo->prepare("
-    SELECT 
-        u.id,
-        u.name,
-        u.email,
-        u.phone,
-        u.role,
-        u.status,
-        bp.address,
-        bp.city,
-        bp.region,
-        bp.gps_address,
-        bp.digital_address,
-        bp.alternate_phone
-    FROM users u
-    LEFT JOIN buyer_profiles bp ON bp.user_id = u.id
-    WHERE u.id = ? AND u.role = 'buyer'
-");
-$stmt->execute([$buyer_id]);
-$buyer = $stmt->fetch(PDO::FETCH_ASSOC);
+// Active tab
+$activeTab = $_GET['tab'] ?? 'overview';
+$highlight = filter_input(INPUT_GET,'order_id',FILTER_VALIDATE_INT);
 
-if (!$buyer) {
-    session_destroy();
-    header("Location: login.php");
-    exit;
-}
+// Status config
+$statusConfig = [
+    'pending_payment'   => ['label'=>'Pending Payment',   'color'=>'bg-amber-50 text-amber-700 border border-amber-200/30', 'icon'=>'ri-time-line'],
+    'payment_confirmed' => ['label'=>'Confirmed', 'color'=>'bg-blue-50 text-blue-700 border border-blue-200/30',    'icon'=>'ri-check-double-line'],
+    'preparing'         => ['label'=>'Preparing',   'color'=>'bg-purple-50 text-purple-700 border border-purple-200/30','icon'=>'ri-box-3-line'],
+    'in_transit'        => ['label'=>'In Transit',        'color'=>'bg-orange-50 text-orange-700 border border-orange-200/30','icon'=>'ri-truck-line'],
+    'ready_for_pickup'  => ['label'=>'Ready for Pickup',  'color'=>'bg-cyan-50 text-cyan-700 border border-cyan-200/30',    'icon'=>'ri-store-line'],
+    'delivered'         => ['label'=>'Delivered',         'color'=>'bg-emerald-50 text-emerald-700 border border-emerald-200/30',  'icon'=>'ri-checkbox-circle-line'],
+    'cancelled'         => ['label'=>'Cancelled',         'color'=>'bg-rose-50 text-rose-700 border border-rose-200/30',      'icon'=>'ri-close-circle-line'],
+];
 
-/*
-|--------------------------------------------------------------------------
-| Fetch Dashboard Statistics
-|--------------------------------------------------------------------------
-*/
-$cartCountStmt = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) FROM cart WHERE user_id = ?");
-$cartCountStmt->execute([$buyer_id]);
-$cart_count = (int)$cartCountStmt->fetchColumn();
+$trackingSteps = [
+    'pending_payment'   => 0,
+    'payment_confirmed' => 1,
+    'preparing'         => 2,
+    'in_transit'        => 3,
+    'ready_for_pickup'  => 3,
+    'delivered'         => 4,
+];
 
-$wishlistCountStmt = $pdo->prepare("SELECT COUNT(*) FROM wishlist_items WHERE user_id = ?");
-$wishlistCountStmt->execute([$buyer_id]);
-$wishlist_count = (int)$wishlistCountStmt->fetchColumn();
-
-$pendingOrderStmt = $pdo->prepare("
-    SELECT COUNT(*) 
-    FROM orders 
-    WHERE user_id = ? AND status IN ('pending', 'processing', 'paid')
-");
-$pendingOrderStmt->execute([$buyer_id]);
-$pending_orders_count = (int)$pendingOrderStmt->fetchColumn();
-
-$totalSpentStmt = $pdo->prepare("
-    SELECT COALESCE(SUM(total_amount), 0)
-    FROM orders
-    WHERE user_id = ? AND status IN ('completed', 'delivered')
-");
-$totalSpentStmt->execute([$buyer_id]);
-$total_spent = (float)$totalSpentStmt->fetchColumn();
-
-/*
-|--------------------------------------------------------------------------
-| Fetch Cart
-|--------------------------------------------------------------------------
-*/
-$stmt = $pdo->prepare("
-    SELECT 
-        c.id AS cart_id,
-        c.quantity,
-        p.id AS product_id,
-        p.name,
-        p.price,
-        p.bags,
-        p.category,
-        (
-            SELECT image_path 
-            FROM product_images 
-            WHERE product_id = p.id 
-            LIMIT 1
-        ) AS image_path
-    FROM cart c
-    JOIN products p ON p.id = c.product_id
-    WHERE c.user_id = ?
-    ORDER BY c.id DESC
-");
-$stmt->execute([$buyer_id]);
-$cart_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-$cart_total = 0;
-foreach ($cart_items as $item) {
-    $cart_total += ((float)$item['price'] * (int)$item['quantity']);
-}
-
-/*
-|--------------------------------------------------------------------------
-| Fetch Wishlist
-|--------------------------------------------------------------------------
-*/
-$stmt = $pdo->prepare("
-    SELECT 
-        w.id AS wishlist_id,
-        p.id AS product_id,
-        p.name,
-        p.price,
-        p.bags,
-        p.category,
-        (
-            SELECT image_path 
-            FROM product_images 
-            WHERE product_id = p.id 
-            LIMIT 1
-        ) AS image_path
-    FROM wishlist_items w
-    JOIN products p ON p.id = w.product_id
-    WHERE w.user_id = ?
-    ORDER BY w.id DESC
-");
-$stmt->execute([$buyer_id]);
-$wishlist_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-/*
-|--------------------------------------------------------------------------
-| Fetch Pending Orders
-|--------------------------------------------------------------------------
-*/
-$stmt = $pdo->prepare("
-    SELECT 
-        o.id,
-        o.total_amount,
-        o.status,
-        o.created_at,
-        COUNT(oi.id) AS item_count
-    FROM orders o
-    LEFT JOIN order_items oi ON oi.order_id = o.id
-    WHERE o.user_id = ?
-      AND o.status IN ('pending', 'processing', 'paid')
-    GROUP BY o.id
-    ORDER BY o.created_at DESC
-");
-$stmt->execute([$buyer_id]);
-$pending_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-/*
-|--------------------------------------------------------------------------
-| Fetch Order History
-|--------------------------------------------------------------------------
-*/
-$stmt = $pdo->prepare("
-    SELECT 
-        o.id,
-        o.total_amount,
-        o.status,
-        o.created_at,
-        COUNT(oi.id) AS item_count
-    FROM orders o
-    LEFT JOIN order_items oi ON oi.order_id = o.id
-    WHERE o.user_id = ?
-      AND o.status NOT IN ('pending', 'processing', 'paid')
-    GROUP BY o.id
-    ORDER BY o.created_at DESC
-    LIMIT 10
-");
-$stmt->execute([$buyer_id]);
-$order_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
+$page_title = 'My Dashboard | AgroMarket';
+$active_nav = 'dashboard';
+include 'nav.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Buyer Dashboard | AgroLoan Market</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
-:root {
-    --sidebar-width: 240px;
-    --sidebar-collapsed-width: 72px;
-    --brand: #0f766e;
-    --brand-dark: #0d9488;
-    --danger: #e53e3e;
-    --success: #16a34a;
-    --warning: #f59e0b;
-    --bg: #f6f8fa;
-    --text: #1f2937;
-    --muted: #6b7280;
-    --card-bg: #ffffff;
-    --border: #e5e7eb;
-}
-
-* {
-    box-sizing: border-box;
-}
-
-body {
-    margin: 0;
-    font-family: "Segoe UI", Roboto, Arial, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    height: 100vh;
-    display: flex;
-    overflow: hidden;
-}
-
-/* SIDEBAR */
-.sidebar {
-    width: var(--sidebar-width);
-    min-width: var(--sidebar-width);
-    background: var(--brand);
-    color: #fff;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    padding: 18px;
-    gap: 10px;
-    transition: width .28s ease, padding .2s ease;
-}
-
-.sidebar.collapsed {
-    width: var(--sidebar-collapsed-width);
-    min-width: var(--sidebar-collapsed-width);
-    padding-left: 10px;
-    padding-right: 10px;
-}
-
-.brand {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 10px;
-}
-
-.brand .logo {
-    width: 44px;
-    height: 44px;
-    border-radius: 8px;
-    object-fit: cover;
-}
-
-.brand h2 {
-    font-size: 18px;
-    margin: 0;
-    font-weight: 600;
-    white-space: nowrap;
-    transition: opacity .18s ease;
-}
-
-.sidebar.collapsed .brand h2 {
-    opacity: 0;
-    width: 0;
-    overflow: hidden;
-}
-
-.nav {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.nav a {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px;
-    border-radius: 8px;
-    color: #fff;
-    text-decoration: none;
-    font-weight: 500;
-    transition: background .15s, transform .08s;
-    white-space: nowrap;
-}
-
-.nav a .icon {
-    width: 34px;
-    height: 34px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    background: rgba(255,255,255,0.09);
-    border-radius: 6px;
-}
-
-.nav a:hover {
-    background: var(--brand-dark);
-    transform: translateY(-1px);
-}
-
-.nav a.active {
-    background: rgba(0,0,0,0.12);
-}
-
-.sidebar.collapsed .nav a {
-    justify-content: center;
-    padding: 8px;
-}
-
-.sidebar.collapsed .nav a .label {
-    display: none;
-}
-
-.sidebar .spacer {
-    flex: 1;
-}
-
-.logout-btn {
-    background: var(--danger);
-    border: none;
-    padding: 10px;
-    color: #fff;
-    font-weight: 600;
-    border-radius: 8px;
-    width: 100%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    justify-content: left;
-}
-
-.logout-btn .icon {
-    background: rgba(255,255,255,0.15);
-    width: 34px;
-    height: 34px;
-    display: flex;
-    border-radius: 6px;
-    justify-content: center;
-    align-items: center;
-}
-
-.sidebar.collapsed .logout-btn {
-    justify-content: center;
-    width: 48px;
-    height: 48px;
-    padding: 8px;
-}
-
-.sidebar.collapsed .logout-btn .label {
-    display: none;
-}
-
-/* MAIN */
-.main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: auto;
-}
-
-.topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 19px 24px;
-    border-bottom: 1px solid rgba(0,0,0,0.05);
-    background: #fff;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-}
-
-.toggle-btn {
-    background: var(--brand);
-    color: #fff;
-    border: none;
-    padding: 8px 10px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 18px;
-}
-
-.user-greet {
-    font-size: 18px;
-    font-weight: 600;
-}
-
-/* CONTENT */
-.dashboard-content {
-    padding: 30px 40px;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-}
-
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 16px;
-}
-
-.page-header h1 {
-    margin: 0;
-    font-size: 28px;
-}
-
-.page-header p {
-    margin: 6px 0 0;
-    color: var(--muted);
-}
-
-.quick-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.btn-link {
-    display: inline-block;
-    background: var(--brand);
-    color: #fff;
-    padding: 10px 14px;
-    border-radius: 8px;
-    text-decoration: none;
-    font-weight: 600;
-}
-
-.btn-link.secondary {
-    background: #334155;
-}
-
-/* ALERTS */
-.alert-success,
-.alert-error {
-    padding: 13px 16px;
-    border-radius: 10px;
-    font-weight: 600;
-}
-
-.alert-success {
-    background: #dcfce7;
-    color: #166534;
-}
-
-.alert-error {
-    background: #fee2e2;
-    color: #991b1b;
-}
-
-/* STAT CARDS */
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 18px;
-}
-
-.stat-card {
-    background: var(--card-bg);
-    border-radius: 14px;
-    padding: 18px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
-    border: 1px solid rgba(0,0,0,0.03);
-}
-
-.stat-card h3 {
-    margin: 0;
-    font-size: 14px;
-    color: var(--muted);
-}
-
-.stat-card p {
-    margin: 10px 0 0;
-    font-size: 28px;
-    font-weight: 800;
-    color: var(--brand);
-}
-
-/* SECTIONS */
-.card {
-    background: var(--card-bg);
-    border-radius: 14px;
-    padding: 22px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
-    border: 1px solid rgba(0,0,0,0.04);
-}
-
-.card h2 {
-    margin: 0 0 16px;
-    font-size: 21px;
-    color: var(--brand);
-}
-
-/* GRID LAYOUT */
-.two-column {
-    display: grid;
-    grid-template-columns: 1.2fr .8fr;
-    gap: 20px;
-}
-
-@media (max-width: 980px) {
-    .two-column {
-        grid-template-columns: 1fr;
-    }
-}
-
-/* TABLES */
-.table-wrap {
-    overflow-x: auto;
-}
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-    min-width: 760px;
-}
-
-th,
-td {
-    padding: 12px 10px;
-    border-bottom: 1px solid var(--border);
-    text-align: left;
-    font-size: 14px;
-}
-
-th {
-    color: var(--brand);
-    text-transform: uppercase;
-    font-size: 12px;
-    background: #f8fafc;
-}
-
-tr:hover td {
-    background: #f8fafc;
-}
-
-.product-mini {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.product-mini img {
-    width: 54px;
-    height: 54px;
-    object-fit: cover;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-}
-
-.empty {
-    color: var(--muted);
-    padding: 12px 0;
-}
-
-/* FORMS */
-.form-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 14px;
-}
-
-@media (max-width: 740px) {
-    .form-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
-label {
-    font-weight: 600;
-    font-size: 14px;
-    display: block;
-    margin-bottom: 6px;
-}
-
-input,
-textarea,
-select {
-    width: 100%;
-    padding: 10px 11px;
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    font-size: 14px;
-    background: #fff;
-}
-
-textarea {
-    min-height: 90px;
-    resize: vertical;
-}
-
-.submit-btn,
-.small-btn,
-.danger-btn {
-    border: none;
-    cursor: pointer;
-    border-radius: 8px;
-    padding: 9px 12px;
-    font-weight: 700;
-    color: #fff;
-}
-
-.submit-btn {
-    background: var(--brand);
-    margin-top: 14px;
-}
-
-.small-btn {
-    background: var(--brand);
-    font-size: 13px;
-}
-
-.danger-btn {
-    background: var(--danger);
-    font-size: 13px;
-}
-
-.muted {
-    color: var(--muted);
-    font-size: 13px;
-}
-
-.status {
-    padding: 5px 10px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: capitalize;
-}
-
-.status.pending {
-    background: #fef3c7;
-    color: #92400e;
-}
-
-.status.processing {
-    background: #dbeafe;
-    color: #1e40af;
-}
-
-.status.paid {
-    background: #e0f2fe;
-    color: #075985;
-}
-
-.status.completed,
-.status.delivered {
-    background: #dcfce7;
-    color: #166534;
-}
-
-.status.cancelled,
-.status.rejected {
-    background: #fee2e2;
-    color: #991b1b;
-}
-
-.qty-input {
-    width: 75px;
-}
-
-.actions-row {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
+.tab-btn { 
+    padding: 0.625rem 1.25rem; 
+    font-size: 0.875rem; 
+    font-weight: 600; 
+    border-radius: 0.75rem; 
+    transition: all 0.2s ease-in-out; 
+    display: inline-flex; 
+    align-items: center; 
+    gap: 0.5rem;
+}
+.tab-btn.active { 
+    background: var(--primary); 
+    color: #fff; 
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.15); 
+}
+.tab-btn:not(.active) { 
+    color: var(--text-muted); 
+}
+.tab-btn:not(.active):hover { 
+    background: var(--border); 
+    color: var(--text-main); 
+}
+.step-line { 
+    flex: 1; 
+    height: 3px; 
+    border-radius: 9999px;
 }
 </style>
-</head>
 
-<body>
+<div class="pt-28 md:pt-32 pb-16 min-h-screen px-4 sm:px-6 max-w-6xl mx-auto">
 
-<aside class="sidebar" id="buyerSidebar">
-    <div class="brand">
-        <img src="../assets/images/logo.jpg" alt="Agro Loan Logo" class="logo">
-        <h2>AgroLoan Buyer</h2>
-    </div>
-
-    <nav class="nav">
-        <a href="buyer_dashboard.php" class="active">
-            <span class="icon">📊</span>
-            <span class="label">Dashboard</span>
-        </a>
-
-        <a href="shop.php">
-            <span class="icon">🛒</span>
-            <span class="label">Shop</span>
-        </a>
-
-        <a href="#wishlist">
-            <span class="icon">❤️</span>
-            <span class="label">Wishlist</span>
-        </a>
-
-        <a href="#cart">
-            <span class="icon">🧺</span>
-            <span class="label">Cart</span>
-        </a>
-
-        <a href="#orders">
-            <span class="icon">📦</span>
-            <span class="label">Orders</span>
-        </a>
-
-        <a href="#profile">
-            <span class="icon">⚙️</span>
-            <span class="label">Profile</span>
-        </a>
-    </nav>
-
-    <div class="spacer"></div>
-
-    <form action="logout.php" method="POST">
-        <button class="logout-btn">
-            <span class="icon">🚪</span>
-            <span class="label">Logout</span>
-        </button>
-    </form>
-</aside>
-
-<main class="main">
-    <div class="topbar">
-        <button id="toggleBtn" class="toggle-btn">☰</button>
-        <div class="user-greet">Welcome, <?= h($username) ?> 🛍️</div>
-    </div>
-
-    <div class="dashboard-content">
-
-        <div class="page-header">
+    <!-- Header Section -->
+    <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 md:p-8 shadow-sm mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div class="flex items-center gap-4">
+            <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center text-white text-2xl font-extrabold shadow-md">
+                <?= strtoupper(substr($buyer['name'],0,1)) ?>
+            </div>
             <div>
-                <h1>Buyer Dashboard</h1>
-                <p>Manage your marketplace activity, cart, wishlist, orders, and delivery profile.</p>
-            </div>
-
-            <div class="quick-actions">
-                <a href="shop.php" class="btn-link">Continue Shopping</a>
-                <a href="checkout.php" class="btn-link secondary">Checkout</a>
-            </div>
-        </div>
-
-        <?php if ($successMessage): ?>
-            <div class="alert-success"><?= h($successMessage) ?></div>
-        <?php endif; ?>
-
-        <?php if ($errorMessage): ?>
-            <div class="alert-error"><?= h($errorMessage) ?></div>
-        <?php endif; ?>
-
-        <div class="stats-grid">
-            <div class="stat-card">
-                <h3>Cart Items</h3>
-                <p><?= $cart_count ?></p>
-            </div>
-
-            <div class="stat-card">
-                <h3>Wishlist Items</h3>
-                <p><?= $wishlist_count ?></p>
-            </div>
-
-            <div class="stat-card">
-                <h3>Pending Orders</h3>
-                <p><?= $pending_orders_count ?></p>
-            </div>
-
-            <div class="stat-card">
-                <h3>Total Spent</h3>
-                <p><?= money($total_spent) ?></p>
+                <h1 class="text-2xl font-extrabold text-[var(--text-main)] leading-tight flex items-center gap-2">
+                    👋 Welcome back, <?= htmlspecialchars(explode(' ',$buyer['name'])[0]) ?>
+                </h1>
+                <p class="text-[var(--text-muted)] text-xs mt-1 font-medium flex items-center gap-1.5">
+                    <i class="ri-calendar-line text-[var(--primary)]"></i> Member since <?= date('F Y', strtotime($buyer['created_at'])) ?>
+                </p>
             </div>
         </div>
-
-        <div class="two-column">
-
-            <!-- CART -->
-            <section class="card" id="cart">
-                <h2>🧺 Cart</h2>
-
-                <?php if (empty($cart_items)): ?>
-                    <p class="empty">Your cart is empty. Visit the shop to add produce.</p>
-                <?php else: ?>
-                    <form method="POST">
-                        <input type="hidden" name="action" value="update_cart">
-
-                        <div class="table-wrap">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Produce</th>
-                                        <th>Price</th>
-                                        <th>Qty</th>
-                                        <th>Subtotal</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-
-                                <tbody>
-                                    <?php foreach ($cart_items as $item): ?>
-                                        <?php
-                                            $image = $item['image_path'] 
-                                                ? "../uploads/" . $item['image_path'] 
-                                                : "../assets/images/placeholder.jpg";
-                                            $subtotal = (float)$item['price'] * (int)$item['quantity'];
-                                        ?>
-                                        <tr>
-                                            <td>
-                                                <div class="product-mini">
-                                                    <img src="<?= h($image) ?>" alt="Product">
-                                                    <div>
-                                                        <strong><?= h($item['name']) ?></strong>
-                                                        <div class="muted"><?= h($item['category']) ?></div>
-                                                    </div>
-                                                </div>
-                                            </td>
-
-                                            <td><?= money($item['price']) ?></td>
-
-                                            <td>
-                                                <input 
-                                                    type="number" 
-                                                    class="qty-input" 
-                                                    name="quantity[<?= (int)$item['cart_id'] ?>]" 
-                                                    value="<?= (int)$item['quantity'] ?>" 
-                                                    min="1" 
-                                                    max="<?= (int)$item['bags'] ?>"
-                                                >
-                                            </td>
-
-                                            <td><?= money($subtotal) ?></td>
-
-                                            <td>
-                                                <form method="POST">
-                                                    <input type="hidden" name="action" value="remove_cart_item">
-                                                    <input type="hidden" name="cart_id" value="<?= (int)$item['cart_id'] ?>">
-                                                    <button class="danger-btn" type="submit">Remove</button>
-                                                </form>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <p><strong>Total:</strong> <?= money($cart_total) ?></p>
-
-                        <div class="actions-row">
-                            <button class="small-btn" type="submit">Update Cart</button>
-                            <a href="checkout.php" class="btn-link">Proceed to Checkout</a>
-                        </div>
-                    </form>
-                <?php endif; ?>
-            </section>
-
-            <!-- WISHLIST -->
-            <section class="card" id="wishlist">
-                <h2>❤️ Wishlist</h2>
-
-                <?php if (empty($wishlist_items)): ?>
-                    <p class="empty">No saved produce yet.</p>
-                <?php else: ?>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Produce</th>
-                                    <th>Price</th>
-                                    <th>Stock</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-
-                            <tbody>
-                                <?php foreach ($wishlist_items as $item): ?>
-                                    <?php
-                                        $image = $item['image_path'] 
-                                            ? "../uploads/" . $item['image_path'] 
-                                            : "../assets/images/placeholder.jpg";
-                                    ?>
-                                    <tr>
-                                        <td>
-                                            <div class="product-mini">
-                                                <img src="<?= h($image) ?>" alt="Product">
-                                                <div>
-                                                    <strong><?= h($item['name']) ?></strong>
-                                                    <div class="muted"><?= h($item['category']) ?></div>
-                                                </div>
-                                            </div>
-                                        </td>
-
-                                        <td><?= money($item['price']) ?></td>
-                                        <td><?= (int)$item['bags'] ?> bags</td>
-
-                                        <td>
-                                            <div class="actions-row">
-                                                <form method="POST">
-                                                    <input type="hidden" name="action" value="move_wishlist_to_cart">
-                                                    <input type="hidden" name="product_id" value="<?= (int)$item['product_id'] ?>">
-                                                    <button class="small-btn" type="submit">Move to Cart</button>
-                                                </form>
-
-                                                <form method="POST">
-                                                    <input type="hidden" name="action" value="remove_wishlist_item">
-                                                    <input type="hidden" name="wishlist_id" value="<?= (int)$item['wishlist_id'] ?>">
-                                                    <button class="danger-btn" type="submit">Remove</button>
-                                                </form>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </section>
-        </div>
-
-        <!-- PENDING ORDERS -->
-        <section class="card" id="orders">
-            <h2>📦 Pending Orders</h2>
-
-            <?php if (empty($pending_orders)): ?>
-                <p class="empty">You currently have no pending orders.</p>
-            <?php else: ?>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Order ID</th>
-                                <th>Items</th>
-                                <th>Total</th>
-                                <th>Status</th>
-                                <th>Date</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            <?php foreach ($pending_orders as $order): ?>
-                                <tr>
-                                    <td>#<?= (int)$order['id'] ?></td>
-                                    <td><?= (int)$order['item_count'] ?> item(s)</td>
-                                    <td><?= money($order['total_amount']) ?></td>
-                                    <td>
-                                        <span class="status <?= h($order['status']) ?>">
-                                            <?= h($order['status']) ?>
-                                        </span>
-                                    </td>
-                                    <td><?= h($order['created_at']) ?></td>
-                                    <td>
-                                        <div class="actions-row">
-                                            <a href="buyer_order_details.php?id=<?= (int)$order['id'] ?>" class="btn-link">View</a>
-
-                                            <?php if (in_array($order['status'], ['pending', 'processing'], true)): ?>
-                                                <form method="POST">
-                                                    <input type="hidden" name="action" value="cancel_order">
-                                                    <input type="hidden" name="order_id" value="<?= (int)$order['id'] ?>">
-                                                    <button class="danger-btn" type="submit">Cancel</button>
-                                                </form>
-                                            <?php endif; ?>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-
-                    </table>
-                </div>
-            <?php endif; ?>
-        </section>
-
-        <!-- ORDER HISTORY -->
-        <section class="card">
-            <h2>📜 Order History</h2>
-
-            <?php if (empty($order_history)): ?>
-                <p class="empty">No completed or cancelled orders yet.</p>
-            <?php else: ?>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Order ID</th>
-                                <th>Items</th>
-                                <th>Total</th>
-                                <th>Status</th>
-                                <th>Date</th>
-                                <th>Details</th>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            <?php foreach ($order_history as $order): ?>
-                                <tr>
-                                    <td>#<?= (int)$order['id'] ?></td>
-                                    <td><?= (int)$order['item_count'] ?> item(s)</td>
-                                    <td><?= money($order['total_amount']) ?></td>
-                                    <td>
-                                        <span class="status <?= h($order['status']) ?>">
-                                            <?= h($order['status']) ?>
-                                        </span>
-                                    </td>
-                                    <td><?= h($order['created_at']) ?></td>
-                                    <td>
-                                        <a href="buyer_order_details.php?id=<?= (int)$order['id'] ?>" class="btn-link">View</a>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-
-                    </table>
-                </div>
-            <?php endif; ?>
-        </section>
-
-        <!-- PROFILE -->
-        <section class="card" id="profile">
-            <h2>⚙️ Buyer Profile</h2>
-
-            <form method="POST">
-                <input type="hidden" name="action" value="update_profile">
-
-                <div class="form-grid">
-                    <div>
-                        <label>Full Name</label>
-                        <input type="text" name="name" value="<?= h($buyer['name'] ?? '') ?>" required>
-                    </div>
-
-                    <div>
-                        <label>Email</label>
-                        <input type="email" name="email" value="<?= h($buyer['email'] ?? '') ?>" required>
-                    </div>
-
-                    <div>
-                        <label>Phone</label>
-                        <input type="text" name="phone" value="<?= h($buyer['phone'] ?? '') ?>">
-                    </div>
-
-                    <div>
-                        <label>Alternate Phone</label>
-                        <input type="text" name="alternate_phone" value="<?= h($buyer['alternate_phone'] ?? '') ?>">
-                    </div>
-
-                    <div>
-                        <label>City / Town</label>
-                        <input type="text" name="city" value="<?= h($buyer['city'] ?? '') ?>">
-                    </div>
-
-                    <div>
-                        <label>Region</label>
-                        <input type="text" name="region" value="<?= h($buyer['region'] ?? '') ?>">
-                    </div>
-
-                    <div>
-                        <label>GPS Address</label>
-                        <input type="text" name="gps_address" value="<?= h($buyer['gps_address'] ?? '') ?>" placeholder="e.g. AK-234-5678">
-                    </div>
-
-                    <div>
-                        <label>Digital Address</label>
-                        <input type="text" name="digital_address" value="<?= h($buyer['digital_address'] ?? '') ?>" placeholder="optional">
-                    </div>
-                </div>
-
-                <div style="margin-top:14px;">
-                    <label>Delivery Address</label>
-                    <textarea name="address" placeholder="Enter full delivery address"><?= h($buyer['address'] ?? '') ?></textarea>
-                </div>
-
-                <button class="submit-btn" type="submit">Save Profile</button>
-            </form>
-        </section>
-
+        <a href="shop.php" class="bg-[var(--primary)] text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition shadow-md hover:shadow-lg flex items-center justify-center gap-2">
+            <i class="ri-store-2-line text-base"></i> Shop Products
+        </a>
     </div>
-</main>
+
+    <!-- Tab Container -->
+    <div class="flex gap-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-1.5 mb-8 w-full sm:w-auto overflow-x-auto shadow-sm">
+        <button onclick="setTab('overview')"  id="tab-overview"  class="tab-btn <?= $activeTab==='overview'?'active':'' ?>">
+            <i class="ri-dashboard-line text-base"></i>Overview
+        </button>
+        <button onclick="setTab('orders')"    id="tab-orders"    class="tab-btn <?= $activeTab==='orders'?'active':'' ?>">
+            <i class="ri-file-list-3-line text-base"></i>My Orders
+        </button>
+        <button onclick="setTab('profile')"   id="tab-profile"   class="tab-btn <?= $activeTab==='profile'?'active':'' ?>">
+            <i class="ri-user-line text-base"></i>Profile Settings
+        </button>
+    </div>
+
+    <!-- ===== TAB: OVERVIEW ===== -->
+    <div id="panel-overview" class="<?= $activeTab!=='overview'?'hidden':'' ?> space-y-6 animate-fadeIn">
+        <!-- Stat Cards Grid -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+            <?php
+            $cards = [
+                ['icon'=>'ri-shopping-bag-3-line','color'=>'text-blue-600 bg-blue-50 dark:bg-blue-950/20 dark:text-blue-400','label'=>'Total Orders','value'=>$stats['total_orders']],
+                ['icon'=>'ri-wallet-3-line','color'=>'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 dark:text-emerald-400','label'=>'Total Spent','value'=>'₵ '.number_format($stats['total_spent'],2)],
+                ['icon'=>'ri-truck-line','color'=>'text-orange-600 bg-orange-50 dark:bg-orange-950/20 dark:text-orange-400','label'=>'Active Shipments','value'=>$stats['active']],
+                ['icon'=>'ri-checkbox-circle-line','color'=>'text-purple-600 bg-purple-50 dark:bg-purple-950/20 dark:text-purple-400','label'=>'Completed Delivery','value'=>$stats['delivered']],
+            ];
+            foreach($cards as $c): ?>
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-300">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-xs text-[var(--text-muted)] font-bold uppercase tracking-wider"><?= $c['label'] ?></span>
+                    <div class="w-10 h-10 rounded-xl <?= $c['color'] ?> flex items-center justify-center">
+                        <i class="<?= $c['icon'] ?> text-lg"></i>
+                    </div>
+                </div>
+                <div class="text-xl md:text-2xl font-black text-[var(--text-main)] tracking-tight"><?= $c['value'] ?></div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+
+        <!-- Recent Activity Section -->
+        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm overflow-hidden">
+            <div class="px-6 py-5 border-b border-[var(--border)] flex justify-between items-center">
+                <h2 class="font-extrabold text-[var(--text-main)] text-lg flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-[var(--primary)]"></span> Recent Orders
+                </h2>
+                <button onclick="setTab('orders')" class="text-sm text-[var(--primary)] font-bold hover:underline">View All Activity</button>
+            </div>
+            
+            <?php if(empty($orders)): ?>
+            <div class="p-12 text-center text-[var(--text-muted)]">
+                <div class="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-900/40 flex items-center justify-center mx-auto mb-4">
+                    <i class="ri-shopping-bag-3-line text-2xl text-[var(--text-muted)] opacity-40"></i>
+                </div>
+                <p class="font-semibold text-sm">No purchases recorded yet</p>
+                <a href="shop.php" class="inline-block mt-4 bg-[var(--primary-light)] text-[var(--primary)] px-5 py-2 rounded-xl text-xs font-bold hover:bg-[var(--primary)] hover:text-white transition-all duration-200">Start Shopping</a>
+            </div>
+            <?php else: ?>
+            <div class="divide-y divide-[var(--border)]">
+                <?php foreach(array_slice($orders,0,5) as $o): ?>
+                <?php $sc = $statusConfig[$o['order_status']] ?? ['label'=>$o['order_status'],'color'=>'bg-gray-50 text-gray-700','icon'=>'ri-circle-line']; ?>
+                <div class="px-6 py-4 flex items-center justify-between gap-4 hover:bg-[var(--primary-light)]/20 transition-all duration-200">
+                    <div class="flex items-center gap-4 min-w-0">
+                        <div class="w-12 h-12 bg-[var(--bg-body)] border border-[var(--border)] rounded-xl flex items-center justify-center flex-shrink-0 text-[var(--text-main)]">
+                            <i class="<?= $sc['icon'] ?> text-lg"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <div class="text-sm font-bold text-[var(--text-main)] flex items-center gap-2">
+                                Order #<?= $o['id'] ?>
+                            </div>
+                            <div class="text-xs text-[var(--text-muted)] mt-0.5 flex items-center gap-1.5 font-medium">
+                                <span><?= $o['item_count'] ?> item<?= $o['item_count']!=1?'s':'' ?></span>
+                                <span class="text-slate-300 dark:text-slate-700">•</span>
+                                <span><?= date('d M Y', strtotime($o['created_at'])) ?></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
+                        <div class="text-sm font-extrabold text-[var(--text-main)]">₵<?= number_format($o['total_amount'],2) ?></div>
+                        <span class="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider <?= $sc['color'] ?>">
+                            <i class="<?= $sc['icon'] ?> text-[10px]"></i> <?= $sc['label'] ?>
+                        </span>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- ===== TAB: ORDERS ===== -->
+    <div id="panel-orders" class="<?= $activeTab!=='orders'?'hidden':'' ?> space-y-6 animate-fadeIn">
+        <?php if(empty($orders)): ?>
+        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-16 text-center shadow-sm">
+            <div class="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-900/40 flex items-center justify-center mx-auto mb-4">
+                <i class="ri-shopping-cart-2-line text-2xl text-[var(--text-muted)] opacity-40"></i>
+            </div>
+            <h3 class="text-lg font-bold text-[var(--text-main)] mb-1">Your Order Shelf is Empty</h3>
+            <p class="text-[var(--text-muted)] text-sm mb-6 max-w-sm mx-auto">Your physical produce shipments will show up here as soon as you place an order.</p>
+            <a href="shop.php" class="bg-[var(--primary)] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition-all">Browse Produce</a>
+        </div>
+        <?php else: ?>
+        <div class="space-y-6">
+            <?php foreach($orders as $o): ?>
+            <?php
+                $sc        = $statusConfig[$o['order_status']] ?? ['label'=>$o['order_status'],'color'=>'bg-gray-100 text-gray-700','icon'=>'ri-circle-line'];
+                $stepIndex = $trackingSteps[$o['order_status']] ?? 0;
+                $isNew     = ($highlight == $o['id']);
+
+                // Fetch order items for this order
+                $oiStmt = $pdo->prepare("
+                    SELECT oi.*, p.produce_name, p.photo, u.name AS farmer_name
+                    FROM order_items oi
+                    JOIN produce_listings p ON oi.produce_id=p.id
+                    JOIN users u ON oi.farmer_id=u.id
+                    WHERE oi.order_id=?
+                ");
+                $oiStmt->execute([$o['id']]);
+                $oItems = $oiStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Fetch tracking history
+                $trackStmt = $pdo->prepare("SELECT * FROM order_tracking WHERE order_id=? ORDER BY created_at ASC");
+                $trackStmt->execute([$o['id']]);
+                $trackHistory = $trackStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                $canConfirm = in_array($o['order_status'],['in_transit','ready_for_pickup']) && $o['payment_status']==='confirmed';
+            ?>
+            <div class="bg-[var(--bg-card)] border-2 <?= $isNew?'border-[var(--primary)] shadow-md':'border-[var(--border)] shadow-sm' ?> rounded-2xl overflow-hidden transition-all duration-300">
+                <!-- Order Header -->
+                <div class="p-5 border-b border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10 flex flex-wrap gap-4 justify-between items-center">
+                    <div>
+                        <div class="flex items-center gap-3 flex-wrap">
+                            <span class="font-black text-[var(--text-main)] text-lg">Order ID: #<?= $o['id'] ?></span>
+                            <span class="inline-flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-full font-extrabold uppercase tracking-wider <?= $sc['color'] ?>">
+                                <i class="<?= $sc['icon'] ?>"></i> <?= $sc['label'] ?>
+                            </span>
+                            <?php if($isNew): ?><span class="text-xs bg-[var(--primary)] text-white px-2 py-0.5 rounded-full font-black tracking-wide animate-pulse">HIGHLIGHT</span><?php endif; ?>
+                        </div>
+                        <p class="text-xs text-[var(--text-muted)] mt-1.5 font-medium">
+                            Date: <span class="text-[var(--text-main)]"><?= date('d M Y, h:i A', strtotime($o['created_at'])) ?></span>
+                            <span class="text-slate-300 dark:text-slate-700 mx-1.5">|</span>
+                            Items: <span class="text-[var(--text-main)]"><?= count($oItems) ?></span>
+                        </p>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xl font-black text-[var(--text-main)]">₵<?= number_format($o['total_amount'],2) ?></div>
+                        <div class="text-xs text-[var(--text-muted)] mt-0.5 font-bold uppercase tracking-wider"><?= str_replace('_',' ',$o['payment_method']) ?></div>
+                    </div>
+                </div>
+
+                <!-- Tracking Stepper -->
+                <?php if($o['order_status'] !== 'cancelled'): ?>
+                <div class="px-6 py-6 border-b border-[var(--border)] bg-[var(--bg-body)]">
+                    <?php
+                    $steps = [
+                        ['icon'=>'ri-wallet-3-line',      'label'=>'Paid'],
+                        ['icon'=>'ri-check-double-line',  'label'=>'Verified'],
+                        ['icon'=>'ri-box-3-line',         'label'=>'Prepping'],
+                        ['icon'=>'ri-truck-line',         'label'=>'Dispatched'],
+                        ['icon'=>'ri-home-heart-line',    'label'=>'Delivered'],
+                    ];
+                    ?>
+                    <div class="flex items-center relative">
+                        <?php foreach($steps as $si => $step): ?>
+                        <?php $done = $si <= $stepIndex; $current = $si === $stepIndex; ?>
+                        <div class="flex flex-col items-center flex-shrink-0 z-10">
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300
+                                <?= $done ? 'bg-[var(--primary)] text-white shadow-md shadow-emerald-500/10' : 'bg-[var(--border)] text-[var(--text-muted)]' ?>
+                                <?= $current ? 'ring-4 ring-emerald-500/20 scale-110' : '' ?>">
+                                <i class="<?= $step['icon'] ?> text-base"></i>
+                            </div>
+                            <span class="text-[10px] mt-2 font-bold uppercase tracking-wide <?= $done?'text-[var(--primary)]':'text-[var(--text-muted)]' ?> hidden sm:block text-center w-16">
+                                <?= $step['label'] ?>
+                            </span>
+                        </div>
+                        <?php if($si < count($steps)-1): ?>
+                        <div class="step-line <?= $si < $stepIndex?'bg-[var(--primary)]':'bg-[var(--border)]' ?> mx-1"></div>
+                        <?php endif; ?>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <!-- Order Products -->
+                <div class="p-5 divide-y divide-[var(--border)]">
+                    <?php foreach($oItems as $oi): ?>
+                    <?php $img = !empty($oi['photo']) ? "../uploads/produce/".htmlspecialchars($oi['photo']) : "https://via.placeholder.com/60?text=?"; ?>
+                    <div class="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
+                        <div class="w-14 h-14 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900 border border-[var(--border)] flex-shrink-0 flex items-center justify-center p-1">
+                            <img src="<?= $img ?>" alt="<?= htmlspecialchars($oi['produce_name']) ?>" class="w-full h-full object-cover rounded-lg">
+                        </div>
+                        <div class="flex-grow min-w-0">
+                            <p class="text-sm font-extrabold text-[var(--text-main)] truncate"><?= htmlspecialchars($oi['produce_name']) ?></p>
+                            <p class="text-xs text-[var(--text-muted)] mt-0.5 font-medium">Vendor: <span class="text-[var(--text-main)] font-semibold"><?= htmlspecialchars($oi['farmer_name']) ?></span> · Qty: <span class="text-[var(--text-main)] font-semibold"><?= $oi['quantity'] ?></span></p>
+                        </div>
+                        <div class="text-sm font-extrabold text-[var(--text-main)] flex-shrink-0">₵<?= number_format($oi['subtotal'],2) ?></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+
+                <!-- Shipping Metadata & Action Bar -->
+                <div class="px-5 py-4 flex flex-wrap gap-4 justify-between items-center border-t border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10">
+                    <div class="text-xs text-[var(--text-muted)] flex items-start gap-2 max-w-md">
+                        <i class="ri-map-pin-line text-[var(--primary)] text-sm mt-0.5"></i>
+                        <div>
+                            <p class="font-bold text-[var(--text-main)]"><?= htmlspecialchars($o['delivery_name']) ?></p>
+                            <p class="font-medium mt-0.5 text-[11px] leading-relaxed"><?= htmlspecialchars($o['delivery_address']) ?> · <?= htmlspecialchars($o['delivery_phone']) ?></p>
+                        </div>
+                    </div>
+                    <div class="flex-shrink-0">
+                        <?php if($canConfirm): ?>
+                        <button onclick="confirmDelivery(<?= $o['id'] ?>, this)"
+                            class="bg-green-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold hover:bg-green-700 transition flex items-center gap-2 shadow-md hover:shadow-lg">
+                            <i class="ri-checkbox-circle-line text-sm"></i> Confirm Receipt
+                        </button>
+                        <?php elseif($o['order_status']==='delivered'): ?>
+                        <span class="inline-flex items-center gap-1.5 text-xs text-emerald-600 font-extrabold uppercase tracking-wider">
+                            <i class="ri-checkbox-circle-fill text-sm"></i> Order Fulfilled
+                        </span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Accordion Timeline -->
+                <details class="border-t border-[var(--border)] group">
+                    <summary class="px-5 py-3.5 text-xs text-[var(--text-muted)] cursor-pointer hover:text-[var(--primary)] hover:bg-[var(--primary-light)]/20 font-bold flex items-center gap-2 transition-colors duration-200">
+                        <i class="ri-history-line"></i> Activity Logs & History
+                        <i class="ri-arrow-down-s-line group-open:rotate-180 transition ml-auto"></i>
+                    </summary>
+                    <div class="px-5 pb-5 pt-3 space-y-4 bg-slate-50/20 dark:bg-slate-900/5">
+                        <?php foreach(array_reverse($trackHistory) as $th): ?>
+                        <div class="flex gap-3 text-xs">
+                            <div class="w-2 h-2 rounded-full bg-[var(--primary)] mt-1.5 flex-shrink-0 ring-4 ring-emerald-500/10"></div>
+                            <div>
+                                <p class="font-bold text-[var(--text-main)] capitalize"><?= str_replace('_',' ',$th['status']) ?></p>
+                                <?php if($th['notes']): ?><p class="text-[var(--text-muted)] font-medium mt-0.5"><?= htmlspecialchars($th['notes']) ?></p><?php endif; ?>
+                                <p class="text-[var(--text-muted)] text-[10px] mt-1 font-semibold"><?= date('d M Y, h:i A', strtotime($th['created_at'])) ?></p>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </details>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+
+    <!-- ===== TAB: PROFILE ===== -->
+    <div id="panel-profile" class="<?= $activeTab!=='profile'?'hidden':'' ?> space-y-6 animate-fadeIn">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+            <!-- Profile Overview Card -->
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm flex flex-col items-center justify-between text-center self-start">
+                <div class="w-full">
+                    <div class="w-24 h-24 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center text-white text-4xl font-extrabold mx-auto mb-4 shadow-md relative">
+                        <?= strtoupper(substr($buyer['name'],0,1)) ?>
+                    </div>
+                    <h2 class="font-extrabold text-xl text-[var(--text-main)]"><?= htmlspecialchars($buyer['name']) ?></h2>
+                    <p class="text-sm text-[var(--text-muted)] mt-1 font-medium"><?= htmlspecialchars($buyer['email']) ?></p>
+                    <span class="inline-block mt-3 text-[10px] bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 px-3.5 py-1 rounded-full font-bold uppercase tracking-wider border border-emerald-200/20">Buyer Account</span>
+
+                    <?php if($buyer['location']): ?>
+                    <p class="text-xs text-[var(--text-muted)] mt-4 flex items-center justify-center gap-1.5 font-medium">
+                        <i class="ri-map-pin-line text-[var(--primary)]"></i> <?= htmlspecialchars($buyer['location']) ?>
+                    </p>
+                    <?php endif; ?>
+                </div>
+
+                <div class="mt-6 w-full grid grid-cols-2 gap-4 text-center border-t border-[var(--border)] pt-6">
+                    <div class="bg-[var(--bg-body)] rounded-2xl p-4">
+                        <div class="text-2xl font-black text-[var(--text-main)]"><?= $stats['total_orders'] ?></div>
+                        <div class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider mt-1">Orders</div>
+                    </div>
+                    <div class="bg-[var(--bg-body)] rounded-2xl p-4">
+                        <div class="text-2xl font-black text-[var(--text-main)]"><?= $stats['delivered'] ?></div>
+                        <div class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider mt-1">Delivered</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Form Column -->
+            <div class="lg:col-span-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 md:p-8 shadow-sm">
+                <h2 class="font-extrabold text-lg text-[var(--text-main)] mb-6 flex items-center gap-2">
+                    <i class="ri-user-settings-line text-[var(--primary)] text-xl"></i> Personal Settings
+                </h2>
+
+                <?php if($profileError): ?>
+                <div class="mb-5 p-4 bg-red-50 dark:bg-red-950/10 border border-red-200/50 rounded-xl text-red-700 dark:text-red-400 text-sm flex items-center gap-2">
+                    <i class="ri-error-warning-line"></i> <?= htmlspecialchars($profileError) ?>
+                </div>
+                <?php endif; ?>
+                <?php if($profileSuccess): ?>
+                <div class="mb-5 p-4 bg-emerald-50 dark:bg-emerald-950/10 border border-emerald-200/50 rounded-xl text-emerald-700 dark:text-emerald-400 text-sm flex items-center gap-2">
+                    <i class="ri-checkbox-circle-line"></i> <?= htmlspecialchars($profileSuccess) ?>
+                </div>
+                <?php endif; ?>
+
+                <form method="POST" action="buyer_dashboard.php?tab=profile" class="space-y-6">
+                    <input type="hidden" name="update_profile" value="1">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Full Name *</label>
+                            <input type="text" name="name" required value="<?= htmlspecialchars($buyer['name']??'') ?>"
+                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Email Address (Read-only)</label>
+                            <input type="email" value="<?= htmlspecialchars($buyer['email']??'') ?>" disabled
+                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-sm bg-slate-50 dark:bg-slate-900/60 text-[var(--text-muted)] cursor-not-allowed">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Phone Contact</label>
+                            <input type="tel" name="phone" value="<?= htmlspecialchars($buyer['phone']??'') ?>"
+                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition"
+                                placeholder="e.g. 0244000000">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Mobile Money Number</label>
+                            <input type="tel" name="momo_phone" value="<?= htmlspecialchars($buyer['momo_phone']??'') ?>"
+                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition"
+                                placeholder="For expedited checkout">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Delivery Location & Address</label>
+                            <input type="text" name="location" value="<?= htmlspecialchars($buyer['location']??'') ?>"
+                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition"
+                                placeholder="City / District / Landmark details">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Profile Bio & Extra Notes</label>
+                            <textarea name="profile_bio" rows="4"
+                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition resize-none"
+                                placeholder="Add preferences or shipping details for vendors..."><?= htmlspecialchars($buyer['profile_bio']??'') ?></textarea>
+                        </div>
+                    </div>
+                    <div class="flex justify-end pt-2">
+                        <button type="submit"
+                            class="bg-[var(--primary)] text-white px-8 py-3 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition shadow-md hover:shadow-lg">
+                            Apply Updates
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Mobile Bottom Nav -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full bg-[var(--bg-card)] border-t border-[var(--border)] z-50 flex justify-between items-center px-6 py-2.5 text-[10px] font-bold tracking-wide uppercase text-[var(--text-muted)] shadow-2xl">
+    <a href="index.php"          class="flex flex-col items-center gap-1.5 hover:text-[var(--primary)] transition"><i class="ri-home-4-line text-xl"></i>Home</a>
+    <a href="shop.php"           class="flex flex-col items-center gap-1.5 hover:text-[var(--primary)] transition"><i class="ri-store-2-line text-xl"></i>Shop</a>
+    <a href="wishlist.php"       class="flex flex-col items-center gap-1.5 hover:text-[var(--primary)] transition"><i class="ri-heart-3-line text-xl"></i>Saved</a>
+    <a href="buyer_dashboard.php" class="flex flex-col items-center gap-1.5 text-[var(--primary)] transition"><i class="ri-user-fill text-xl"></i>Account</a>
+</nav>
 
 <script>
-document.getElementById("toggleBtn").addEventListener("click", function () {
-    document.getElementById("buyerSidebar").classList.toggle("collapsed");
-});
-</script>
+function setTab(tab) {
+    ['overview','orders','profile'].forEach(t => {
+        const panel = document.getElementById('panel-'+t);
+        const button = document.getElementById('tab-'+t);
+        if (panel) panel.classList.toggle('hidden', t !== tab);
+        if (button) button.classList.toggle('active', t === tab);
+    });
+    history.replaceState(null,'','?tab='+tab);
+}
 
+async function confirmDelivery(orderId, btn) {
+    if (!confirm('Are you sure you want to confirm receipt of this order? Confirming will finalize payment verification.')) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ri-loader-4-line animate-spin text-sm"></i> Wait...';
+
+    const form = new FormData();
+    form.append('order_id', orderId);
+
+    try {
+        const res  = await fetch('api/confirm_delivery.php', { method:'POST', body:form });
+        const data = await res.json();
+
+        if (data.success) {
+            showToast('Receipt confirmed. Transaction finalized.', 'success');
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showToast(data.message || 'Error processing confirmation', 'error');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-checkbox-circle-line"></i> Confirm Receipt';
+        }
+    } catch(e) {
+        showToast('Connection timed out', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="ri-checkbox-circle-line"></i> Confirm Receipt';
+    }
+}
+</script>
 </body>
 </html>

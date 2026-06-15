@@ -1,6 +1,6 @@
 <?php
 /**
- * Global Session Handler for AgroLoan System
+ * Global Session Handler for System
  * Handles:
  *  - session start
  *  - authentication check
@@ -12,7 +12,6 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Helper: Require login
 function require_login() {
     if (!isset($_SESSION['user_id'])) {
         header("Location: login.php");
@@ -20,7 +19,6 @@ function require_login() {
     }
 }
 
-// Helper: Require a specific role
 function require_role($role) {
     require_login();
 
@@ -30,7 +28,6 @@ function require_role($role) {
     }
 }
 
-// Helper: Restrict to multiple roles
 function require_roles($roles = []) {
     require_login();
 
@@ -40,7 +37,6 @@ function require_roles($roles = []) {
     }
 }
 
-// Helper: Quickly get logged-in user information
 function current_user() {
     return [
         'id'    => $_SESSION['user_id'] ?? null,
