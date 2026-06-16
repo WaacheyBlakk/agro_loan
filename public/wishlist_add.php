@@ -16,12 +16,13 @@ if (!$produce_id) { echo json_encode(['success'=>false,'message'=>'Invalid produ
 
 $pdo = getPDO();
 
-// Verify product exists
+// Verify product exists in our listing database
 $check = $pdo->prepare("SELECT id FROM produce_listings WHERE id = ?");
 $check->execute([$produce_id]);
 if (!$check->fetch()) { echo json_encode(['success'=>false,'message'=>'Product not found']); exit; }
 
-$stmt = $pdo->prepare("INSERT IGNORE INTO wishlist (user_id, produce_id) VALUES (?, ?)");
+// standard query mapping table: wishlist_items
+$stmt = $pdo->prepare("INSERT IGNORE INTO wishlist_items (user_id, product_id) VALUES (?, ?)");
 $stmt->execute([$user_id, $produce_id]);
 
 if ($stmt->rowCount() > 0) {

@@ -8,9 +8,9 @@ if (!$user_id) { header('Location: buyers_login.php'); exit; }
 $pdo       = getPDO();
 $user_role = $_SESSION['role'] ?? 'buyer';
 $is_logged = true;
-define('PLATFORM_FEE_PERCENT', 2.5); // 2.5% platform fee
+define('PLATFORM_FEE_PERCENT', 1.0); // 1.0% platform fee
 
-// Fetch cart items
+// Fetch cart items using uniform column 'produce_id'
 $sql = "
     SELECT c.id AS cart_id, c.product_id, c.quantity,
            p.produce_name AS name, p.photo AS image, p.price_per_bag,
@@ -70,16 +70,16 @@ include 'nav.php';
                 $inStock = $item['bags_available'] > 0;
                 $maxQty  = min($item['bags_available'], 100);
             ?>
-            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 flex gap-4 shadow-sm" id="cart-row-<?= $item['produce_id'] ?>">
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 flex gap-4 shadow-sm" id="cart-row-<?= $item['product_id'] ?>">
                 <!-- Image -->
-                <a href="product_details.php?id=<?= $item['produce_id'] ?>" class="flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-gray-50">
+                <a href="product_details.php?id=<?= $item['product_id'] ?>" class="flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-gray-50">
                     <img src="<?= $imgSrc ?>" alt="<?= htmlspecialchars($item['name']) ?>" class="w-full h-full object-contain p-2">
                 </a>
 
                 <!-- Details -->
                 <div class="flex-grow min-w-0">
                     <p class="text-xs text-[var(--text-muted)] mb-0.5">Sold by <span class="font-medium"><?= htmlspecialchars($item['farmer_name']) ?></span></p>
-                    <a href="product_details.php?id=<?= $item['produce_id'] ?>" class="text-sm font-semibold text-[var(--text-main)] hover:text-[var(--primary)] line-clamp-2">
+                    <a href="product_details.php?id=<?= $item['product_id'] ?>" class="text-sm font-semibold text-[var(--text-main)] hover:text-[var(--primary)] line-clamp-2">
                         <?= htmlspecialchars($item['name']) ?>
                     </a>
                     <div class="text-sm font-bold text-[var(--text-main)] mt-1">₵ <?= number_format($item['price_per_bag'],2) ?>/bag</div>
@@ -91,25 +91,25 @@ include 'nav.php';
 
                 <!-- Qty + Subtotal + Remove -->
                 <div class="flex flex-col items-end justify-between flex-shrink-0">
-                    <button onclick="removeItem(<?= $item['produce_id'] ?>)"
+                    <button onclick="removeItem(<?= $item['product_id'] ?>)"
                         class="text-[var(--text-muted)] hover:text-red-500 transition text-lg">
                         <i class="ri-delete-bin-5-line"></i>
                     </button>
 
                     <div>
                         <!-- Subtotal -->
-                        <div class="text-base font-bold text-[var(--text-main)] text-right mb-2" id="subtotal-<?= $item['produce_id'] ?>">
+                        <div class="text-base font-bold text-[var(--text-main)] text-right mb-2" id="subtotal-<?= $item['product_id'] ?>">
                             ₵ <?= number_format($item['price_per_bag'] * $item['quantity'], 2) ?>
                         </div>
 
                         <!-- Qty controls -->
                         <div class="flex items-center gap-2 border border-[var(--border)] rounded-lg overflow-hidden">
-                            <button onclick="changeQty(<?= $item['produce_id'] ?>, -1, <?= $item['price_per_bag'] ?>)"
+                            <button onclick="changeQty(<?= $item['product_id'] ?>, -1, <?= $item['price_per_bag'] ?>)"
                                 class="px-3 py-2 text-[var(--text-muted)] hover:bg-[var(--bg-body)] hover:text-[var(--primary)] transition font-bold">−</button>
-                            <span id="qty-<?= $item['produce_id'] ?>" class="w-8 text-center text-sm font-bold text-[var(--text-main)]">
+                            <span id="qty-<?= $item['product_id'] ?>" class="w-8 text-center text-sm font-bold text-[var(--text-main)]">
                                 <?= $item['quantity'] ?>
                             </span>
-                            <button onclick="changeQty(<?= $item['produce_id'] ?>, 1, <?= $item['price_per_bag'] ?>, <?= $maxQty ?>)"
+                            <button onclick="changeQty(<?= $item['product_id'] ?>, 1, <?= $item['price_per_bag'] ?>, <?= $maxQty ?>)"
                                 class="px-3 py-2 text-[var(--text-muted)] hover:bg-[var(--bg-body)] hover:text-[var(--primary)] transition font-bold">+</button>
                         </div>
                     </div>
@@ -144,7 +144,6 @@ include 'nav.php';
                     </div>
                 </div>
 
-                <!-- Escrow notice -->
                 <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                     <div class="flex gap-2 items-start">
                         <i class="ri-shield-check-line text-blue-600 text-lg flex-shrink-0 mt-0.5"></i>

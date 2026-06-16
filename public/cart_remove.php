@@ -11,12 +11,12 @@ $produce_id = filter_input(INPUT_POST,'product_id',FILTER_VALIDATE_INT);
 if (!$produce_id) { echo json_encode(['success'=>false,'message'=>'Invalid product']); exit; }
 
 $pdo = getPDO();
-$pdo->prepare("DELETE FROM cart WHERE user_id=? AND produce_id=?")->execute([$user_id,$produce_id]);
+$pdo->prepare("DELETE FROM cart WHERE user_id=? AND product_id=?")->execute([$user_id,$produce_id]);
 
-// Recalculate cart total
+// Recalculate cart total using standard relation mappings
 $totalStmt = $pdo->prepare("
     SELECT COALESCE(SUM(c.quantity * p.price_per_bag),0)
-    FROM cart c JOIN produce_listings p ON c.produce_id=p.id
+    FROM cart c JOIN produce_listings p ON c.product_id=p.id
     WHERE c.user_id=?
 ");
 $totalStmt->execute([$user_id]);

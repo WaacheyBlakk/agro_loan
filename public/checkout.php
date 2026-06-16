@@ -19,11 +19,11 @@ if ($cart_count === 0) { header('Location: cart.php'); exit; }
 
 // Fetch cart items
 $sql = "
-    SELECT c.produce_id, c.quantity,
+    SELECT c.product_id, c.quantity,
            p.produce_name AS name, p.photo AS image, p.price_per_bag, p.bags_available,
            u.name AS farmer_name, u.id AS farmer_id
     FROM cart c
-    JOIN produce_listings p ON c.produce_id = p.id
+    JOIN produce_listings p ON c.product_id = p.id
     JOIN users u ON p.farmer_id = u.id
     WHERE c.user_id = ?
     ORDER BY c.created_at ASC
@@ -38,10 +38,19 @@ foreach($items as $item) { $subtotal += $item['price_per_bag'] * $item['quantity
 $platform_fee = round($subtotal * (PLATFORM_FEE_PERCENT / 100), 2);
 $total        = $subtotal + $platform_fee;
 
-// Prefill buyer info
-$userStmt = $pdo->prepare("SELECT name, email, phone, location FROM users WHERE id=?");
-$userStmt->execute([$user_id]);
-$buyer = $userStmt->fetch(PDO::FETCH_ASSOC);
+// Prefill buyer info from buyers table with a fallback for the location column
+$buyer = [];
+try {
+    $userStmt = $pdo->prepare("SELECT name, email, phone, location FROM buyers WHERE id=?");
+    $userStmt->execute([$user_id]);
+    $buyer = $userStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+} catch (PDOException $e) {
+    // Fallback if 'location' does not exist in the 'buyers' table
+    $userStmt = $pdo->prepare("SELECT name, email, phone FROM buyers WHERE id=?");
+    $userStmt->execute([$user_id]);
+    $buyer = $userStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $buyer['location'] = '';
+}
 
 // Flash messages
 $error   = $_SESSION['checkout_error']   ?? null; unset($_SESSION['checkout_error']);
@@ -49,7 +58,7 @@ $success = $_SESSION['checkout_success'] ?? null; unset($_SESSION['checkout_succ
 
 $page_title = 'Checkout | AgroMarket';
 $active_nav = 'cart';
-include '_partials/nav.php';
+include 'nav.php';
 ?>
 
 <div class="pt-24 pb-12 min-h-screen px-4 md:px-8 max-w-5xl mx-auto">

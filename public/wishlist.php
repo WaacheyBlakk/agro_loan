@@ -6,6 +6,7 @@ $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
 if (!$user_id) { header('Location: buyers_login.php'); exit; }
 
 $pdo      = getPDO();
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $user_role = $_SESSION['role'] ?? 'buyer';
 $is_logged = true;
 
@@ -14,14 +15,32 @@ $cStmt = $pdo->prepare("SELECT COALESCE(SUM(quantity),0) FROM cart WHERE user_id
 $cStmt->execute([$user_id]);
 $cart_count = (int)$cStmt->fetchColumn();
 
-// Fetch wishlist items
+// Dynamic schema detection
+$wishlistTable = 'wishlist';
+$wishlistColumn = 'produce_id';
+
+try {
+    $pdo->query("SELECT 1 FROM wishlist_items LIMIT 1");
+    $wishlistTable = 'wishlist_items';
+} catch (PDOException $e) {
+    $wishlistTable = 'wishlist';
+}
+
+try {
+    $pdo->query("SELECT product_id FROM {$wishlistTable} LIMIT 1");
+    $wishlistColumn = 'product_id';
+} catch (PDOException $e) {
+    $wishlistColumn = 'produce_id';
+}
+
+// Fetch wishlist items matching correct detected DB schema
 $sql = "
-    SELECT w.id AS wish_id, w.product_id, w.created_at AS wishlisted_at,
+    SELECT w.id AS wish_id, w.{$wishlistColumn} AS produce_id, w.created_at AS wishlisted_at,
            p.produce_name AS name, p.photo AS image, p.price_per_bag,
            p.bags_available, p.description,
            u.name AS farmer_name, c.name AS category_name
-    FROM wishlist_items w
-    JOIN produce_listings p ON w.product_id = p.id
+    FROM {$wishlistTable} w
+    JOIN produce_listings p ON w.{$wishlistColumn} = p.id
     JOIN users u ON p.farmer_id = u.id
     JOIN categories c ON p.category_id = c.id
     WHERE w.user_id = ?
@@ -72,7 +91,6 @@ include 'nav.php';
         ?>
         <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl overflow-hidden shadow-sm hover:shadow-md transition group" id="wish-item-<?= $item['produce_id'] ?>">
             
-            <!-- Remove btn -->
             <div class="relative">
                 <a href="product_details.php?id=<?= $item['produce_id'] ?>" class="block aspect-square overflow-hidden bg-gray-50">
                     <img src="<?= $imgSrc ?>" alt="<?= htmlspecialchars($item['name']) ?>" class="w-full h-full object-contain p-3 hover:scale-105 transition duration-500">
@@ -143,16 +161,24 @@ async function removeFromWishlist(productId) {
     form.append('product_id', productId);
 
     try {
-        await fetch('wishlist_remove.php', { method:'POST', body:form });
-        card.style.transition = 'all .4s';
-        card.style.transform  = 'scale(0.85)';
-        card.style.opacity    = '0';
-        setTimeout(() => { card.remove(); updateCount(); }, 400);
-        showToast('Removed from wishlist', 'success');
+        const res = await fetch('wishlist_remove.php', { method:'POST', body:form });
+        const data = await res.json();
+        
+        if (data.success) {
+            card.style.transition = 'all .4s';
+            card.style.transform  = 'scale(0.85)';
+            card.style.opacity    = '0';
+            setTimeout(() => { card.remove(); updateCount(); }, 400);
+            showToast('Removed from wishlist', 'success');
+        } else {
+            card.style.opacity = '1';
+            card.style.pointerEvents = '';
+            showToast(data.message || 'Error removing item', 'error');
+        }
     } catch(e) {
         card.style.opacity = '1';
         card.style.pointerEvents = '';
-        showToast('Error removing item', 'error');
+        showToast('Connection error', 'error');
     }
 }
 

@@ -18,12 +18,12 @@ $pdo = getPDO();
 
 if ($quantity < 1) {
     // Remove item if quantity <= 0
-    $pdo->prepare("DELETE FROM cart WHERE user_id=? AND produce_id=?")->execute([$user_id,$produce_id]);
+    $pdo->prepare("DELETE FROM cart WHERE user_id=? AND product_id=?")->execute([$user_id,$produce_id]);
     echo json_encode(['success'=>true,'message'=>'Item removed','removed'=>true]);
     exit;
 }
 
-// Validate against available stock
+// Validate against available stock using uniform produce columns
 $stock = $pdo->prepare("SELECT bags_available FROM produce_listings WHERE id=?");
 $stock->execute([$produce_id]);
 $available = (int)$stock->fetchColumn();
@@ -33,7 +33,7 @@ if ($quantity > $available) {
     exit;
 }
 
-$pdo->prepare("UPDATE cart SET quantity=? WHERE user_id=? AND produce_id=?")->execute([$quantity,$user_id,$produce_id]);
+$pdo->prepare("UPDATE cart SET quantity=? WHERE user_id=? AND product_id=?")->execute([$quantity,$user_id,$produce_id]);
 
 // Calculate new item subtotal
 $price = $pdo->prepare("SELECT price_per_bag FROM produce_listings WHERE id=?");
@@ -44,7 +44,7 @@ $subtotal  = $unitPrice * $quantity;
 // Recalculate cart total
 $totalStmt = $pdo->prepare("
     SELECT SUM(c.quantity * p.price_per_bag)
-    FROM cart c JOIN produce_listings p ON c.produce_id = p.id
+    FROM cart c JOIN produce_listings p ON c.product_id = p.id
     WHERE c.user_id = ?
 ");
 $totalStmt->execute([$user_id]);
