@@ -35,18 +35,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loan_id'])) {
     $repayment_type = in_array($_POST['repayment_type'] ?? '', ['partial','full'])
                         ? $_POST['repayment_type'] : 'partial';
 
-    //Validate the loan belongs to this farmer and is approved
+    // Validate the loan belongs to this farmer, is approved, and is in Stage 3
     $stmt = $pdo->prepare("
         SELECT la.*, ap.interest_rate
           FROM loan_applications la
           LEFT JOIN agent_profiles ap ON la.agent_id = ap.user_id
-         WHERE la.id = ? AND la.farmer_id = ? AND la.status = 'approved'
+         WHERE la.id = ? 
+           AND la.farmer_id = ? 
+           AND la.status = 'approved' 
+           AND la.stage = 3
     ");
     $stmt->execute([$loan_id, $farmer_id]);
     $loan = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$loan) {
-        $message = "Invalid loan selected or loan is not yet approved.";
+        $message = "Invalid loan selected, loan is not approved, or Stage 3 is not yet completed.";
         $msgType = "error";
     } else {
         $outstanding = getOutstandingBalance($pdo, $loan);
@@ -128,12 +131,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loan_id'])) {
     }
 }
 
+// Fetch approved loans that are in Stage 3
 $stmt = $pdo->prepare("
     SELECT la.*, u.name AS agent_name, ap.interest_rate, ap.loan_terms
       FROM loan_applications la
       LEFT JOIN users u         ON la.agent_id = u.id
       LEFT JOIN agent_profiles ap ON la.agent_id = ap.user_id
-     WHERE la.farmer_id = ? AND la.status = 'approved'
+     WHERE la.farmer_id = ? 
+       AND la.status = 'approved' 
+       AND la.current_stage = 3
      ORDER BY la.created_at DESC
 ");
 $stmt->execute([$farmer_id]);
@@ -469,7 +475,7 @@ $selected_loan_id = isset($_GET['loan_id']) ? (int)$_GET['loan_id'] : null;
     <div class="content">
         <div class="page-header">
             <h1 class="page-title">Loan Repayments</h1>
-            <p class="page-subtitle">View your loan balances, make partial or full repayments, and upload payment proofs for agent confirmation.</p>
+            <p class="page-subtitle">View your active loan balances, make partial or full repayments, and upload payment proofs for agent confirmation once Stage 3 is complete.</p>
         </div>
 
         <?php if (!empty($message)): ?>
@@ -483,14 +489,14 @@ $selected_loan_id = isset($_GET['loan_id']) ? (int)$_GET['loan_id'] : null;
         <div class="table-container">
             <div class="empty-state">
                 <i data-feather="inbox"></i>
-                <p style="font-weight:600;font-size:15px;">No approved loans found</p>
-                <p style="font-size:13px;">Once your loan application is approved, it will appear here for repayment.</p>
+                <p style="font-weight:600;font-size:15px;">No eligible loans found</p>
+                <p style="font-size:13px;">Loans must be approved and Stage 3 completed before repayments can begin.</p>
                 <a href="apply_loan.php" style="color:var(--primary);font-weight:600;text-decoration:none;">Apply for a loan →</a>
             </div>
         </div>
         <?php else: ?>
 
-        <p class="section-title">Your Active Loans</p>
+        <p class="section-title">Your Active Loans (Stage 3 Completed)</p>
         <div class="loans-grid">
             <?php foreach ($loan_data as $ld):
                 $loan    = $ld['loan'];
@@ -711,7 +717,7 @@ toggleBtn.addEventListener('click', () => {
     } else {
         sidebar.classList.toggle('collapsed');
     }
-    // Re-render icons after collapse (they may resize)
+    // Re-render icons after collapse
     setTimeout(() => feather.replace(), 310);
 });
 

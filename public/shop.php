@@ -502,7 +502,8 @@ function getStarRating($id) {
                                 <i class="ri-heart-line"></i>
                             </button>
 
-                            <a href="product_details.php?id=<?= $p['id'] ?>" class="block relative aspect-square overflow-hidden bg-[var(--bg-body)]">
+                            <!-- FIXED: Container is set to "bg-white" instead of a dynamic theme color to keep the product photo bright and unaffected by dark mode -->
+                            <a href="product_details.php?id=<?= $p['id'] ?>" class="block relative aspect-square overflow-hidden bg-white">
                                 <img src="<?= $imgSrc ?>" alt="<?= htmlspecialchars($p['name']) ?>" class="w-full h-full object-contain mix-blend-multiply p-4 hover:scale-105 transition duration-500">
                                 <?php if(!$inStock): ?>
                                     <div class="absolute inset-0 bg-white/60 flex items-center justify-center">
@@ -802,6 +803,7 @@ function getStarRating($id) {
         });
     }
 
+    // --- Direct Wishlist Addition ---
     function addToWishlistDirect(productId) {
         const formData = new FormData();
         formData.append('product_id', productId);

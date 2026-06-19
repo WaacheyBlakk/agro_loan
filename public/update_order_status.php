@@ -1,9 +1,4 @@
 <?php
-/**
- * api/update_order_status.php
- * Called by seller_dashboard.php JS.
- * Allows a farmer to advance an order's status; appends tracking history.
- */
 session_start();
 require_once __DIR__ . '/../src/db.php';
 header('Content-Type: application/json');

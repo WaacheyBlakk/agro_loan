@@ -27,20 +27,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repayment_id'], $_POS
         try {
             $pdo->beginTransaction();
 
-            // 1. Fetch the repayment record (must belong to one of this agent's loans)
+            // 1. Fetch the repayment record (must belong to one of this agent's Stage 3 loans)
             $stmt = $pdo->prepare("
                 SELECT r.*, la.farmer_id, la.outstanding_balance, la.amount, la.agent_id,
                        ap.interest_rate
                   FROM loan_repayments r
                   JOIN loan_applications la ON r.loan_id = la.id
                   LEFT JOIN agent_profiles ap ON la.agent_id = ap.user_id
-                 WHERE r.id = ? AND la.agent_id = ? AND r.status = 'pending'
+                 WHERE r.id = ? 
+                   AND la.agent_id = ? 
+                   AND r.status = 'pending' 
+                   AND la.current_stage = 3
             ");
             $stmt->execute([$repayment_id, $agent_id]);
             $repayment = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$repayment) {
-                throw new Exception("Repayment record not found or already processed.");
+                throw new Exception("Repayment record not found, already processed, or loan has not reached Stage 3.");
             }
 
             // 2. Update the repayment record status
@@ -94,6 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repayment_id'], $_POS
     }
 }
 
+// Fetch pending repayments specifically for loans in Stage 3
 $pendingStmt = $pdo->prepare("
     SELECT r.*,
            la.title   AS loan_title,
@@ -106,7 +110,9 @@ $pendingStmt = $pdo->prepare("
       JOIN loan_applications la ON r.loan_id = la.id
       JOIN users u               ON r.farmer_id = u.id
       LEFT JOIN agent_profiles ap ON la.agent_id = ap.user_id
-     WHERE la.agent_id = ? AND r.status = 'pending'
+     WHERE la.agent_id = ? 
+       AND r.status = 'pending' 
+       AND la.current_stage = 3
      ORDER BY r.submitted_at DESC
 ");
 $pendingStmt->execute([$agent_id]);
@@ -374,7 +380,6 @@ $total_confirmed_amt = array_sum(array_map(
     </form>
 </aside>
 
-<!-- ═══════════════════════ MAIN ═══════════════════════ -->
 <main class="main">
     <header class="topbar">
         <button id="toggleBtn" class="toggle-btn"><i data-feather="menu"></i></button>
@@ -389,7 +394,7 @@ $total_confirmed_amt = array_sum(array_map(
 
     <div class="content">
         <h1 class="page-title">Repayment Review</h1>
-        <p class="page-subtitle">Review and confirm repayments submitted by your farmers. Confirming a repayment updates their outstanding loan balance.</p>
+        <p class="page-subtitle">Review and confirm Stage 3 repayments submitted by your farmers. Confirming updates their outstanding loan balance.</p>
 
         <!-- Alerts -->
         <?php if (!empty($successMsg)): ?>
@@ -439,7 +444,7 @@ $total_confirmed_amt = array_sum(array_map(
 
         <!-- ── PENDING REPAYMENTS ── -->
         <div class="section-header">
-            <h2 class="section-title">Pending Repayments</h2>
+            <h2 class="section-title">Pending Repayments (Stage 3 Loans)</h2>
             <span class="count-badge <?= $total_pending == 0 ? 'zero' : '' ?>">
                 <?= $total_pending ?>
             </span>
@@ -450,7 +455,7 @@ $total_confirmed_amt = array_sum(array_map(
             <div class="empty-state">
                 <i data-feather="inbox"></i>
                 <p style="font-weight:600;">No pending repayments</p>
-                <p style="font-size:13px;">When farmers submit repayments, they will appear here for your review.</p>
+                <p style="font-size:13px;">When farmers submit repayments for eligible loans (Stage 3 completed), they will appear here.</p>
             </div>
         </div>
         <?php else: ?>

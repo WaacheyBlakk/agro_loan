@@ -15,7 +15,8 @@ $order_id = filter_input(INPUT_GET,'order_id',FILTER_VALIDATE_INT);
 $ref      = filter_input(INPUT_GET,'ref',FILTER_SANITIZE_SPECIAL_CHARS);
 
 if (!$user_id || !$order_id || !$ref) {
-    echo json_encode(['status'=>'error','message'=>'Invalid request']); exit;
+    echo json_encode(['status'=>'error','message'=>'Invalid request']); 
+    exit;
 }
 
 $pdo = getPDO();
@@ -25,17 +26,22 @@ $orderStmt = $pdo->prepare("SELECT * FROM orders WHERE id=? AND buyer_id=?");
 $orderStmt->execute([$order_id, $user_id]);
 $order = $orderStmt->fetch(PDO::FETCH_ASSOC);
 
-if (!$order) { echo json_encode(['status'=>'error','message'=>'Order not found']); exit; }
+if (!$order) { 
+    echo json_encode(['status'=>'error','message'=>'Order not found']); 
+    exit; 
+}
 
 // Already confirmed? Return early.
 if ($order['payment_status'] === 'confirmed') {
-    echo json_encode(['status'=>'confirmed','order_id'=>$order_id]); exit;
+    echo json_encode(['status'=>'confirmed','order_id'=>$order_id]); 
+    exit;
 }
 if ($order['payment_status'] === 'failed') {
-    echo json_encode(['status'=>'failed']); exit;
+    echo json_encode(['status'=>'failed']); 
+    exit;
 }
 
-// Query MoMo API
+// Query MoMo API status
 $momoStatus = checkMoMoPaymentStatus($ref);
 $apiStatus  = strtolower($momoStatus['status'] ?? 'pending');
 
@@ -58,7 +64,7 @@ if ($apiStatus === 'successful' || $apiStatus === 'approved') {
         $feePercent = 2.5;
 
         foreach ($items as $item) {
-            // Deduct stock
+            // Deduct stock safely
             $pdo->prepare("
                 UPDATE produce_listings SET bags_available = GREATEST(0, bags_available - ?) WHERE id=?
             ")->execute([$item['quantity'], $item['produce_id']]);
@@ -73,10 +79,10 @@ if ($apiStatus === 'successful' || $apiStatus === 'approved') {
             ")->execute([$order_id, $item['id'], $item['farmer_id'], $farmerAmount, $feeAmount]);
         }
 
-        // Add tracking entry
+        // Add tracking entry safely (handling updated_by requirements)
         $pdo->prepare("
-            INSERT INTO order_tracking (order_id, status, notes) VALUES (?,?,?)
-        ")->execute([$order_id, 'payment_confirmed', 'Payment received and confirmed. Funds held in escrow.']);
+            INSERT INTO order_tracking (order_id, status, notes, updated_by) VALUES (?,?,?,?)
+        ")->execute([$order_id, 'payment_confirmed', 'Payment received and confirmed. Funds held in escrow.', $user_id]);
 
         $pdo->commit();
 
@@ -91,8 +97,8 @@ if ($apiStatus === 'successful' || $apiStatus === 'approved') {
 } elseif (in_array($apiStatus, ['failed','rejected','cancelled','timeout'])) {
 
     $pdo->prepare("UPDATE orders SET payment_status='failed' WHERE id=?")->execute([$order_id]);
-    $pdo->prepare("INSERT INTO order_tracking (order_id, status, notes) VALUES (?,?,?)")
-        ->execute([$order_id, 'payment_failed', 'Payment ' . $apiStatus . '. Order cancelled.']);
+    $pdo->prepare("INSERT INTO order_tracking (order_id, status, notes, updated_by) VALUES (?,?,?,?)")
+        ->execute([$order_id, 'payment_failed', 'Payment ' . $apiStatus . '. Order cancelled.', $user_id]);
 
     echo json_encode(['status'=>'failed']);
 

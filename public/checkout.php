@@ -8,6 +8,8 @@ if (!$user_id) { header('Location: buyers_login.php'); exit; }
 $pdo       = getPDO();
 $user_role = $_SESSION['role'] ?? 'buyer';
 $is_logged = true;
+
+// Note: Ensure this percentage matches the one set in checkout_process.php (2.5%)
 define('PLATFORM_FEE_PERCENT', 2.5);
 
 // Cart count for nav badge
@@ -17,7 +19,7 @@ $cart_count = (int)$cStmt->fetchColumn();
 
 if ($cart_count === 0) { header('Location: cart.php'); exit; }
 
-// Fetch cart items
+// Fetch cart items (Uses c.product_id)
 $sql = "
     SELECT c.product_id, c.quantity,
            p.produce_name AS name, p.photo AS image, p.price_per_bag, p.bags_available,
@@ -253,11 +255,11 @@ include 'nav.php';
     <div class="bg-[var(--bg-card)] rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl">
         <!-- Spinner -->
         <div id="paySpinner" class="w-16 h-16 border-4 border-[var(--primary-light)] border-t-[var(--primary)] rounded-full animate-spin mx-auto mb-5"></div>
-        <!-- Success icon (hidden) -->
+        <!-- Success icon (hidden by default) -->
         <div id="paySuccess" class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5 hidden">
             <i class="ri-check-fill text-green-600 text-4xl"></i>
         </div>
-        <!-- Fail icon (hidden) -->
+        <!-- Fail icon (hidden by default) -->
         <div id="payFail" class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-5 hidden">
             <i class="ri-close-fill text-red-600 text-4xl"></i>
         </div>
@@ -270,6 +272,13 @@ include 'nav.php';
             <span class="w-2 h-2 bg-[var(--primary)] rounded-full animate-bounce" style="animation-delay:.2s"></span>
             <span class="w-2 h-2 bg-[var(--primary)] rounded-full animate-bounce" style="animation-delay:.4s"></span>
         </div>
+
+        <!-- Pre-structured try again button container -->
+        <div id="tryAgainBtnContainer" class="hidden mt-5">
+            <button type="button" id="tryAgainBtn" class="w-full bg-[var(--primary)] text-white py-3 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition">
+                Try Again
+            </button>
+        </div>
     </div>
 </div>
 
@@ -279,6 +288,15 @@ document.getElementById('checkoutForm').addEventListener('submit', async functio
 
     const btn  = document.getElementById('payBtn');
     const overlay = document.getElementById('paymentOverlay');
+
+    // 1. Reset overlay states completely
+    document.getElementById('paySpinner').classList.remove('hidden');
+    document.getElementById('paySuccess').classList.add('hidden');
+    document.getElementById('payFail').classList.add('hidden');
+    document.getElementById('payProgress').classList.remove('hidden');
+    document.getElementById('tryAgainBtnContainer').classList.add('hidden');
+    document.getElementById('payTitle').textContent = 'Processing Payment…';
+    document.getElementById('payMsg').textContent   = 'Please check your phone for the MoMo prompt and approve the payment.';
 
     btn.disabled = true;
     btn.innerHTML = '<i class="ri-loader-4-line animate-spin"></i> Initiating…';
@@ -330,7 +348,8 @@ function showPaySuccess(orderId) {
     document.getElementById('paySpinner').classList.add('hidden');
     document.getElementById('paySuccess').classList.remove('hidden');
     document.getElementById('payProgress').classList.add('hidden');
-    document.getElementById('payTitle').textContent = 'Payment Successful! 🎉';
+    document.getElementById('tryAgainBtnContainer').classList.add('hidden');
+    document.getElementById('payTitle').textContent = 'Payment Successful!';
     document.getElementById('payMsg').textContent   = 'Your order has been placed and is now being prepared.';
     setTimeout(() => { window.location.href = `buyer_dashboard.php?tab=orders&order_id=${orderId}`; }, 2500);
 }
@@ -339,21 +358,24 @@ function showPayFail(msg) {
     document.getElementById('paySpinner').classList.add('hidden');
     document.getElementById('payFail').classList.remove('hidden');
     document.getElementById('payProgress').classList.add('hidden');
+    
     document.getElementById('payTitle').textContent = 'Payment Failed';
     document.getElementById('payMsg').textContent   = msg;
 
-    const btn2 = document.createElement('button');
-    btn2.textContent = 'Try Again';
-    btn2.className   = 'mt-5 bg-[var(--primary)] text-white px-6 py-2 rounded-full font-bold text-sm';
-    btn2.onclick = () => {
-        document.getElementById('paymentOverlay').classList.add('hidden');
-        document.getElementById('paymentOverlay').classList.remove('flex');
-        const payBtn = document.getElementById('payBtn');
-        payBtn.disabled = false;
-        payBtn.innerHTML = '<i class="ri-secure-payment-line text-lg"></i> Pay ₵ <?= number_format($total,2) ?> Now';
-    };
-    document.getElementById('payMsg').after(btn2);
+    // Show pre-built try again button safely without multiple elements appending
+    document.getElementById('tryAgainBtnContainer').classList.remove('hidden');
 }
+
+// Reset button handler to let user close overlay and try again cleanly
+document.getElementById('tryAgainBtn').onclick = () => {
+    const overlay = document.getElementById('paymentOverlay');
+    overlay.classList.add('hidden');
+    overlay.classList.remove('flex');
+
+    const payBtn = document.getElementById('payBtn');
+    payBtn.disabled = false;
+    payBtn.innerHTML = '<i class="ri-secure-payment-line text-lg"></i> Pay ₵ <?= number_format($total,2) ?> Now';
+};
 </script>
 </body>
 </html>

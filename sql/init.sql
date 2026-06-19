@@ -1,28 +1,3 @@
--- phpMyAdmin SQL Dump
--- version 5.2.1
--- https://www.phpmyadmin.net/
---
--- Host: 127.0.0.1
--- Generation Time: Jun 04, 2026 at 01:14 AM
--- Server version: 10.4.32-MariaDB
--- PHP Version: 8.2.12
-
-SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
-START TRANSACTION;
-SET time_zone = "+00:00";
-
-
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
-/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
-/*!40101 SET NAMES utf8mb4 */;
-
---
--- Database: `agro_loan`
---
-
--- --------------------------------------------------------
-
 --
 -- Table structure for table `agent_actions`
 --
@@ -34,7 +9,7 @@ CREATE TABLE `agent_actions` (
   `action` enum('approved','rejected') NOT NULL,
   `notes` text DEFAULT NULL,
   `action_at` timestamp NOT NULL DEFAULT current_timestamp()
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -57,9 +32,7 @@ CREATE TABLE `agent_profiles` (
   `tin_number` varchar(100) DEFAULT NULL,
   `certificate_photo` varchar(255) DEFAULT NULL,
   `gps_address` varchar(255) DEFAULT NULL
-);
-
--- --------------------------------------------------------
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Table structure for table `buyers`
@@ -70,10 +43,15 @@ CREATE TABLE `buyers` (
   `name` varchar(255) DEFAULT NULL,
   `email` varchar(255) DEFAULT NULL,
   `password` varchar(255) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
-);
-
--- --------------------------------------------------------
+  `status` varchar(20) NOT NULL DEFAULT 'pending',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `phone` varchar(20) DEFAULT NULL,
+  `momo_phone` varchar(20) DEFAULT NULL,
+  `location` varchar(200) DEFAULT NULL,
+  `profile_bio` text DEFAULT NULL,
+  `reset_token_hash` varchar(64) DEFAULT NULL,
+  `reset_token_expires_at` datetime DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Table structure for table `buyer_profiles`
@@ -90,7 +68,7 @@ CREATE TABLE `buyer_profiles` (
   `alternate_phone` varchar(30) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -104,7 +82,7 @@ CREATE TABLE `cart` (
   `product_id` int(11) DEFAULT NULL,
   `quantity` int(11) DEFAULT 1,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -118,7 +96,7 @@ CREATE TABLE `cart_items` (
   `produce_id` int(11) NOT NULL,
   `quantity` int(11) NOT NULL DEFAULT 1,
   `added_at` timestamp NOT NULL DEFAULT current_timestamp()
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -131,18 +109,7 @@ CREATE TABLE `categories` (
   `name` varchar(100) NOT NULL,
   `slug` varchar(120) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
-);
-
-INSERT INTO `categories` (`id`, `name`, `slug`, `created_at`) VALUES
-(1, 'Vegetables', 'vegetables', '2025-12-12 16:17:38'),
-(2, 'Fruits', 'fruits', '2025-12-12 16:17:38'),
-(3, 'Cereals & Grains', 'cereals-grains', '2025-12-12 16:17:38'),
-(4, 'Roots & Tubers', 'roots-tubers', '2025-12-12 16:17:38'),
-(5, 'Legumes', 'legumes', '2025-12-12 16:17:38'),
-(6, 'Spices & Herbs', 'spices-herbs', '2025-12-12 16:17:38'),
-(7, 'Livestock', 'livestock', '2025-12-12 16:17:38'),
-(8, 'Poultry', 'poultry', '2025-12-12 16:17:38'),
-(9, 'Dairy Products', 'dairy-products', '2025-12-12 16:17:38');
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -157,7 +124,7 @@ CREATE TABLE `contact_messages` (
   `subject` varchar(150) DEFAULT NULL,
   `message` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -171,7 +138,26 @@ CREATE TABLE `disbursements` (
   `approved_by` int(11) DEFAULT NULL,
   `status` enum('approved','rejected') DEFAULT 'approved',
   `date_approved` datetime DEFAULT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `escrow`
+--
+
+CREATE TABLE `escrow` (
+  `id` int(11) NOT NULL,
+  `order_id` int(11) NOT NULL,
+  `order_item_id` int(11) NOT NULL,
+  `farmer_id` int(11) NOT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `platform_fee_portion` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `status` enum('held','released','refunded') NOT NULL DEFAULT 'held',
+  `released_at` timestamp NULL DEFAULT NULL,
+  `momo_disbursement_ref` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -196,7 +182,7 @@ CREATE TABLE `farmer_profiles` (
   `farmland_photos` text DEFAULT NULL,
   `passport_photo` varchar(255) DEFAULT NULL,
   `gps_address` varchar(255) DEFAULT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -216,7 +202,7 @@ CREATE TABLE `loan_applications` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `disbursed_amount` decimal(10,2) DEFAULT 0.00,
   `outstanding_balance` decimal(12,2) DEFAULT NULL COMMENT 'Remaining repayable amount (principal + interest). NULL = not yet calculated'
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -240,7 +226,7 @@ CREATE TABLE `loan_repayments` (
   `submitted_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `reviewed_at` timestamp NULL DEFAULT NULL,
   `reviewed_by` int(11) DEFAULT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -257,7 +243,7 @@ CREATE TABLE `loan_stages` (
   `status` enum('pending','verified','rejected','awaiting_disbursement','disbursed','disbursement_rejected') DEFAULT 'pending',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `disbursed` tinyint(1) DEFAULT 0
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -269,10 +255,19 @@ CREATE TABLE `orders` (
   `id` int(11) NOT NULL,
   `buyer_id` int(11) NOT NULL,
   `total_amount` decimal(12,2) NOT NULL,
-  `status` varchar(40) NOT NULL DEFAULT 'pending',
+  `platform_fee` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `payment_method` varchar(50) NOT NULL DEFAULT 'mtn_momo',
+  `payment_status` enum('pending','confirmed','failed','refunded') NOT NULL DEFAULT 'pending',
+  `order_status` enum('pending_payment','payment_confirmed','preparing','in_transit','ready_for_pickup','delivered','cancelled') NOT NULL DEFAULT 'pending_payment',
+  `momo_reference` varchar(255) DEFAULT NULL,
+  `delivery_name` varchar(200) NOT NULL,
+  `delivery_phone` varchar(20) NOT NULL,
+  `delivery_address` text NOT NULL,
+  `buyer_notes` text DEFAULT NULL,
   `shipping_address` text DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
-);
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -287,8 +282,24 @@ CREATE TABLE `order_items` (
   `farmer_id` int(11) NOT NULL,
   `quantity` int(11) NOT NULL,
   `unit_price` decimal(12,2) NOT NULL,
-  `subtotal` decimal(12,2) NOT NULL
-);
+  `subtotal` decimal(12,2) NOT NULL,
+  `item_status` enum('pending','preparing','dispatched','delivered') NOT NULL DEFAULT 'pending'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `order_tracking`
+--
+
+CREATE TABLE `order_tracking` (
+  `id` int(11) NOT NULL,
+  `order_id` int(11) NOT NULL,
+  `status` varchar(100) NOT NULL,
+  `notes` text DEFAULT NULL,
+  `updated_by` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -306,7 +317,7 @@ CREATE TABLE `produce_listings` (
   `description` text DEFAULT NULL,
   `photo` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -323,7 +334,7 @@ CREATE TABLE `products` (
   `description` text DEFAULT NULL,
   `category` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -335,7 +346,7 @@ CREATE TABLE `product_images` (
   `id` int(11) NOT NULL,
   `product_id` int(11) DEFAULT NULL,
   `image_path` varchar(255) DEFAULT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -352,7 +363,9 @@ CREATE TABLE `stage_proofs` (
   `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `status` enum('pending','verified','rejected') DEFAULT 'pending',
   `proof_type` varchar(20) DEFAULT 'after'
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
 
 --
 -- Table structure for table `users`
@@ -362,14 +375,19 @@ CREATE TABLE `users` (
   `id` int(11) NOT NULL,
   `email` varchar(255) NOT NULL,
   `password_hash` varchar(255) NOT NULL,
-  `role` enum('farmer','agent','admin') NOT NULL,
+  `role` enum('farmer','agent','admin','buyer') NOT NULL,
   `name` varchar(255) NOT NULL,
   `phone` varchar(50) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `status` enum('pending','verified','rejected') NOT NULL DEFAULT 'pending',
   `reset_token_hash` varchar(64) DEFAULT NULL,
-  `reset_token_expires_at` datetime DEFAULT NULL
-);
+  `reset_token_expires_at` datetime DEFAULT NULL,
+  `momo_phone` varchar(20) DEFAULT NULL,
+  `location` varchar(200) DEFAULT NULL,
+  `profile_bio` text DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
 
 --
 -- Table structure for table `wishlist_items`
@@ -380,4 +398,5 @@ CREATE TABLE `wishlist_items` (
   `user_id` int(11) NOT NULL,
   `product_id` int(11) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

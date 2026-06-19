@@ -500,6 +500,12 @@ include 'nav.php';
 </nav>
 
 <script>
+if (typeof showToast !== 'function') {
+    window.showToast = function(message, type) {
+        alert((type === 'error' ? '❌ ' : '✅ ') + message);
+    };
+}
+
 function setTab(tab) {
     ['overview','orders','profile'].forEach(t => {
         const panel = document.getElementById('panel-'+t);
@@ -520,7 +526,7 @@ async function confirmDelivery(orderId, btn) {
     form.append('order_id', orderId);
 
     try {
-        const res  = await fetch('api/confirm_delivery.php', { method:'POST', body:form });
+        const res  = await fetch('confirm_delivery.php', { method:'POST', body:form });
         const data = await res.json();
 
         if (data.success) {

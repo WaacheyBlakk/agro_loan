@@ -6,16 +6,20 @@
  */
 session_start();
 require_once __DIR__ . '/../src/db.php';
-require_once __DIR__ . '/../src/momo.php'; // Your existing MoMo helper
+require_once __DIR__ . '/../src/momo.php'; 
 
 header('Content-Type: application/json');
 
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
-if (!$user_id) { echo json_encode(['success'=>false,'message'=>'Session expired. Please log in again.']); exit; }
+if (!$user_id) { 
+    echo json_encode(['success'=>false,'message'=>'Session expired. Please log in again.']); 
+    exit; 
+}
 
 // CSRF check
 if (empty($_POST['csrf_token']) || $_POST['csrf_token'] !== ($_SESSION['csrf_token']??'')) {
-    echo json_encode(['success'=>false,'message'=>'Invalid request token.']); exit;
+    echo json_encode(['success'=>false,'message'=>'Invalid request token.']); 
+    exit;
 }
 
 define('PLATFORM_FEE_PERCENT', 2.5);
@@ -29,26 +33,30 @@ $momo_network     = in_array($_POST['momo_network']??'',['MTN','Telecel','Airtel
 
 // Basic validation
 if (!$delivery_name || !$delivery_phone || !$delivery_address) {
-    echo json_encode(['success'=>false,'message'=>'Please fill in all delivery details.']); exit;
+    echo json_encode(['success'=>false,'message'=>'Please fill in all delivery details.']); 
+    exit;
 }
 if (strlen($momo_number) < 9) {
-    echo json_encode(['success'=>false,'message'=>'Please enter a valid MoMo number.']); exit;
+    echo json_encode(['success'=>false,'message'=>'Please enter a valid MoMo number.']); 
+    exit;
 }
 
 $pdo = getPDO();
 
-// Fetch cart items
+// Fetch cart items - Aliasing product_id as produce_id to maintain standard downstream array keys
 $cartStmt = $pdo->prepare("
-    SELECT c.produce_id, c.quantity,
+    SELECT c.product_id AS produce_id, c.quantity,
            p.produce_name, p.price_per_bag, p.bags_available, p.farmer_id
-    FROM cart c JOIN produce_listings p ON c.produce_id = p.id
+    FROM cart c 
+    JOIN produce_listings p ON c.product_id = p.id
     WHERE c.user_id = ?
 ");
 $cartStmt->execute([$user_id]);
 $cartItems = $cartStmt->fetchAll(PDO::FETCH_ASSOC);
 
 if (empty($cartItems)) {
-    echo json_encode(['success'=>false,'message'=>'Your cart is empty.']); exit;
+    echo json_encode(['success'=>false,'message'=>'Your cart is empty.']); 
+    exit;
 }
 
 // Validate stock
@@ -64,7 +72,7 @@ $subtotal     = array_sum(array_map(fn($i) => $i['price_per_bag'] * $i['quantity
 $platform_fee = round($subtotal * (PLATFORM_FEE_PERCENT / 100), 2);
 $total        = $subtotal + $platform_fee;
 
-// Format MoMo number for API (Ghana: strip leading 0, add country code)
+// Format MoMo number for API
 $momoFormatted = '233' . ltrim($momo_number, '0');
 
 try {

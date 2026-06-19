@@ -40,13 +40,13 @@ $ordersStmt = $pdo->prepare("
     SELECT
         o.id AS order_id, o.order_status, o.payment_status, o.created_at AS order_date,
         o.delivery_name, o.delivery_phone, o.delivery_address, o.buyer_notes,
-        u.name AS buyer_name, u.phone AS buyer_phone,
+        b.name AS buyer_name, b.phone AS buyer_phone,
         oi.id AS item_id, oi.produce_id, oi.quantity, oi.unit_price, oi.subtotal, oi.item_status,
         p.produce_name, p.photo,
         e.status AS escrow_status, e.amount AS escrow_amount
     FROM order_items oi
     JOIN orders o  ON oi.order_id  = o.id
-    JOIN users  u  ON o.buyer_id   = u.id
+    JOIN buyers  b  ON o.buyer_id   = b.id
     JOIN produce_listings p ON oi.produce_id = p.id
     LEFT JOIN escrow e ON e.order_item_id = oi.id
     WHERE oi.farmer_id = ?
@@ -229,7 +229,7 @@ include 'nav.php';
             <i class="ri-inbox-line text-6xl text-[var(--text-muted)] opacity-30 mb-4 block"></i>
             <h3 class="text-lg font-bold text-[var(--text-main)] mb-2">No orders yet</h3>
             <p class="text-[var(--text-muted)] text-sm mb-5">Orders from buyers will appear here. Make sure your listings are active!</p>
-            <a href="add_produce.php" class="bg-[var(--primary)] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition">Add a Listing</a>
+            <a href="add_product.php" class="bg-[var(--primary)] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition">Add a Listing</a>
         </div>
 
         <?php else: ?>
@@ -365,7 +365,7 @@ include 'nav.php';
     <div id="panel-listings" class="<?= $activeTab!=='listings'?'hidden':'' ?>">
         <div class="flex justify-between items-center mb-4">
             <p class="text-sm text-[var(--text-muted)]"><?= count($listings) ?> listing<?= count($listings)!=1?'s':'' ?></p>
-            <a href="add_produce.php" class="text-sm text-[var(--primary)] font-semibold hover:underline flex items-center gap-1">
+            <a href="add_product.php" class="text-sm text-[var(--primary)] font-semibold hover:underline flex items-center gap-1">
                 <i class="ri-add-line"></i> Add New
             </a>
         </div>
@@ -375,7 +375,7 @@ include 'nav.php';
             <i class="ri-plant-line text-6xl text-[var(--text-muted)] opacity-30 mb-4 block"></i>
             <h3 class="text-lg font-bold text-[var(--text-main)] mb-2">No listings yet</h3>
             <p class="text-[var(--text-muted)] text-sm mb-5">Start selling by listing your agricultural produce.</p>
-            <a href="add_produce.php" class="bg-[var(--primary)] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition">List Your Produce</a>
+            <a href="add_product.php" class="bg-[var(--primary)] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition">List Your Produce</a>
         </div>
 
         <?php else: ?>
@@ -526,12 +526,23 @@ include 'nav.php';
     </div>
 </div>
 
-<!-- Mobile Bottom Nav -->
-<nav class="md:hidden fixed bottom-0 left-0 w-full bottom-nav z-50 flex justify-between items-center px-6 py-2 text-[10px] font-medium text-[var(--text-muted)]">
-    <a href="index.php"            class="flex flex-col items-center gap-1 hover:text-[var(--primary)]"><i class="ri-home-4-line text-xl"></i>Home</a>
-    <a href="shop.php"             class="flex flex-col items-center gap-1 hover:text-[var(--primary)]"><i class="ri-store-2-line text-xl"></i>Shop</a>
-    <a href="add_produce.php"      class="flex flex-col items-center gap-1 hover:text-[var(--primary)]"><i class="ri-add-circle-line text-xl"></i>New</a>
-    <a href="seller_dashboard.php" class="flex flex-col items-center gap-1 text-[var(--primary)]"><i class="ri-user-fill text-xl"></i>Account</a>
+<!-- Standardized Mobile Bottom Nav (Syncs with Seller Tabs) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-between items-center px-4 py-2 text-[10px] font-semibold bg-[var(--bg-card)] border-t border-[var(--border)] shadow-lg">
+    <button onclick="setTab('overview')" id="btn-nav-overview" class="flex flex-col items-center gap-1 transition w-full py-1 text-[var(--text-muted)]">
+        <i class="ri-dashboard-line text-xl"></i>Overview
+    </button>
+    <button onclick="setTab('orders')" id="btn-nav-orders" class="flex flex-col items-center gap-1 transition w-full py-1 text-[var(--text-muted)]">
+        <i class="ri-shopping-bag-3-line text-xl"></i>Orders
+    </button>
+    <a href="add_product.php" class="flex flex-col items-center gap-1 transition w-full py-1 text-[var(--text-muted)] hover:text-[var(--primary)]">
+        <i class="ri-add-circle-line text-xl"></i>New
+    </a>
+    <button onclick="setTab('listings')" id="btn-nav-listings" class="flex flex-col items-center gap-1 transition w-full py-1 text-[var(--text-muted)]">
+        <i class="ri-store-2-line text-xl"></i>My Listings
+    </button>
+    <button onclick="setTab('profile')" id="btn-nav-profile" class="flex flex-col items-center gap-1 transition w-full py-1 text-[var(--text-muted)]">
+        <i class="ri-user-line text-xl"></i>Profile
+    </button>
 </nav>
 
 <style>
@@ -542,15 +553,45 @@ include 'nav.php';
 </style>
 
 <script>
+if (typeof showToast !== 'function') {
+    window.showToast = function(message, type) {
+        alert((type === 'error' ? '❌ ' : '✅ ') + message);
+    };
+}
+
 function setTab(tab) {
-    ['overview','orders','listings','profile'].forEach(t => {
+    const tabs = ['overview', 'orders', 'listings', 'profile'];
+    
+    tabs.forEach(t => {
         const p = document.getElementById('panel-'+t);
         const b = document.getElementById('tab-'+t);
+        const mb = document.getElementById('btn-nav-'+t);
+        
+        // Toggle panel visibility
         if(p) p.classList.toggle('hidden', t !== tab);
+        
+        // Update top desktop tabs active states
         if(b) b.classList.toggle('active', t === tab);
+        
+        // Update mobile bottom nav active colors dynamically
+        if(mb) {
+            if (t === tab) {
+                mb.classList.add('text-[var(--primary)]');
+                mb.classList.remove('text-[var(--text-muted)]');
+            } else {
+                mb.classList.remove('text-[var(--primary)]');
+                mb.classList.add('text-[var(--text-muted)]');
+            }
+        }
     });
     history.replaceState(null,'','?tab='+tab);
 }
+
+// Initial active tab styling call
+document.addEventListener('DOMContentLoaded', () => {
+    const currentTab = new URLSearchParams(window.location.search).get('tab') || 'overview';
+    setTab(currentTab);
+});
 
 async function updateStatus(orderId, newStatus, btn) {
     const labels = { preparing:'Preparing',in_transit:'In Transit',ready_for_pickup:'Ready for Pickup' };
@@ -565,7 +606,7 @@ async function updateStatus(orderId, newStatus, btn) {
     form.append('status', newStatus);
 
     try {
-        const res  = await fetch('api/update_order_status.php', { method:'POST', body:form });
+        const res  = await fetch('update_order_status.php', { method:'POST', body:form });
         const data = await res.json();
         if (data.success) {
             showToast('Order status updated!', 'success');
