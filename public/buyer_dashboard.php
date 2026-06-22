@@ -134,7 +134,7 @@ include 'nav.php';
             </div>
             <div>
                 <h1 class="text-2xl font-extrabold text-[var(--text-main)] leading-tight flex items-center gap-2">
-                    👋 Welcome back, <?= htmlspecialchars(explode(' ',$buyer['name'])[0]) ?>
+                    Welcome back, <?= htmlspecialchars(explode(' ',$buyer['name'])[0]) ?>
                 </h1>
                 <p class="text-[var(--text-muted)] text-xs mt-1 font-medium flex items-center gap-1.5">
                     <i class="ri-calendar-line text-[var(--primary)]"></i> Member since <?= date('F Y', strtotime($buyer['created_at'])) ?>
@@ -157,6 +157,10 @@ include 'nav.php';
         <button onclick="setTab('profile')"   id="tab-profile"   class="tab-btn <?= $activeTab==='profile'?'active':'' ?>">
             <i class="ri-user-line text-base"></i>Profile Settings
         </button>
+
+        <a href="market_disputes.php" class="tab-btn text-red-600 hover:text-red-700 font-semibold">
+            <i class="ri-scales-3-line text-base"></i> Dispute Center
+        </a>
     </div>
 
     <!-- ===== TAB: OVERVIEW ===== -->
@@ -353,6 +357,10 @@ include 'nav.php';
                         </div>
                     </div>
                     <div class="flex-shrink-0">
+                        <a href="market_disputes.php" class="text-xs text-red-600 font-extrabold hover:underline uppercase tracking-wider flex items-center gap-1">
+                            <i class="ri-alert-line"></i> Dispute Order
+                        </a>
+
                         <?php if($canConfirm): ?>
                         <button onclick="confirmDelivery(<?= $o['id'] ?>, this)"
                             class="bg-green-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold hover:bg-green-700 transition flex items-center gap-2 shadow-md hover:shadow-lg">

@@ -6,7 +6,7 @@
  */
 session_start();
 require_once __DIR__ . '/../src/db.php';
-require_once __DIR__ . '/../src/momo.php'; // Your existing MoMo helper
+require_once __DIR__ . '/../src/momo.php'; 
 header('Content-Type: application/json');
 
 $user_id   = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;

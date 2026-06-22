@@ -18,7 +18,6 @@ $farmer = $pdo->prepare("SELECT id,name,email,phone,momo_phone,location,profile_
 $farmer->execute([$user_id]);
 $farmer = $farmer->fetch(PDO::FETCH_ASSOC);
 
-// ─── Stats ───────────────────────────────────────────────────────────────────
 $statsStmt = $pdo->prepare("
     SELECT
         COUNT(DISTINCT oi.order_id)                                                      AS total_orders,
@@ -35,7 +34,7 @@ $statsStmt = $pdo->prepare("
 $statsStmt->execute([$user_id]);
 $stats = $statsStmt->fetch(PDO::FETCH_ASSOC);
 
-// ─── Orders for this farmer ───────────────────────────────────────────────────
+// ─── Orders for this farmer
 $ordersStmt = $pdo->prepare("
     SELECT
         o.id AS order_id, o.order_status, o.payment_status, o.created_at AS order_date,
@@ -77,7 +76,7 @@ foreach ($rawItems as $row) {
     $orders[$oid]['items'][] = $row;
 }
 
-// ─── Produce listings ─────────────────────────────────────────────────────────
+// ─── Produce listings 
 $listingsStmt = $pdo->prepare("
     SELECT p.*, c.name AS category_name,
            (SELECT COUNT(*) FROM order_items oi WHERE oi.produce_id=p.id) AS total_orders
@@ -174,6 +173,10 @@ include 'nav.php';
         </button>
         <button onclick="setTab('listings')"  id="tab-listings"  class="tab-btn <?= $activeTab==='listings'?'active':'' ?> whitespace-nowrap"><i class="ri-store-2-line mr-1"></i>My Listings</button>
         <button onclick="setTab('profile')"   id="tab-profile"   class="tab-btn <?= $activeTab==='profile'?'active':'' ?> whitespace-nowrap"><i class="ri-user-line mr-1"></i>Profile</button>
+                
+        <a href="market_disputes.php" class="tab-btn whitespace-nowrap text-red-600 hover:text-red-700 flex items-center gap-1">
+            <i class="ri-scales-3-line"></i> Order Disputes
+        </a>
     </div>
 
     <!-- ===== TAB: OVERVIEW ===== -->
@@ -354,9 +357,14 @@ include 'nav.php';
                         <i class="ri-time-line"></i> Awaiting payment from buyer
                     </span>
                 </div>
+
                 <?php endif; ?>
             </div>
             <?php endforeach; ?>
+
+            <a href="market_disputes.php" class="text-xs text-red-600 font-semibold hover:underline flex items-center gap-1 py-2">
+                    <i class="ri-alert-line"></i> Dispute Order
+            </a>
         </div>
         <?php endif; ?>
     </div>
@@ -555,7 +563,7 @@ include 'nav.php';
 <script>
 if (typeof showToast !== 'function') {
     window.showToast = function(message, type) {
-        alert((type === 'error' ? '❌ ' : '✅ ') + message);
+        alert((type === 'error' ? ' ' : ' ') + message);
     };
 }
 

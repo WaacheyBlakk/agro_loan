@@ -22,7 +22,7 @@ if (empty($_POST['csrf_token']) || $_POST['csrf_token'] !== ($_SESSION['csrf_tok
     exit;
 }
 
-define('PLATFORM_FEE_PERCENT', 2.5);
+define('PLATFORM_FEE_PERCENT', 1.0);
 
 $delivery_name    = trim(filter_input(INPUT_POST,'delivery_name',FILTER_SANITIZE_SPECIAL_CHARS) ?? '');
 $delivery_phone   = trim(filter_input(INPUT_POST,'delivery_phone',FILTER_SANITIZE_SPECIAL_CHARS) ?? '');

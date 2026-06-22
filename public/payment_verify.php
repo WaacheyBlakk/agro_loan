@@ -1,9 +1,4 @@
 <?php
-/**
- * payment_verify.php
- * Polled by checkout.php JS every 5s.
- * Checks MoMo payment status; on confirmation: updates order, deducts stock, creates escrow records.
- */
 session_start();
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/momo.php';

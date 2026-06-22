@@ -9,8 +9,8 @@ $pdo       = getPDO();
 $user_role = $_SESSION['role'] ?? 'buyer';
 $is_logged = true;
 
-// Note: Ensure this percentage matches the one set in checkout_process.php (2.5%)
-define('PLATFORM_FEE_PERCENT', 2.5);
+// Note: Ensure this percentage matches the one set in checkout_process.php (1.0%)
+define('PLATFORM_FEE_PERCENT', 1.0);
 
 // Cart count for nav badge
 $cStmt = $pdo->prepare("SELECT COALESCE(SUM(quantity),0) FROM cart WHERE user_id=?");
@@ -150,21 +150,21 @@ include 'nav.php';
                         <label class="flex-1 relative cursor-pointer">
                             <input type="radio" name="momo_network" value="MTN" checked class="sr-only peer">
                             <div class="border-2 border-[var(--border)] peer-checked:border-yellow-400 peer-checked:bg-yellow-50 rounded-xl p-3 text-center transition">
-                                <div class="text-2xl mb-1">📱</div>
+                                <div class="text-2xl mb-1"></div>
                                 <div class="text-xs font-bold text-[var(--text-main)]">MTN MoMo</div>
                             </div>
                         </label>
                         <label class="flex-1 relative cursor-pointer">
                             <input type="radio" name="momo_network" value="Telecel" class="sr-only peer">
                             <div class="border-2 border-[var(--border)] peer-checked:border-red-400 peer-checked:bg-red-50 rounded-xl p-3 text-center transition">
-                                <div class="text-2xl mb-1">📡</div>
+                                <div class="text-2xl mb-1"></div>
                                 <div class="text-xs font-bold text-[var(--text-main)]">Telecel Cash</div>
                             </div>
                         </label>
                         <label class="flex-1 relative cursor-pointer">
                             <input type="radio" name="momo_network" value="AirtelTigo" class="sr-only peer">
                             <div class="border-2 border-[var(--border)] peer-checked:border-blue-400 peer-checked:bg-blue-50 rounded-xl p-3 text-center transition">
-                                <div class="text-2xl mb-1">🌐</div>
+                                <div class="text-2xl mb-1"></div>
                                 <div class="text-xs font-bold text-[var(--text-main)]">AT Money</div>
                             </div>
                         </label>
