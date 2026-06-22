@@ -524,6 +524,10 @@ if ($id && $app && $app['status'] !== 'completed') {
                 <i data-feather="credit-card"></i>
                 <span>Repayments</span>
             </a>
+            <a href="dispute_center.php" class="nav-link">
+                <i data-feather="alert-triangle"></i>
+                <span>Dispute Center</span>
+            </a>
             <a href="farmer_profile.php" class="nav-link">
                 <i data-feather="user"></i>
                 <span>Profile</span>

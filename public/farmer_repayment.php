@@ -449,6 +449,9 @@ $selected_loan_id = isset($_GET['loan_id']) ? (int)$_GET['loan_id'] : null;
         <a href="farmer_repayment.php" class="nav-link active">
             <i data-feather="credit-card"></i><span>Repayments</span>
         </a>
+        <a href="dispute_center.php" class="nav-link">
+            <i data-feather="alert-triangle"></i><span>Dispute Center</span>
+        </a>
         <a href="farmer_profile.php" class="nav-link">
             <i data-feather="user"></i><span>Profile</span>
         </a>

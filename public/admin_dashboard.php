@@ -29,6 +29,62 @@ $stats = [
                   (int)$pdo->query("SELECT COUNT(*) FROM buyers WHERE status='rejected'")->fetchColumn(),
 ];
 
+// Determine if we need to show a filtered list of users
+$view = $_GET['view'] ?? '';
+$allowed_views = ['farmers', 'agents', 'buyers', 'pending', 'verified', 'rejected'];
+$users_list = [];
+$list_title = '';
+
+if (in_array($view, $allowed_views)) {
+    try {
+        if ($view === 'farmers') {
+            $stmt = $pdo->prepare("SELECT id, name, email, 'farmer' AS role, status FROM users WHERE role='farmer'");
+            $stmt->execute();
+            $users_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $list_title = "Farmers List";
+        } elseif ($view === 'agents') {
+            $stmt = $pdo->prepare("SELECT id, name, email, 'agent' AS role, status FROM users WHERE role='agent'");
+            $stmt->execute();
+            $users_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $list_title = "Agents List";
+        } elseif ($view === 'buyers') {
+            $stmt = $pdo->prepare("SELECT id, name, email, 'buyer' AS role, status FROM buyers");
+            $stmt->execute();
+            $users_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $list_title = "Buyers List";
+        } elseif ($view === 'pending') {
+            $stmt = $pdo->prepare("
+                SELECT id, name, email, role, status FROM users WHERE status IN ('pending', 'unverified', 'submitted')
+                UNION ALL
+                SELECT id, name, email, 'buyer' AS role, status FROM buyers WHERE status IN ('pending', 'unverified', 'submitted')
+            ");
+            $stmt->execute();
+            $users_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $list_title = "Pending Accounts";
+        } elseif ($view === 'verified') {
+            $stmt = $pdo->prepare("
+                SELECT id, name, email, role, status FROM users WHERE status='verified'
+                UNION ALL
+                SELECT id, name, email, 'buyer' AS role, status FROM buyers WHERE status='approved'
+            ");
+            $stmt->execute();
+            $users_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $list_title = "Verified Users";
+        } elseif ($view === 'rejected') {
+            $stmt = $pdo->prepare("
+                SELECT id, name, email, role, status FROM users WHERE status='rejected'
+                UNION ALL
+                SELECT id, name, email, 'buyer' AS role, status FROM buyers WHERE status='rejected'
+            ");
+            $stmt->execute();
+            $users_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $list_title = "Rejected Accounts";
+        }
+    } catch (PDOException $e) {
+        $error_message = "Database query error: " . $e->getMessage();
+    }
+}
+
 $username = $_SESSION['name'] ?? "Admin";
 ?>
 
@@ -241,13 +297,22 @@ $username = $_SESSION['name'] ?? "Admin";
         display: flex;
         align-items: center;
         gap: 20px;
-        transition: transform 0.2s, box-shadow 0.2s;
-        border: 1px solid #f0f0f0;
+        transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+        border: 2px solid transparent;
+        text-decoration: none;
+        color: inherit;
+        cursor: pointer;
     }
 
     .stat-card:hover {
         transform: translateY(-4px);
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        border-color: #e5e7eb;
+    }
+
+    .stat-card.active {
+        border-color: var(--primary);
+        background: #f0fdf4;
     }
 
     .icon-box {
@@ -271,6 +336,74 @@ $username = $_SESSION['name'] ?? "Admin";
     .theme-teal { background: #f0fdfa; color: #0d9488; }
     .theme-red { background: #fef2f2; color: #dc2626; }
 
+    /* USER LIST TABLE */
+    .list-container {
+        background: var(--bg-card);
+        border-radius: 16px;
+        box-shadow: var(--shadow);
+        padding: 24px;
+        margin-top: 40px;
+        border: 1px solid #f0f0f0;
+    }
+
+    .list-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #f3f4f6;
+        padding-bottom: 12px;
+    }
+
+    .list-header h2 {
+        font-size: 18px;
+        font-weight: 600;
+        margin: 0;
+        color: var(--text-main);
+    }
+
+    .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+    }
+
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+    }
+
+    .data-table th, .data-table td {
+        padding: 12px 16px;
+        border-bottom: 1px solid #f3f4f6;
+    }
+
+    .data-table th {
+        background-color: #f9fafb;
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 13px;
+        text-transform: uppercase;
+    }
+
+    .data-table td {
+        font-size: 14px;
+        color: var(--text-main);
+    }
+
+    /* Badges */
+    .badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 9999px;
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: capitalize;
+    }
+    .badge-verified, .badge-approved { background: #d1fae5; color: #065f46; }
+    .badge-pending, .badge-unverified, .badge-submitted { background: #fef3c7; color: #92400e; }
+    .badge-rejected { background: #fee2e2; color: #991b1b; }
+
     /* Responsive */
     @media (max-width: 768px) {
         .sidebar { position: fixed; height: 100%; width: 0; padding: 0; overflow: hidden; }
@@ -285,7 +418,6 @@ $username = $_SESSION['name'] ?? "Admin";
     <!-- SIDEBAR -->
     <aside class="sidebar" id="sidebar">
         <div class="brand">
-            <!-- Placeholder for Logo if image fails -->
             <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
             <h2>AgroLoan Administrator</h2>
         </div>
@@ -295,9 +427,21 @@ $username = $_SESSION['name'] ?? "Admin";
                 <i data-feather="pie-chart"></i>
                 <span>Dashboard</span>
             </a>
+            <a href="admin_user_management.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'admin_user_management.php' ? 'active' : '' ?>">
+                <i data-feather="users"></i>
+                <span>User Management</span>
+            </a>
             <a href="admin_verifications.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'admin_verifications.php' ? 'active' : '' ?>">
                 <i data-feather="check-square"></i>
                 <span>Verifications</span>
+            </a>
+            <a href="admin_loan_oversight.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'admin_loan_oversight.php' ? 'active' : '' ?>">
+                <i data-feather="shield"></i>
+                <span>Loan Oversight</span>
+            </a>
+            <a href="admin_disputes.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'admin_disputes.php' ? 'active' : '' ?>">
+                <i data-feather="alert-triangle"></i>
+                <span>Dispute Center</span>
             </a>
             <a href="admin_profile.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'admin_profile.php' ? 'active' : '' ?>">
                 <i data-feather="user"></i>
@@ -336,12 +480,12 @@ $username = $_SESSION['name'] ?? "Admin";
         <div class="content">
             <div class="page-header">
                 <h1 class="page-title">Overview</h1>
-                <p class="page-subtitle">Welcome back! Here's what's happening with AgroLoan today.</p>
+                <p class="page-subtitle">Welcome back! Click any card to load associated users.</p>
             </div>
 
             <div class="stats-grid">
                 <!-- Farmers -->
-                <div class="stat-card">
+                <a href="?view=farmers" class="stat-card <?= $view === 'farmers' ? 'active' : '' ?>">
                     <div class="icon-box theme-blue">
                         <i data-feather="users"></i>
                     </div>
@@ -349,10 +493,10 @@ $username = $_SESSION['name'] ?? "Admin";
                         <h3>Total Farmers</h3>
                         <p><?= number_format($stats['farmers']); ?></p>
                     </div>
-                </div>
+                </a>
 
                 <!-- Agents -->
-                <div class="stat-card">
+                <a href="?view=agents" class="stat-card <?= $view === 'agents' ? 'active' : '' ?>">
                     <div class="icon-box theme-green">
                         <i data-feather="briefcase"></i>
                     </div>
@@ -360,10 +504,10 @@ $username = $_SESSION['name'] ?? "Admin";
                         <h3>Active Agents</h3>
                         <p><?= number_format($stats['agents']); ?></p>
                     </div>
-                </div>
+                </a>
 
                 <!-- Buyers -->
-                <div class="stat-card">
+                <a href="?view=buyers" class="stat-card <?= $view === 'buyers' ? 'active' : '' ?>">
                     <div class="icon-box theme-purple">
                         <i data-feather="shopping-bag"></i>
                     </div>
@@ -371,10 +515,10 @@ $username = $_SESSION['name'] ?? "Admin";
                         <h3>Total Buyers</h3>
                         <p><?= number_format($stats['buyers']); ?></p>
                     </div>
-                </div>
+                </a>
 
                 <!-- Pending -->
-                <div class="stat-card">
+                <a href="?view=pending" class="stat-card <?= $view === 'pending' ? 'active' : '' ?>">
                     <div class="icon-box theme-orange">
                         <i data-feather="clock"></i>
                     </div>
@@ -382,10 +526,10 @@ $username = $_SESSION['name'] ?? "Admin";
                         <h3>Pending Apps</h3>
                         <p><?= number_format($stats['pending']); ?></p>
                     </div>
-                </div>
+                </a>
 
                 <!-- Verified -->
-                <div class="stat-card">
+                <a href="?view=verified" class="stat-card <?= $view === 'verified' ? 'active' : '' ?>">
                     <div class="icon-box theme-teal">
                         <i data-feather="check-circle"></i>
                     </div>
@@ -393,10 +537,10 @@ $username = $_SESSION['name'] ?? "Admin";
                         <h3>Verified Users</h3>
                         <p><?= number_format($stats['verified']); ?></p>
                     </div>
-                </div>
+                </a>
 
                 <!-- Rejected -->
-                <div class="stat-card">
+                <a href="?view=rejected" class="stat-card <?= $view === 'rejected' ? 'active' : '' ?>">
                     <div class="icon-box theme-red">
                         <i data-feather="x-circle"></i>
                     </div>
@@ -404,8 +548,62 @@ $username = $_SESSION['name'] ?? "Admin";
                         <h3>Rejected</h3>
                         <p><?= number_format($stats['rejected']); ?></p>
                     </div>
-                </div>
+                </a>
             </div>
+
+            <!-- Dynamic User Table Display -->
+            <?php if (!empty($view) && in_array($view, $allowed_views)): ?>
+                <div class="list-container">
+                    <div class="list-header">
+                        <h2><?= htmlspecialchars($list_title) ?></h2>
+                        <span style="font-size: 13px; color: var(--text-muted);"><?= count($users_list) ?> item(s) found</span>
+                    </div>
+
+                    <?php if (isset($error_message)): ?>
+                        <div style="color: var(--danger); font-size: 14px; margin-bottom: 10px;">
+                            <?= htmlspecialchars($error_message) ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (count($users_list) > 0): ?>
+                                    <?php foreach ($users_list as $user): ?>
+                                        <tr>
+                                            <td><?= htmlspecialchars($user['id']) ?></td>
+                                            <td><?= htmlspecialchars($user['name'] ?? 'N/A') ?></td>
+                                            <td><?= htmlspecialchars($user['email'] ?? 'N/A') ?></td>
+                                            <td style="text-transform: capitalize;"><?= htmlspecialchars($user['role'] ?? 'N/A') ?></td>
+                                            <td>
+                                                <?php $status = strtolower($user['status'] ?? 'pending'); ?>
+                                                <span class="badge badge-<?= $status ?>">
+                                                    <?= htmlspecialchars($user['status'] ?? 'Pending') ?>
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <tr>
+                                        <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                                            No records found for this selection.
+                                        </td>
+                                    </tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            <?php endif; ?>
         </div>
     </main>
 

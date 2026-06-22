@@ -412,6 +412,10 @@ if (!isset($mode)) {
                 <i data-feather="credit-card"></i>
                 <span>Repayments</span>
             </a>
+            <a href="dispute_center.php" class="nav-link">
+                <i data-feather="alert-triangle"></i>
+                <span>Dispute Center</span>
+            </a>
             <a href="agent_profile.php" class="nav-link active">
                 <i data-feather="user"></i>
                 <span>My Profile</span>

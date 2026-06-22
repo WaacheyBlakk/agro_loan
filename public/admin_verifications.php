@@ -267,9 +267,21 @@ $username = $_SESSION['name'] ?? "Admin";
                 <i data-feather="pie-chart"></i>
                 <span>Dashboard</span>
             </a>
+            <a href="admin_user_management.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'admin_user_management.php' ? 'active' : '' ?>">
+                <i data-feather="users"></i>
+                <span>User Management</span>
+            </a>
             <a href="admin_verifications.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'admin_verifications.php' ? 'active' : '' ?>">
                 <i data-feather="check-square"></i>
                 <span>Verifications</span>
+            </a>
+            <a href="admin_loan_oversight.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'admin_loan_oversight.php' ? 'active' : '' ?>">
+                <i data-feather="shield"></i>
+                <span>Loan Oversight</span>
+            </a>
+            <a href="admin_disputes.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'admin_disputes.php' ? 'active' : '' ?>">
+                <i data-feather="alert-triangle"></i>
+                <span>Dispute Center</span>
             </a>
             <a href="admin_profile.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'admin_profile.php' ? 'active' : '' ?>">
                 <i data-feather="user"></i>

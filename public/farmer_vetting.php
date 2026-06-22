@@ -5,6 +5,46 @@ require_once __DIR__ . '/../src/db.php';
 
 $pdo = getPDO();
 
+// Automatically verify and add the rejection_reason column if it does not exist
+try {
+    $pdo->query("SELECT rejection_reason FROM loan_applications LIMIT 1");
+} catch (PDOException $e) {
+    try {
+        $pdo->exec("ALTER TABLE loan_applications ADD COLUMN rejection_reason TEXT NULL");
+    } catch (PDOException $ex) {
+        // Fallback in case of database permission restrictions
+    }
+}
+
+/**
+ * Sends an HTML email notification.
+ */
+function send_email_notification($to, $subject, $message) {
+    $headers = "MIME-Version: 1.0" . "\r\n";
+    $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
+    $headers .= "From: AgroLoan Notifications <no-reply@agroloan.com>" . "\r\n";
+    
+    return @mail($to, $subject, $message, $headers);
+}
+
+/**
+ * Sends an SMS notification (Configurable with standard SMS Gateways).
+ */
+function send_sms_notification($phone, $message) {
+    // Write SMS details to php error log for local tracking/development
+    error_log("SMS dispatched to {$phone}: {$message}");
+    
+    // To connect to a live gateway (e.g. Twilio, Arkesel, Hubtel), configure the API endpoints below:
+    /*
+    $apiKey = "YOUR_GATEWAY_API_KEY";
+    $senderId = "AgroLoan";
+    $url = "https://api.example.com/sms/send?key=" . urlencode($apiKey) . "&to=" . urlencode($phone) . "&msg=" . urlencode($message) . "&sender=" . urlencode($senderId);
+    @file_get_contents($url);
+    */
+    
+    return true;
+}
+
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'agent') {
     header("Location: login.php");
     exit;
@@ -17,16 +57,74 @@ $successMessage = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['application_id'], $_POST['action'])) {
     $application_id = $_POST['application_id'];
     $action = ($_POST['action'] === 'approve') ? 'approved' : 'rejected';
+    $rejection_reason = $_POST['rejection_reason'] ?? null;
 
-    $stmt = $pdo->prepare("UPDATE loan_applications SET status = ? WHERE id = ? AND agent_id = ?");
-    if ($stmt->execute([$action, $application_id, $agent_id])) {
+    if ($action === 'rejected') {
+        $stmt = $pdo->prepare("UPDATE loan_applications SET status = ?, rejection_reason = ? WHERE id = ? AND agent_id = ?");
+        $params = [$action, $rejection_reason, $application_id, $agent_id];
+    } else {
+        $stmt = $pdo->prepare("UPDATE loan_applications SET status = ?, rejection_reason = NULL WHERE id = ? AND agent_id = ?");
+        $params = [$action, $application_id, $agent_id];
+    }
+
+    if ($stmt->execute($params)) {
         $successMessage = ($action === 'approved')
             ? 'Application Approved Successfully!'
             : 'Application Rejected!';
+
+        // Retrieve farmer contact details and application details for notification dispatch
+        $infoStmt = $pdo->prepare("
+            SELECT la.title, la.amount, u.name AS farmer_name, u.email AS farmer_email, u.phone AS farmer_phone
+            FROM loan_applications la
+            JOIN users u ON la.farmer_id = u.id
+            WHERE la.id = ?
+        ");
+        $infoStmt->execute([$application_id]);
+        $loanInfo = $infoStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($loanInfo) {
+            $f_name = $loanInfo['farmer_name'];
+            $f_email = $loanInfo['farmer_email'];
+            $f_phone = $loanInfo['farmer_phone'];
+            $l_title = $loanInfo['title'];
+            $l_amount = number_format((float)$loanInfo['amount'], 2);
+
+            if ($action === 'approved') {
+                $subject = "AgroLoan Application Approved: " . $l_title;
+                $email_body = "
+                    <h2>Congratulations, {$f_name}!</h2>
+                    <p>Your loan application for <strong>{$l_title}</strong> of amount <strong>GHS {$l_amount}</strong> has been <strong>approved</strong>.</p>
+                    <p>The funds will be disbursed according to your requested stages. Log in to your profile to view progress.</p>
+                    <br>
+                    <p>Best regards,<br>AgroLoan Team</p>
+                ";
+                $sms_text = "Hello {$f_name}, your AgroLoan application '{$l_title}' of GHS {$l_amount} has been approved! Log in to view details.";
+            } else {
+                $subject = "AgroLoan Application Update: " . $l_title;
+                $reason_snippet = !empty($rejection_reason) ? $rejection_reason : "Please check the portal for feedback.";
+                $email_body = "
+                    <h2>Hello, {$f_name}</h2>
+                    <p>We regret to inform you that your loan application for <strong>{$l_title}</strong> of amount <strong>GHS {$l_amount}</strong> was not approved at this time.</p>
+                    <p><strong>Reason provided by the agent:</strong><br><em>{$reason_snippet}</em></p>
+                    <p>You can re-evaluate, address the agent's concerns, and resubmit your application through your dashboard.</p>
+                    <br>
+                    <p>Best regards,<br>AgroLoan Team</p>
+                ";
+                $sms_text = "Hello {$f_name}, your application '{$l_title}' was rejected. Reason: '{$reason_snippet}'. You can modify and resubmit it now.";
+            }
+
+            // Dispatch Notifications
+            if (!empty($f_email)) {
+                send_email_notification($f_email, $subject, $email_body);
+            }
+            if (!empty($f_phone)) {
+                send_sms_notification($f_phone, $sms_text);
+            }
+        }
     }
 }
 
-// Fetching updated details from the users table
+// Fetching updated details from the users table including rejection_reason
 $stmt = $pdo->prepare("
     SELECT 
         la.id AS application_id,
@@ -34,6 +132,7 @@ $stmt = $pdo->prepare("
         la.amount,
         la.purpose,
         la.status,
+        la.rejection_reason,
         la.created_at,
         u.name AS farmer_name,
         u.email AS farmer_email,
@@ -260,7 +359,7 @@ $applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
         background-color: var(--bg-card);
         margin: 5% auto; padding: 0; border-radius: 16px;
         box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-        width: 90%; max-width: 800px; /* Increased width to support images cleanly */
+        width: 90%; max-width: 800px;
         animation: slideIn 0.3s ease-out;
     }
 
@@ -381,6 +480,10 @@ $applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <i data-feather="credit-card"></i>
                 <span>Repayments</span>
             </a>
+            <a href="dispute_center.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'dispute_center.php' ? 'active' : '' ?>">
+                <i data-feather="alert-triangle"></i>
+                <span>Dispute Center</span>
+            </a>
             <a href="agent_profile.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'agent_profile.php' ? 'active' : '' ?>">
                 <i data-feather="user"></i>
                 <span>My Profile</span>
@@ -475,20 +578,21 @@ $applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                             data-title="<?= htmlspecialchars($app['title']) ?>"
                                             data-date="<?= date('F d, Y', strtotime($app['created_at'])) ?>"
                                             data-status="<?= htmlspecialchars($app['status']) ?>"
+                                            data-rejection-reason="<?= htmlspecialchars($app['rejection_reason'] ?? '') ?>"
                                             data-purpose="<?= htmlspecialchars($app['purpose']) ?>">
                                         <i data-feather="eye" style="width:14px; height:14px;"></i> View
                                     </button>
 
                                     <?php if ($app['status'] === 'pending'): ?>
-                                        <form method="POST" class="action-form">
+                                        <form method="POST" class="action-form approve-form" style="display:inline-block; margin-right:5px;">
                                             <input type="hidden" name="application_id" value="<?= $app['application_id'] ?>">
                                             <button type="submit" name="action" value="approve" class="btn-sm btn-approve" title="Approve">
                                                 <i data-feather="check" style="width:14px; height:14px;"></i>
                                             </button>
                                         </form>
-                                        <form method="POST" class="action-form">
+                                        <form method="POST" class="action-form reject-form" style="display:inline-block; margin-right:5px;">
                                             <input type="hidden" name="application_id" value="<?= $app['application_id'] ?>">
-                                            <button type="submit" name="action" value="reject" class="btn-sm btn-reject" title="Reject">
+                                            <button type="button" class="btn-sm btn-reject trigger-reject-btn" title="Reject">
                                                 <i data-feather="x" style="width:14px; height:14px;"></i>
                                             </button>
                                         </form>
@@ -562,6 +666,13 @@ $applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <span class="detail-label">Application Status</span>
                             <span class="detail-value" id="m_status">Pending</span>
                         </div>
+                        <!-- Rejection Reason Container inside Modal -->
+                        <div class="detail-row" id="m_rejection_reason_container" style="display: none; margin-top: 15px;">
+                            <span class="detail-label" style="color: var(--danger);">Rejection Reason</span>
+                            <div class="detail-full-text" id="m_rejection_reason" style="border-color: #fecaca; background: #fef2f2; color: #991b1b;">
+                                Reason goes here...
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -622,6 +733,8 @@ $applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
         const m_date = document.getElementById("m_date");
         const m_status = document.getElementById("m_status");
         const m_purpose = document.getElementById("m_purpose");
+        const m_rejection_reason_container = document.getElementById("m_rejection_reason_container");
+        const m_rejection_reason = document.getElementById("m_rejection_reason");
 
         const img_photo = document.getElementById("img_photo");
         const no_photo = document.getElementById("no_photo");
@@ -668,6 +781,15 @@ $applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 else if(status === 'approved') m_status.style.color = 'var(--success)';
                 else m_status.style.color = 'var(--danger)';
 
+                // Handle rejection reason display in modal
+                const rejectionReasonVal = this.getAttribute("data-rejection-reason");
+                if (status === 'rejected' && rejectionReasonVal && rejectionReasonVal.trim() !== '') {
+                    m_rejection_reason.textContent = rejectionReasonVal;
+                    m_rejection_reason_container.style.display = "block";
+                } else {
+                    m_rejection_reason_container.style.display = "none";
+                }
+
                 // Handle Farmer Profile Photo Preview
                 const photoVal = this.getAttribute("data-photo");
                 const resolvedPhotoPath = resolveImagePath(photoVal);
@@ -703,6 +825,52 @@ $applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
             });
         });
 
+        // Intercept Rejection Buttons
+        const rejectButtons = document.querySelectorAll(".trigger-reject-btn");
+        rejectButtons.forEach(btn => {
+            btn.addEventListener("click", function(e) {
+                const form = this.closest("form");
+                
+                Swal.fire({
+                    title: 'Reject Application',
+                    text: 'Please provide a clear explanation for rejecting this loan application so the farmer can update and resubmit:',
+                    input: 'textarea',
+                    inputPlaceholder: 'Enter rejection reason here...',
+                    inputAttributes: {
+                        'aria-label': 'Type your rejection reason here'
+                    },
+                    showCancelButton: true,
+                    confirmButtonColor: '#dc2626',
+                    cancelButtonColor: '#6b7280',
+                    confirmButtonText: 'Submit Rejection',
+                    preConfirm: (value) => {
+                        if (!value || value.trim() === '') {
+                            Swal.showValidationMessage('A rejection reason is required.');
+                        }
+                        return value;
+                    }
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        // Create action input
+                        const actionInput = document.createElement("input");
+                        actionInput.type = "hidden";
+                        actionInput.name = "action";
+                        actionInput.value = "reject";
+                        form.appendChild(actionInput);
+
+                        // Create reason input
+                        const reasonInput = document.createElement("input");
+                        reasonInput.type = "hidden";
+                        reasonInput.name = "rejection_reason";
+                        reasonInput.value = result.value;
+                        form.appendChild(reasonInput);
+
+                        form.submit();
+                    }
+                });
+            });
+        });
+
         // Close modal when X is clicked
         closeBtn.addEventListener("click", () => {
             modal.style.display = "none";
@@ -719,13 +887,12 @@ $applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <?php if (!empty($successMessage)): ?>
             Swal.fire({
                 icon: 'success',
-                title: 'Success!',
+                title: 'Done',
                 text: '<?= $successMessage ?>',
                 showConfirmButton: false,
                 timer: 2000,
                 confirmButtonColor: '#1e40af'
             }).then(() => {
-                // Remove post data
                 window.location.href = 'farmer_vetting.php';
             });
         <?php endif; ?>

@@ -280,9 +280,13 @@ $total_proofs = count($proofs);
                 <i data-feather="check-square"></i>
                 <span>Proof Verify</span>
             </a>
-             <a href="agent_repayments.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'agent_repayments.php' ? 'active' : '' ?>">
+            <a href="agent_repayments.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'agent_repayments.php' ? 'active' : '' ?>">
                 <i data-feather="credit-card"></i>
                 <span>Repayments</span>
+            </a>
+            <a href="dispute_center.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'dispute_center.php' ? 'active' : '' ?>">
+                <i data-feather="alert-triangle"></i>
+                <span>Dispute Center</span>
             </a>
             <a href="agent_profile.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'agent_profile.php' ? 'active' : '' ?>">
                 <i data-feather="user"></i>

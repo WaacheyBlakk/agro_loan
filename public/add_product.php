@@ -317,6 +317,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <i data-feather="credit-card"></i>
                 <span>Repayments</span>
             </a>
+            <a href="dispute_center.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'dispute_center.php' ? 'active' : '' ?>">
+                <i data-feather="alert-triangle"></i>
+                <span>Dispute Center</span>
+            </a>
             <a href="farmer_profile.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'farmer_profile.php' ? 'active' : '' ?>">
                 <i data-feather="user"></i>
                 <span>Profile</span>
