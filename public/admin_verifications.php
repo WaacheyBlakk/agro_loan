@@ -279,6 +279,10 @@ $username = $_SESSION['name'] ?? "Admin";
                 <i data-feather="shield"></i>
                 <span>Loan Oversight</span>
             </a>
+            <a href="admin_marketplace_oversight.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'admin_marketplace_oversight.php' ? 'active' : '' ?>">
+                <i data-feather="shopping-bag"></i>
+                <span>Market Oversight</span>
+            </a>
             <a href="admin_disputes.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'admin_disputes.php' ? 'active' : '' ?>">
                 <i data-feather="alert-triangle"></i>
                 <span>Dispute Center</span>
