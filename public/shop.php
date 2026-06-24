@@ -375,7 +375,7 @@ function getStarRating($id) {
                 <a href="buyer_dashboard.php" title="Dashboard"><i class="ri-user-line text-xl"></i></a>
                 <a href="logout.php" class="text-red-500 hover:text-red-600"><i class="ri-logout-box-r-line text-xl"></i></a>
             <?php else: ?>
-                <a href="buyers_login.php" class="btn-login">Login</a>
+                <a href="login.php" class="btn-login">Login</a>
                 <a href="buyers_registration.php" class="btn-login">Register</a>
             <?php endif; ?>
         </nav>

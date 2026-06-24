@@ -3,7 +3,7 @@ session_start();
 require_once __DIR__ . '/../src/db.php';
 
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
-if (!$user_id) { header('Location: buyers_login.php'); exit; }
+if (!$user_id) { header('Location: login.php'); exit; }
 
 $pdo      = getPDO();
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);

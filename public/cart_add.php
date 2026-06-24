@@ -6,7 +6,7 @@ header('Content-Type: application/json');
 
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
 if (!$user_id) {
-    echo json_encode(['success' => false, 'message' => 'Please log in to add items to cart', 'redirect' => 'buyers_login.php']);
+    echo json_encode(['success' => false, 'message' => 'Please log in to add items to cart', 'redirect' => 'login.php']);
     exit;
 }
 

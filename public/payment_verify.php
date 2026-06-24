@@ -56,7 +56,8 @@ if ($apiStatus === 'successful' || $apiStatus === 'approved') {
         $itemsStmt->execute([$order_id]);
         $items = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $feePercent = 2.5;
+        // Platform fee
+        $feePercent = 1.0;
 
         foreach ($items as $item) {
             // Deduct stock safely
@@ -64,9 +65,11 @@ if ($apiStatus === 'successful' || $apiStatus === 'approved') {
                 UPDATE produce_listings SET bags_available = GREATEST(0, bags_available - ?) WHERE id=?
             ")->execute([$item['quantity'], $item['produce_id']]);
 
-            // Create escrow record (net of platform fee portion)
-            $feeAmount    = round($item['subtotal'] * ($feePercent / 100), 2);
-            $farmerAmount = $item['subtotal'] - $feeAmount;
+            // Calculate the platform fee portion for accounting/auditing purposes
+            $feeAmount = round($item['subtotal'] * ($feePercent / 100), 2);
+            
+            // Money the farmer receives
+            $farmerAmount = $item['subtotal']; 
 
             $pdo->prepare("
                 INSERT INTO escrow (order_id, order_item_id, farmer_id, amount, platform_fee_portion, status)
@@ -74,7 +77,7 @@ if ($apiStatus === 'successful' || $apiStatus === 'approved') {
             ")->execute([$order_id, $item['id'], $item['farmer_id'], $farmerAmount, $feeAmount]);
         }
 
-        // Add tracking entry safely (handling updated_by requirements)
+        // Add tracking entry safely
         $pdo->prepare("
             INSERT INTO order_tracking (order_id, status, notes, updated_by) VALUES (?,?,?,?)
         ")->execute([$order_id, 'payment_confirmed', 'Payment received and confirmed. Funds held in escrow.', $user_id]);

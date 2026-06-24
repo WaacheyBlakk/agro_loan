@@ -2,7 +2,7 @@
 session_start();
 require_once __DIR__ . '/../src/db.php';
 $pdo = getPDO();
-if (!isset($_SESSION['buyer_id'])) { header('Location: buyers_login.php'); exit; }
+if (!isset($_SESSION['buyer_id'])) { header('Location: login.php'); exit; }
 $buyer_id = $_SESSION['buyer_id'];
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: checkout.php'); exit; }

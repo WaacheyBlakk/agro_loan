@@ -3,6 +3,28 @@
 session_start();
 require_once __DIR__ . '/../src/functions.php'; 
 
+// Conditionally require database connection helper if it exists
+if (file_exists(__DIR__ . '/../src/db.php')) {
+    require_once __DIR__ . '/../src/db.php';
+}
+
+// 1. Redirect users who are already logged in to their respective portals
+if (isset($_SESSION['role'])) {
+    if ($_SESSION['role'] === 'admin') {
+        header('Location: admin_dashboard.php');
+        exit;
+    } elseif ($_SESSION['role'] === 'farmer') {
+        header('Location: farmer_dashboard.php');
+        exit;
+    } elseif ($_SESSION['role'] === 'agent') {
+        header('Location: agent_dashboard.php');
+        exit;
+    } elseif ($_SESSION['role'] === 'buyer') {
+        header('Location: shop.php');
+        exit;
+    }
+}
+
 $error = '';
 $login_success = false;
 $redirect_url = '';
@@ -17,24 +39,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = trim($_POST['password'] ?? '');
 
     if ($email && $password) {
-        // Mock verification for context 
+        // Step 1: Attempt to verify user against general accounts (Admin, Farmer, Agent)
         $user = verify_user($email, $password);
 
         if ($user) {
-            // Set Session Data
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['role'] = $user['role'];
-            $_SESSION['name'] = $user['name'];
-            $_SESSION['email'] = $user['email'];
-
-            // Check Status
+            // Check verification status for general users
             if ($user['status'] !== 'verified') {
                 $error = "Your account is pending admin verification.";
-                session_destroy(); 
             } else {
+                // Set Session Data for general accounts
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['id'] = $user['id']; // compatibility key
+                $_SESSION['role'] = $user['role'];
+                $_SESSION['name'] = $user['name'];
+                $_SESSION['email'] = $user['email'];
+
                 $login_success = true;
 
-                // Determine Redirect
+                // Determine Redirect Target
                 if ($user['role'] === 'admin') {
                     $redirect_url = 'admin_dashboard.php';
                 } elseif ($user['role'] === 'farmer') {
@@ -44,21 +66,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $error = "Unknown user role.";
                     $login_success = false;
+                    session_destroy();
                 }
             }
         } else {
-            $error = "Invalid email or password.";
+            // Step 2: Fallback to authenticating as a Buyer if database function is available
+            if (function_exists('getPDO')) {
+                try {
+                    $pdo = getPDO();
+                    $stmt = $pdo->prepare("SELECT * FROM buyers WHERE email = ? LIMIT 1");
+                    $stmt->execute([$email]);
+                    $buyer = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                    if ($buyer && password_verify($password, $buyer['password'])) {
+                        // Check verification status for Buyers
+                        if ($buyer['status'] !== 'approved') {
+                            if (in_array($buyer['status'], ['pending', 'submitted', 'unverified'])) {
+                                $error = "Your profile is awaiting administrator verification. Access is restricted until approved.";
+                            } elseif (in_array($buyer['status'], ['denied', 'rejected'])) {
+                                $error = "Your account application has been declined. Please contact administration support.";
+                            } else {
+                                $error = "Your account is unverified. Please check back later.";
+                            }
+                        } else {
+                            session_regenerate_id(true); 
+                            $_SESSION['user_id'] = $buyer['id'];
+                            $_SESSION['id'] = $buyer['id']; // compatibility key
+                            $_SESSION['name'] = $buyer['name']; 
+                            $_SESSION['email'] = $buyer['email'] ?? $email;
+                            $_SESSION['role'] = 'buyer';      // Explicitly set role
+                            
+                            $login_success = true;
+                            $redirect_url = 'shop.php';
+                        }
+                    } else {
+                        $error = "Invalid email or password.";
+                    }
+                } catch (Exception $e) {
+                    $error = "Database error: " . $e->getMessage();
+                }
+            } else {
+                $error = "Invalid email or password.";
+            }
         }
-   } else {
-    $error = "Please enter both email and password.";
-   }
+    } else {
+        $error = "Please enter both email and password.";
+    }
 }
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Login | Agro Loan</title>
+<title>Login | Agro Loan & Market</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <!-- Fonts -->
@@ -74,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <style>
 :root {
-    /* --- SYSTEM VARIABLES (From Register.php) --- */
+    /* --- SYSTEM VARIABLES --- */
     --primary: #15803d;       
     --primary-dark: #14532d;  
     --accent: #22c55e;        
@@ -377,11 +437,29 @@ main {
     padding: 14px; border-radius: 12px; margin-bottom: 20px;
     font-size: 0.9rem; display: flex; align-items: center; gap: 10px;
 }
+body.dark .alert-error {
+    background: #7f1d1d; color: #fecaca; border-color: #991b1b;
+}
+
+.alert-success {
+    background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0;
+    padding: 14px; border-radius: 12px; margin-bottom: 20px;
+    font-size: 0.9rem; display: flex; align-items: center; gap: 10px;
+}
+body.dark .alert-success {
+    background: #064e3b; color: #a7f3d0; border-color: #047857;
+}
 
 .links {
     margin-top: 25px;
-    display: flex; justify-content: space-between; align-items: center;
+    display: flex; flex-direction: column; gap: 12px;
     font-size: 0.9rem;
+}
+.links-top {
+    display: flex; justify-content: space-between; align-items: center; width: 100%;
+}
+.links-bottom {
+    text-align: center; font-size: 0.85rem; border-top: 1px solid var(--border); padding-top: 15px; margin-top: 5px;
 }
 .links a { color: var(--text-muted); text-decoration: none; transition: 0.2s; }
 .links a:hover { color: var(--primary); }
@@ -483,9 +561,18 @@ footer {
                 <i class="ri-plant-line"></i>
             </div>
             <h2>Welcome Back</h2>
-            <p>Access your dashboard to continue</p>
+            <p>Access your account to continue</p>
         </div>
 
+        <!-- Buyer Registration Success Alert -->
+        <?php if (isset($_GET['registered']) && $_GET['registered'] == 1): ?>
+            <div class="alert-success">
+                <i class="ri-checkbox-circle-fill"></i>
+                <span>Registration complete. Your profile has been sent to the administrator for verification.</span>
+            </div>
+        <?php endif; ?>
+
+        <!-- Error Alert -->
         <?php if ($error): ?>
             <div class="alert-error">
                 <i class="ri-error-warning-fill"></i> 
@@ -493,11 +580,11 @@ footer {
             </div>
         <?php endif; ?>
 
-        <form method="POST" action="" id="loginForm">
+        <form method="POST" action="" id="loginForm" onsubmit="document.getElementById('submitBtn').disabled = true;">
             <div class="form-group">
                 <div class="input-wrapper">
                     <i class="ri-mail-line field-icon"></i>
-                    <input type="email" name="email" placeholder="farmer@example.com" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>
+                    <input type="email" name="email" placeholder="you@example.com" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>
                 </div>
             </div>
             
@@ -509,14 +596,19 @@ footer {
                 </div>
             </div>
 
-            <button type="submit" class="btn-primary">
+            <button type="submit" id="submitBtn" class="btn-primary">
                 Sign In <i class="ri-arrow-right-line"></i>
             </button>
         </form>
 
         <div class="links">
-            <a href="forgot_password.php">Forgot Password?</a>
-            <span>New here? <a href="register.php" class="register-link">Create Account</a></span>
+            <div class="links-top">
+                <a href="forgot_password.php">Forgot Password?</a>
+                <a href="shop.php"><i class="ri-arrow-left-line"></i> Back to Shop</a>
+            </div>
+            <div class="links-bottom">
+                <div>New User? <a href="register.php" class="register-link">Create Account</a></div>
+            </div>
         </div>
     </div>
 </main>
@@ -620,12 +712,11 @@ footer {
 
     // --- Login Success Animation ---
     <?php if ($login_success && $redirect_url): ?>
-        // Force dark mode alert style if theme is dark
         const isDarkTheme = body.classList.contains('dark');
         
         Swal.fire({
             title: 'Login Successful!',
-            text: 'Redirecting you to the dashboard...',
+            text: 'Redirecting...',
             icon: 'success',
             timer: 2000,
             timerProgressBar: true,

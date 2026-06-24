@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $stmt->execute([$name, $email, $phone, $hash]);
                 // Redirect to login with success flag
-                header('Location: buyers_login.php?registered=1');
+                header('Location: login.php?registered=1');
                 exit;
             } catch (PDOException $e) {
                 // Log error internally in a real app
@@ -227,7 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="mt-8 text-center border-t border-gray-100 pt-6">
                 <p class="text-sm text-gray-600">
                     Already have an account? 
-                    <a href="buyers_login.php" class="font-bold text-agro-600 hover:text-agro-700 hover:underline">Login here</a>
+                    <a href="login.php" class="font-bold text-agro-600 hover:text-agro-700 hover:underline">Login here</a>
                 </p>
                 <div class="mt-4">
                     <a href="shop.php" class="text-xs text-gray-400 hover:text-gray-600 flex items-center justify-center gap-1">
