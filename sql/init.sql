@@ -1,4 +1,10 @@
 --
+-- Database: `agro_loan`
+--
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `agent_actions`
 --
 
@@ -34,6 +40,8 @@ CREATE TABLE `agent_profiles` (
   `gps_address` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- --------------------------------------------------------
+
 --
 -- Table structure for table `buyers`
 --
@@ -50,8 +58,15 @@ CREATE TABLE `buyers` (
   `location` varchar(200) DEFAULT NULL,
   `profile_bio` text DEFAULT NULL,
   `reset_token_hash` varchar(64) DEFAULT NULL,
-  `reset_token_expires_at` datetime DEFAULT NULL
+  `reset_token_expires_at` datetime DEFAULT NULL,
+  `id_card` varchar(255) DEFAULT NULL,
+  `id_card_number` varchar(100) DEFAULT NULL,
+  `passport_photo` varchar(255) DEFAULT NULL,
+  `digital_address` varchar(100) DEFAULT NULL,
+  `city` varchar(100) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
 
 --
 -- Table structure for table `buyer_profiles`
@@ -143,6 +158,40 @@ CREATE TABLE `disbursements` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `disputes`
+--
+
+CREATE TABLE `disputes` (
+  `id` int(11) NOT NULL,
+  `loan_id` int(11) NOT NULL,
+  `creator_id` int(11) NOT NULL,
+  `defendant_id` int(11) NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `description` text NOT NULL,
+  `status` varchar(20) DEFAULT 'pending',
+  `admin_decision` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `dispute_evidence`
+--
+
+CREATE TABLE `dispute_evidence` (
+  `id` int(11) NOT NULL,
+  `dispute_id` int(11) NOT NULL,
+  `uploader_id` int(11) NOT NULL,
+  `filename` varchar(255) NOT NULL,
+  `file_type` varchar(50) NOT NULL,
+  `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `escrow`
 --
 
@@ -201,7 +250,8 @@ CREATE TABLE `loan_applications` (
   `current_stage` int(4) DEFAULT 1,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `disbursed_amount` decimal(10,2) DEFAULT 0.00,
-  `outstanding_balance` decimal(12,2) DEFAULT NULL COMMENT 'Remaining repayable amount (principal + interest). NULL = not yet calculated'
+  `outstanding_balance` decimal(12,2) DEFAULT NULL COMMENT 'Remaining repayable amount (principal + interest). NULL = not yet calculated',
+  `rejection_reason` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -243,6 +293,44 @@ CREATE TABLE `loan_stages` (
   `status` enum('pending','verified','rejected','awaiting_disbursement','disbursed','disbursement_rejected') DEFAULT 'pending',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `disbursed` tinyint(1) DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `market_disputes`
+--
+
+CREATE TABLE `market_disputes` (
+  `id` int(11) NOT NULL,
+  `order_id` int(11) NOT NULL,
+  `initiator_id` int(11) NOT NULL,
+  `initiator_role` enum('buyer','farmer') NOT NULL,
+  `defendant_id` int(11) NOT NULL,
+  `defendant_role` enum('buyer','farmer') NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `description` text NOT NULL,
+  `status` enum('open','under_review','resolved','dismissed') DEFAULT 'open',
+  `decision` text DEFAULT NULL,
+  `decision_date` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `market_dispute_evidence`
+--
+
+CREATE TABLE `market_dispute_evidence` (
+  `id` int(11) NOT NULL,
+  `dispute_id` int(11) NOT NULL,
+  `submitter_id` int(11) NOT NULL,
+  `submitter_role` enum('buyer','farmer','admin') NOT NULL,
+  `file_path` varchar(255) NOT NULL,
+  `notes` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -387,6 +475,7 @@ CREATE TABLE `users` (
   `profile_bio` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+
 -- --------------------------------------------------------
 
 --
@@ -399,4 +488,5 @@ CREATE TABLE `wishlist_items` (
   `product_id` int(11) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
