@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/config.php';
 require_once __DIR__ . '/../src/sessions.php';
 
@@ -9,11 +11,7 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
 }
 
 // DB connection
-$conn = new mysqli("localhost", "root", "", "agro_loan");
-
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+$pdo = getPDO();
 
 // Fetch users and buyers awaiting verification using a UNION query
 $query = "
@@ -26,7 +24,7 @@ $query = "
     WHERE status IN ('pending', 'unverified', 'submitted')
     ORDER BY created_at DESC
 ";
-$result = $conn->query($query);
+$pendingUsers = $pdo->query($query)->fetchAll(PDO::FETCH_ASSOC);
 
 $username = $_SESSION['name'] ?? "Admin";
 ?>
@@ -348,7 +346,7 @@ $username = $_SESSION['name'] ?? "Admin";
                             </tr>
                         </thead>
                         <tbody>
-                            <?php while ($row = $result->fetch_assoc()): ?>
+                            <?php foreach ($pendingUsers as $row): ?>
                             <tr>
                                 <td>
                                     <div class="user-cell">
@@ -380,9 +378,9 @@ $username = $_SESSION['name'] ?? "Admin";
                                     </a>
                                 </td>
                             </tr>
-                            <?php endwhile; ?>
+                            <?php endforeach; ?>
 
-                            <?php if ($result->num_rows === 0): ?>
+                            <?php if (count($pendingUsers) === 0): ?>
                             <tr>
                                 <td colspan="6">
                                     <div class="empty-state">

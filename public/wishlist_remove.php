@@ -1,8 +1,17 @@
 <?php
-// wishlist_remove.php — AJAX endpoint
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+// wishlist_remove.php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 header('Content-Type: application/json');
+
+if (!csrf_verify_json()) {
+    echo json_encode(['success' => false, 'message' => 'Invalid request token. Please refresh the page and try again.']);
+    exit;
+}
 
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
 if (!$user_id) { 

@@ -1,9 +1,23 @@
 <?php
-session_start();
-
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+//shop.php
 require_once __DIR__ . '/../src/db.php';
 
 $pdo = getPDO(); 
+
+// DATABASE UPGRADE: Ensure the 'status' column exists in 'produce_listings' for visibility toggling
+try {
+    $colCheck = $pdo->query("SHOW COLUMNS FROM `produce_listings` LIKE 'status'");
+    if ($colCheck && $colCheck->rowCount() === 0) {
+        $pdo->exec("ALTER TABLE `produce_listings` ADD COLUMN `status` VARCHAR(50) NOT NULL DEFAULT 'active'");
+    }
+} catch (Exception $e) {
+    // Fail silently if table alterations are restricted or already modified
+}
 
 // 1. HANDLE PARAMS & SANITIZATION
 $page = filter_input(INPUT_GET, 'page', FILTER_VALIDATE_INT);
@@ -21,6 +35,9 @@ if ($max_price !== false && $max_price < 0) $max_price = 0;
 // 2. BUILD QUERY CONDITIONS
 $conditions = [];
 $params = [];
+
+// Enforce that only active listings are shown in the shop
+$conditions[] = "p.status NOT IN ('inactive', 'draft', 'hidden', 'deactivated')";
 
 if (!empty($keyword)) {
     $conditions[] = "(p.produce_name LIKE ? OR p.description LIKE ?)";
@@ -70,7 +87,7 @@ $countStmt->execute($params);
 $total_items = $countStmt->fetchColumn();
 $total_pages = ceil($total_items / $items_per_page);
 
-// 5. FETCH DATA
+// 5. FETCH DATA (Added p.farmer_id to SELECT fields)
 $sql = "
     SELECT 
         p.id, 
@@ -80,6 +97,8 @@ $sql = "
         p.bags_available, 
         p.description, 
         p.category_id,
+        p.farmer_id,
+        p.status,
         u.name AS farmer_name, 
         c.name AS category_name,
         p.created_at
@@ -122,6 +141,7 @@ function buildUrl($newParams = []) {
 
 $is_logged = isset($_SESSION['user_id']) || isset($_SESSION['id']);
 $user_role = $_SESSION['role'] ?? null;
+$current_user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
 
 function getStarRating($id) {
     $rating = 3 + ($id % 3); 
@@ -376,7 +396,7 @@ function getStarRating($id) {
                 <a href="logout.php" class="text-red-500 hover:text-red-600"><i class="ri-logout-box-r-line text-xl"></i></a>
             <?php else: ?>
                 <a href="login.php" class="btn-login">Login</a>
-                <a href="buyers_registration.php" class="btn-login">Register</a>
+                <a href="register.php" class="btn-login">Register</a>
             <?php endif; ?>
         </nav>
         
@@ -410,7 +430,7 @@ function getStarRating($id) {
 
 <div class="w-full px-4 sm:px-6 pt-24 sm:pt-32 pb-8 flex items-start gap-6">
 
-    <!-- SIDEBAR FILTERS (DYNAMICAL) -->
+    <!-- SIDEBAR FILTERS -->
     <aside class="hidden md:block w-64 flex-shrink-0 bg-[var(--bg-card)] rounded-md shadow-sm border border-[var(--border)] p-4 sticky top-28 h-[calc(100vh-8rem)] overflow-y-auto custom-scrollbar">
         <div class="flex justify-between items-center mb-4 border-b border-[var(--border)] pb-2">
             <h3 class="font-bold text-[var(--text-main)] uppercase text-xs tracking-wider">Filters</h3>
@@ -502,7 +522,7 @@ function getStarRating($id) {
                                 <i class="ri-heart-line"></i>
                             </button>
 
-                            <!-- FIXED: Container is set to "bg-white" instead of a dynamic theme color to keep the product photo bright and unaffected by dark mode -->
+                            <!-- Container is set to "bg-white" instead of a dynamic theme color to keep the product photo bright and unaffected by dark mode -->
                             <a href="product_details.php?id=<?= $p['id'] ?>" class="block relative aspect-square overflow-hidden bg-white">
                                 <img src="<?= $imgSrc ?>" alt="<?= htmlspecialchars($p['name']) ?>" class="w-full h-full object-contain mix-blend-multiply p-4 hover:scale-105 transition duration-500">
                                 <?php if(!$inStock): ?>
@@ -538,12 +558,14 @@ function getStarRating($id) {
                                 </div>
 
                                 <div class="mt-2 space-y-2">
-                                    <?php if ($user_role === 'farmer'): ?>
+                                    <?php if ($user_role === 'farmer' && $current_user_id !== null && (int)$p['farmer_id'] === (int)$current_user_id): ?>
+                                        <!-- Farmer can only edit their own listing -->
                                         <a href="edit_produce.php?id=<?= (int)$p['id'] ?>" 
                                            class="block text-center w-full border border-[var(--border)] text-[var(--text-muted)] text-sm font-bold py-2 rounded hover:bg-[var(--bg-body)]">
                                             Edit
                                         </a>
                                     <?php else: ?>
+                                        <!-- Standard purchase block shown to non-owners and other roles -->
                                         <?php if ($inStock): ?>
                                             <button onclick="addToCartDirect(<?= (int)$p['id'] ?>, this)" 
                                                     class="w-full bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold py-2 rounded shadow-md uppercase tracking-wide transition transform active:scale-95">
@@ -663,6 +685,7 @@ function getStarRating($id) {
 <div id="toastContainer" class="fixed top-4 right-4 z-[100] space-y-2 pointer-events-none"></div>
 
 <script>
+    const CSRF_TOKEN = "<?= csrf_token() ?>";
     // --- Dark Mode Logic ---
     const toggleBtn = document.getElementById('themeToggle');
     const icon = toggleBtn.querySelector('i');
@@ -775,6 +798,7 @@ function getStarRating($id) {
         const formData = new FormData();
         formData.append('product_id', productId);
         formData.append('quantity', 1);
+        formData.append('csrf_token', CSRF_TOKEN);
 
         fetch('cart_add.php', {
             method: 'POST',
@@ -807,6 +831,7 @@ function getStarRating($id) {
     function addToWishlistDirect(productId) {
         const formData = new FormData();
         formData.append('product_id', productId);
+        formData.append('csrf_token', CSRF_TOKEN);
 
         fetch('wishlist_add.php', {
             method: 'POST',

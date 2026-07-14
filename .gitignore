@@ -1,0 +1,23 @@
+# Secrets - never commit these
+.env
+.env.*
+!.env.example
+
+# User-uploaded content (KYC documents, produce photos, etc.)
+# Ignore everything directly under uploads/ except .htaccess...
+/uploads/*
+!/uploads/.htaccess
+# ...but don't ignore the subdirectories themselves (so git can see inside them)...
+!/uploads/*/
+# ...then ignore everything inside those subdirectories...
+/uploads/*/*
+# ...except their .gitkeep placeholders, so the folder structure survives a fresh clone.
+!/uploads/*/.gitkeep
+
+# OS/editor cruft
+desktop.ini
+.DS_Store
+Thumbs.db
+
+# Dependency directories (if Composer is added later)
+/vendor/

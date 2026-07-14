@@ -1,6 +1,10 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 // public/admin_disputes.php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/users.php';
 
@@ -43,6 +47,7 @@ function send_sms_notification($phone, $message) {
 
 // Handle Forms/Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    csrf_verify();
     
     // ACTION: Resolve Loan Dispute
     if ($_POST['action'] === 'resolve_loan_dispute') {
@@ -144,17 +149,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
 // Fetch Query Data depending on the currently selected context
 if ($disputeType === 'loan') {
+    // Retain disputes cleanly without direct join duplicates
     $disputesQuery = $pdo->query("
         SELECT d.*, 
                la.title AS loan_title, 
                uc.name AS creator_name, uc.role AS creator_role,
-               ud.name AS defendant_name, ud.role AS defendant_role,
-               de.filename AS evidence_filename, de.file_type AS evidence_type
+               ud.name AS defendant_name, ud.role AS defendant_role
         FROM disputes d
         JOIN loan_applications la ON d.loan_id = la.id
         JOIN users uc ON d.creator_id = uc.id
         JOIN users ud ON d.defendant_id = ud.id
-        LEFT JOIN dispute_evidence de ON d.id = de.dispute_id
         ORDER BY d.created_at DESC
     ");
     $all_disputes = $disputesQuery->fetchAll(PDO::FETCH_ASSOC);
@@ -165,12 +169,14 @@ if ($disputeType === 'loan') {
     $sql = "
         SELECT d.*, 
                CASE WHEN d.initiator_role = 'buyer' THEN b.name ELSE u.name END AS initiator_name,
-               CASE WHEN d.defendant_role = 'buyer' THEN b2.name ELSE u2.name END AS defendant_name
+               CASE WHEN d.defendant_role = 'buyer' THEN b2.name ELSE u2.name END AS defendant_name,
+               og.group_code
         FROM market_disputes d
         LEFT JOIN buyers b ON (d.initiator_id = b.id AND d.initiator_role = 'buyer')
         LEFT JOIN users u ON (d.initiator_id = u.id AND d.initiator_role = 'farmer')
         LEFT JOIN buyers b2 ON (d.defendant_id = b2.id AND d.defendant_role = 'buyer')
         LEFT JOIN users u2 ON (d.defendant_id = u2.id AND d.defendant_role = 'farmer')
+        LEFT JOIN order_groups og ON og.id = d.order_group_id
     ";
 
     if ($filterStatus !== 'all') {
@@ -462,29 +468,48 @@ if ($disputeType === 'loan') {
         padding-bottom: 15px;
         margin-bottom: 15px;
     }
-    .market-case-desc {
+    
+    /* Segmented Grid for Evidence View */
+    .market-case-split {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-bottom: 25px;
+    }
+    .segment-card {
         background: #f8fafc;
         border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        padding: 15px;
-        font-size: 14px;
-        color: var(--text-main);
-        line-height: 1.6;
-        margin-bottom: 20px;
+        border-radius: 12px;
+        padding: 18px;
     }
-    .evidence-grid {
+    .segment-title {
+        margin: 0 0 12px 0;
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
         display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
+        align-items: center;
+        gap: 6px;
+    }
+    .segment-buyer-title { color: #1e3a8a; }
+    .segment-farmer-title { color: #065f46; }
+    .segment-agent-title { color: #1e40af; }
+    
+    .evidence-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+        gap: 10px;
         margin-top: 10px;
     }
     .evidence-item {
         position: relative;
-        width: 100px;
-        height: 100px;
+        width: 100%;
+        height: 90px;
         border-radius: 8px;
         overflow: hidden;
         border: 1px solid #cbd5e1;
+        background: #f1f5f9;
     }
     .evidence-item img {
         width: 100%;
@@ -508,6 +533,16 @@ if ($disputeType === 'loan') {
     }
     .evidence-item:hover .evidence-overlay {
         opacity: 1;
+    }
+    .evidence-note {
+        font-size: 11px;
+        background: #ffffff;
+        padding: 6px 10px;
+        border-radius: 6px;
+        border-left: 3px solid #cbd5e1;
+        color: #475569;
+        margin-top: 6px;
+        line-height: 1.4;
     }
 
     .btn-action {
@@ -573,6 +608,9 @@ if ($disputeType === 'loan') {
         </nav>
 
         <form action="logout.php" method="POST">
+            <?php if (isset($_SESSION['csrf_token'])): ?>
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+            <?php endif; ?>
             <button class="logout-btn">
                 <i data-feather="log-out"></i>
                 <span>Logout</span>
@@ -638,7 +676,6 @@ if ($disputeType === 'loan') {
                                     <th>Plaintiff (Uploader)</th>
                                     <th>Defendant (Accused)</th>
                                     <th>Dispute Case File</th>
-                                    <th>Evidence Doc</th>
                                     <th>Case Status</th>
                                 </tr>
                             </thead>
@@ -662,31 +699,113 @@ if ($disputeType === 'loan') {
                                             </div>
                                         </td>
                                         <td>
-                                            <?php if (!empty($dis['evidence_filename'])): ?>
-                                                <?php 
-                                                $filePath = "../uploads/disputes/dispute_{$dis['id']}/" . rawurlencode($dis['evidence_filename']); 
-                                                ?>
-                                                <a href="<?= htmlspecialchars($filePath) ?>" target="_blank" class="link" style="display:inline-flex; align-items:center; gap:5px; font-size:13px;">
-                                                    <i data-feather="file" style="width:14px;"></i> View File
-                                                </a>
-                                            <?php else: ?>
-                                                <span style="color:var(--text-muted); font-size:13px;">No files provided</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>
                                             <span class="badge badge-<?= $dis['status'] ?>">
                                                 <?= str_replace('_', ' ', ucfirst($dis['status'])) ?>
                                             </span>
                                         </td>
                                     </tr>
                                     
-                                    <!-- Resolution Row: Active inputs when case is pending -->
-                                    <?php if ($dis['status'] === 'pending'): ?>
-                                        <tr style="background:#fffcfc;">
-                                            <td colspan="7">
-                                                <div class="action-panel">
+                                    <!-- Segmented Multi-party Statements, Evidence Documents & Admin Mediation Row -->
+                                    <?php
+                                    $evStmt = $pdo->prepare("
+                                        SELECT de.*, u.role AS uploader_role, u.name AS uploader_name 
+                                        FROM dispute_evidence de
+                                        JOIN users u ON de.uploader_id = u.id
+                                        WHERE de.dispute_id = ?
+                                        ORDER BY de.uploaded_at ASC
+                                    ");
+                                    $evStmt->execute([$dis['id']]);
+                                    $evidences = $evStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                                    $farmer_evidences = [];
+                                    $agent_evidences = [];
+                                    foreach ($evidences as $ev) {
+                                        if ($ev['uploader_role'] === 'farmer') {
+                                            $farmer_evidences[] = $ev;
+                                        } else {
+                                            $agent_evidences[] = $ev;
+                                        }
+                                    }
+                                    ?>
+                                    <tr style="background:#f8fafc;">
+                                        <td colspan="6" style="padding: 15px 30px;">
+                                            <div class="market-case-split">
+                                                <!-- Farmer Column -->
+                                                <div class="segment-card">
+                                                    <h4 class="segment-title segment-farmer-title">
+                                                        <i data-feather="user"></i> Farmer's Case & Evidence
+                                                    </h4>
+                                                    <?php if ($dis['creator_role'] === 'farmer'): ?>
+                                                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 13px; margin-bottom: 12px; font-style: italic; color: #334155; line-height:1.4;">
+                                                            <span style="font-weight:700; font-size:9px; text-transform:uppercase; color:var(--text-muted); display:block; margin-bottom:4px;">Primary Statement</span>
+                                                            "<?= htmlspecialchars($dis['description']) ?>"
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    
+                                                    <?php if (empty($farmer_evidences)): ?>
+                                                        <p style="font-size: 12px; color: var(--text-muted); font-style: italic; margin: 0;">No files submitted.</p>
+                                                    <?php else: ?>
+                                                        <div class="evidence-grid">
+                                                            <?php foreach ($farmer_evidences as $ev): ?>
+                                                                <?php $filePath = "../uploads/disputes/dispute_" . intval($dis['id']) . "/" . rawurlencode($ev['filename']); ?>
+                                                                <div class="evidence-item">
+                                                                    <img src="<?= htmlspecialchars($filePath) ?>" alt="Farmer Evidence" onerror="this.src='https://via.placeholder.com/90?text=File';">
+                                                                    <div class="evidence-overlay">
+                                                                        <a href="<?= htmlspecialchars($filePath) ?>" target="_blank" style="color:#34d399; text-decoration:none; font-weight:bold;">Open File</a>
+                                                                    </div>
+                                                                </div>
+                                                                <?php if (!empty($ev['notes'])): ?>
+                                                                    <div class="evidence-note" style="border-left-color: #059669;">
+                                                                        <strong>Note:</strong> <?= htmlspecialchars($ev['notes']) ?>
+                                                                    </div>
+                                                                <?php endif; ?>
+                                                            <?php endforeach; ?>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </div>
+
+                                                <!-- Agent Column -->
+                                                <div class="segment-card">
+                                                    <h4 class="segment-title segment-agent-title">
+                                                        <i data-feather="user"></i> Agent's Case & Evidence
+                                                    </h4>
+                                                    <?php if ($dis['creator_role'] === 'agent'): ?>
+                                                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 13px; margin-bottom: 12px; font-style: italic; color: #334155; line-height:1.4;">
+                                                            <span style="font-weight:700; font-size:9px; text-transform:uppercase; color:var(--text-muted); display:block; margin-bottom:4px;">Primary Statement</span>
+                                                            "<?= htmlspecialchars($dis['description']) ?>"
+                                                        </div>
+                                                    <?php endif; ?>
+
+                                                    <?php if (empty($agent_evidences)): ?>
+                                                        <p style="font-size: 12px; color: var(--text-muted); font-style: italic; margin: 0;">No files submitted.</p>
+                                                    <?php else: ?>
+                                                        <div class="evidence-grid">
+                                                            <?php foreach ($agent_evidences as $ev): ?>
+                                                                <?php $filePath = "../uploads/disputes/dispute_" . intval($dis['id']) . "/" . rawurlencode($ev['filename']); ?>
+                                                                <div class="evidence-item">
+                                                                    <img src="<?= htmlspecialchars($filePath) ?>" alt="Agent Evidence" onerror="this.src='https://via.placeholder.com/90?text=File';">
+                                                                    <div class="evidence-overlay">
+                                                                        <a href="<?= htmlspecialchars($filePath) ?>" target="_blank" style="color:#34d399; text-decoration:none; font-weight:bold;">Open File</a>
+                                                                    </div>
+                                                                </div>
+                                                                <?php if (!empty($ev['notes'])): ?>
+                                                                    <div class="evidence-note" style="border-left-color: #1e40af;">
+                                                                        <strong>Note:</strong> <?= htmlspecialchars($ev['notes']) ?>
+                                                                    </div>
+                                                                <?php endif; ?>
+                                                            <?php endforeach; ?>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </div>
+
+                                            <?php if ($dis['status'] === 'pending'): ?>
+                                                <div class="action-panel" style="margin-top:0;">
                                                     <h4 style="margin:0 0 10px 0; font-size:14px; color:var(--primary);">Issue Final Administrative Resolution (#<?= $dis['id'] ?>)</h4>
                                                     <form method="POST">
+                                                        <?php if (isset($_SESSION['csrf_token'])): ?>
+                                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                                        <?php endif; ?>
                                                         <input type="hidden" name="dispute_id" value="<?= $dis['id'] ?>">
                                                         <input type="hidden" name="action" value="resolve_loan_dispute">
                                                         
@@ -703,20 +822,16 @@ if ($disputeType === 'loan') {
                                                         </div>
                                                     </form>
                                                 </div>
-                                            </td>
-                                        </tr>
-                                    <?php else: ?>
-                                        <!-- Logged decision history row -->
-                                        <tr style="background:#fafafa;">
-                                            <td colspan="7">
-                                                <div style="padding:15px; border-left:4px solid var(--text-muted); font-size:13px;">
+                                            <?php else: ?>
+                                                <!-- Logged decision history panel -->
+                                                <div style="padding:15px; border-left:4px solid var(--text-muted); font-size:13px; background:#fff; border-radius:4px; border:1px solid #e2e8f0; border-left-width:4px;">
                                                     <strong>Case History Decision:</strong><br>
                                                     <span style="color:#334155; line-height:1.5;"><?= htmlspecialchars($dis['admin_decision'] ?? '') ?></span><br>
                                                     <small style="color:var(--text-muted); display:block; margin-top:5px;">Archived on: <?= date('M d, Y H:i', strtotime($dis['updated_at'])) ?></small>
                                                 </div>
-                                            </td>
-                                        </tr>
-                                    <?php endif; ?>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
@@ -762,7 +877,11 @@ if ($disputeType === 'loan') {
                                         </span>
                                     </div>
                                     <p style="font-size:12px; color:var(--text-muted); margin: 6px 0 0 0;">
-                                        Order Context: <strong style="color:var(--text-main);">#<?= $d['order_id'] ?></strong> &middot; Filed: <?= date('d M Y, h:i A', strtotime($d['created_at'])) ?>
+                                        Order Context: <strong style="color:var(--text-main);">#<?= $d['order_id'] ?></strong> 
+                                        <?php if (!empty($d['group_code'])): ?>
+                                            (Group Code: <strong style="color:var(--primary);"><?= htmlspecialchars($d['group_code']) ?></strong>)
+                                        <?php endif; ?>
+                                        &middot; Filed: <?= date('d M Y, h:i A', strtotime($d['created_at'])) ?>
                                     </p>
                                 </div>
                                 <div style="font-size:12px; color:var(--text-muted); line-height:1.4;">
@@ -771,44 +890,113 @@ if ($disputeType === 'loan') {
                                 </div>
                             </div>
 
-                            <!-- Detailed Log -->
-                            <div class="market-case-desc">
-                                <strong style="display:block; font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:5px;">Detailed Log Statement:</strong>
-                                <?= nl2br(htmlspecialchars($d['description'])) ?>
-                            </div>
-
-                            <!-- Associated Evidence Files -->
+                            <!-- Associated Evidence Files Segmented by Party -->
                             <?php
                             $evStmt = $pdo->prepare("SELECT * FROM market_dispute_evidence WHERE dispute_id = ? ORDER BY created_at ASC");
                             $evStmt->execute([$d['id']]);
                             $evidences = $evStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                            $buyer_evidences = [];
+                            $farmer_evidences = [];
+                            foreach ($evidences as $ev) {
+                                if ($ev['submitter_role'] === 'buyer') {
+                                    $buyer_evidences[] = $ev;
+                                } else {
+                                    $farmer_evidences[] = $ev;
+                                }
+                            }
                             ?>
-                            <div style="margin-bottom: 25px;">
-                                <strong style="display:block; font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px;">Linked Media Proof / Attachments (<?= count($evidences) ?>)</strong>
-                                <?php if (empty($evidences)): ?>
-                                    <p style="font-size:13px; color:var(--text-muted); font-style:italic;">No media attachments submitted.</p>
-                                <?php else: ?>
-                                    <div class="evidence-grid">
-                                        <?php foreach ($evidences as $ev): ?>
-                                        <div class="evidence-item">
-                                            <img src="../uploads/disputes/<?= htmlspecialchars($ev['file_path']) ?>" alt="Evidence File">
-                                            <div class="evidence-overlay">
-                                                <p style="font-weight:bold; margin:0;"><?= ucfirst($ev['submitter_role']) ?></p>
-                                                <a href="../uploads/disputes/<?= htmlspecialchars($ev['file_path']) ?>" target="_blank" style="color:#34d399; text-decoration:none; margin-top:5px; font-weight:bold;">Open File</a>
-                                            </div>
+
+                            <div class="market-case-split">
+                                <!-- Buyer Segment -->
+                                <div class="segment-card">
+                                    <h4 class="segment-title segment-buyer-title">
+                                        <i data-feather="user"></i> Buyer's Statement & Evidence
+                                    </h4>
+                                    
+                                    <?php if ($d['initiator_role'] === 'buyer'): ?>
+                                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 13px; margin-bottom: 12px; font-style: italic; color: #334155; line-height:1.4;">
+                                            <span style="font-weight:700; font-size:9px; text-transform:uppercase; color:var(--text-muted); display:block; margin-bottom:4px;">Primary Statement (Initiator)</span>
+                                            "<?= nl2br(htmlspecialchars($d['description'])) ?>"
                                         </div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                <?php endif; ?>
+                                    <?php endif; ?>
+
+                                    <?php if (empty($buyer_evidences)): ?>
+                                        <p style="font-size: 12px; color: var(--text-muted); font-style: italic; margin: 0;">No visual evidence files attached by the buyer.</p>
+                                    <?php else: ?>
+                                        <div class="evidence-grid">
+                                            <?php foreach ($buyer_evidences as $ev): ?>
+                                                <div class="evidence-item">
+                                                    <img src="../uploads/disputes/<?= htmlspecialchars($ev['file_path']) ?>" alt="Buyer Evidence" onerror="this.src='https://via.placeholder.com/90?text=File';">
+                                                    <div class="evidence-overlay">
+                                                        <a href="../uploads/disputes/<?= htmlspecialchars($ev['file_path']) ?>" target="_blank" style="color:#34d399; text-decoration:none; font-weight:bold;">Open File</a>
+                                                    </div>
+                                                </div>
+                                                <?php if (!empty($ev['notes'])): ?>
+                                                    <div class="evidence-note" style="border-left-color: #2563eb;">
+                                                        <strong>Clarification Note:</strong> <?= htmlspecialchars($ev['notes']) ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+
+                                <!-- Farmer Segment -->
+                                <div class="segment-card">
+                                    <h4 class="segment-title segment-farmer-title">
+                                        <i data-feather="user"></i> Farmer's Statement & Evidence
+                                    </h4>
+                                    
+                                    <?php if ($d['initiator_role'] === 'farmer'): ?>
+                                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 13px; margin-bottom: 12px; font-style: italic; color: #334155; line-height:1.4;">
+                                            <span style="font-weight:700; font-size:9px; text-transform:uppercase; color:var(--text-muted); display:block; margin-bottom:4px;">Primary Statement (Initiator)</span>
+                                            "<?= nl2br(htmlspecialchars($d['description'])) ?>"
+                                        </div>
+                                    <?php endif; ?>
+
+                                    <?php if (empty($farmer_evidences)): ?>
+                                        <p style="font-size: 12px; color: var(--text-muted); font-style: italic; margin: 0;">No visual evidence files attached by the farmer.</p>
+                                    <?php else: ?>
+                                        <div class="evidence-grid">
+                                            <?php foreach ($farmer_evidences as $ev): ?>
+                                                <div class="evidence-item">
+                                                    <img src="../uploads/disputes/<?= htmlspecialchars($ev['file_path']) ?>" alt="Farmer Evidence" onerror="this.src='https://via.placeholder.com/90?text=File';">
+                                                    <div class="evidence-overlay">
+                                                        <a href="../uploads/disputes/<?= htmlspecialchars($ev['file_path']) ?>" target="_blank" style="color:#34d399; text-decoration:none; font-weight:bold;">Open File</a>
+                                                    </div>
+                                                </div>
+                                                <?php if (!empty($ev['notes'])): ?>
+                                                    <div class="evidence-note" style="border-left-color: #059669;">
+                                                        <strong>Clarification Note:</strong> <?= htmlspecialchars($ev['notes']) ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
                             </div>
 
+                            <!-- Case History Resolution Box -->
+                            <?php if ($d['status'] === 'resolved' || $d['status'] === 'dismissed'): ?>
+                                <div style="margin-top:15px; padding:15px; background:#fafafa; border-left:4px solid var(--text-muted); font-size:13px; border-radius: 4px;">
+                                    <strong>Administrative Resolution History:</strong><br>
+                                    <span style="color:#334155; line-height:1.5;"><?= htmlspecialchars($d['decision'] ?? 'No formal statement submitted.') ?></span><br>
+                                    <small style="color:var(--text-muted); display:block; margin-top:5px;">Processed on: <?= $d['decision_date'] ? date('d M Y, h:i A', strtotime($d['decision_date'])) : 'N/A' ?></small>
+                                </div>
+                            <?php endif; ?>
+
                             <!-- Administrative Action Form -->
+                            <?php if (in_array($d['status'], ['open', 'under_review'])): ?>
                             <div style="border-top: 1px solid #e2e8f0; padding-top:20px;">
                                 <h4 style="margin:0 0 15px 0; font-size:14px; font-weight:700; color:var(--text-main); display:flex; align-items:center; gap:8px;">
                                     <i data-feather="edit-2" style="width:16px; color:var(--primary);"></i> Case Mediation Panel
                                 </h4>
 
                                 <form method="POST">
+                                    <?php if (isset($_SESSION['csrf_token'])): ?>
+                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                    <?php endif; ?>
                                     <input type="hidden" name="action" value="resolve_market_dispute">
                                     <input type="hidden" name="dispute_id" value="<?= $d['id'] ?>">
                                     
@@ -835,6 +1023,7 @@ if ($disputeType === 'loan') {
                                     </div>
                                 </form>
                             </div>
+                            <?php endif; ?>
                         </div>
                         <?php endforeach; ?>
                     <?php endif; ?>

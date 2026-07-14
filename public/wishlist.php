@@ -1,5 +1,9 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
@@ -152,6 +156,7 @@ include 'nav.php';
 </nav>
 
 <script>
+const CSRF_TOKEN = "<?= csrf_token() ?>";
 async function removeFromWishlist(productId) {
     const card = document.getElementById('wish-item-' + productId);
     card.style.opacity = '0.4';
@@ -159,6 +164,7 @@ async function removeFromWishlist(productId) {
 
     const form = new FormData();
     form.append('product_id', productId);
+    form.append('csrf_token', CSRF_TOKEN);
 
     try {
         const res = await fetch('wishlist_remove.php', { method:'POST', body:form });
@@ -188,6 +194,7 @@ async function moveToCart(productId, btn) {
 
     const form = new FormData();
     form.append('product_id', productId);
+    form.append('csrf_token', CSRF_TOKEN);
 
     try {
         const res  = await fetch('cart_add.php', { method:'POST', body:form });

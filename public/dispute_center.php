@@ -1,6 +1,10 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 // public/dispute_center.php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/users.php';
 
@@ -34,6 +38,15 @@ try {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             )
         ");
+    } catch (PDOException $ex) {
+        // Fallback in case of database permission restrictions
+    }
+}
+
+try {
+    $pdo->query("SELECT 1 FROM dispute_evidence LIMIT 1");
+} catch (PDOException $e) {
+    try {
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS dispute_evidence (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -41,11 +54,23 @@ try {
                 uploader_id INT NOT NULL,
                 filename VARCHAR(255) NOT NULL,
                 file_type VARCHAR(50) NOT NULL,
+                notes TEXT NULL,
                 uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ");
     } catch (PDOException $ex) {
         // Fallback in case of database permission restrictions
+    }
+}
+
+// Verify dynamic addition of the notes column to the database if not present
+try {
+    $pdo->query("SELECT notes FROM dispute_evidence LIMIT 1");
+} catch (PDOException $e) {
+    try {
+        $pdo->exec("ALTER TABLE dispute_evidence ADD COLUMN notes TEXT NULL");
+    } catch (PDOException $ex) {
+        // Fallback in case of column addition restrictions
     }
 }
 
@@ -72,6 +97,7 @@ $successMessage = '';
 
 // Handle Dispute Creation Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'launch_dispute') {
+    csrf_verify();
     try {
         $loan_id = intval($_POST['loan_id'] ?? 0);
         $title = trim($_POST['title'] ?? '');
@@ -109,28 +135,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $insStmt->execute([$loan_id, $my_id, $defendant_id, $title, $description]);
         $dispute_id = $pdo->lastInsertId();
 
-        // Handle Evidence Upload if present
-        if (isset($_FILES['evidence']) && $_FILES['evidence']['error'] === UPLOAD_ERR_OK) {
-            $file = $_FILES['evidence'];
+        // Handle Multiple Evidence Uploads if present
+        if (!empty($_FILES['evidence']['name'][0])) {
             $allowed_exts = ['jpg', 'jpeg', 'png', 'pdf', 'docx', 'txt'];
-            $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-
-            if (!in_array($ext, $allowed_exts)) {
-                throw new Exception("File format not accepted. Only JPG, PNG, PDF, DOCX, and TXT are supported.");
-            }
-
             $target_dir = __DIR__ . "/../uploads/disputes/dispute_{$dispute_id}/";
             if (!file_exists($target_dir)) {
                 mkdir($target_dir, 0777, true);
             }
 
-            $filename = "evidence_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
-            if (move_uploaded_file($file['tmp_name'], $target_dir . $filename)) {
-                $file_type = str_contains($file['type'], 'image') ? 'image' : 'document';
-                $evStmt = $pdo->prepare("INSERT INTO dispute_evidence (dispute_id, uploader_id, filename, file_type) VALUES (?, ?, ?, ?)");
-                $evStmt->execute([$dispute_id, $my_id, $filename, $file_type]);
-            } else {
-                throw new Exception("Failed to save the evidence file.");
+            foreach ($_FILES['evidence']['tmp_name'] as $key => $tmpName) {
+                if ($_FILES['evidence']['error'][$key] === UPLOAD_ERR_OK) {
+                    $original_name = $_FILES['evidence']['name'][$key];
+                    $ext = strtolower(pathinfo($original_name, PATHINFO_EXTENSION));
+
+                    if (in_array($ext, $allowed_exts)) {
+                        $filename = "evidence_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
+                        if (move_uploaded_file($tmpName, $target_dir . $filename)) {
+                            $file_type = str_contains($_FILES['evidence']['type'][$key], 'image') ? 'image' : 'document';
+                            $evStmt = $pdo->prepare("INSERT INTO dispute_evidence (dispute_id, uploader_id, filename, file_type, notes) VALUES (?, ?, ?, ?, NULL)");
+                            $evStmt->execute([$dispute_id, $my_id, $filename, $file_type]);
+                        }
+                    } else {
+                        throw new Exception("Unsupported file format included in uploads.");
+                    }
+                }
             }
         }
 
@@ -171,6 +199,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
+// Handle Supplemental Evidence Submission on Active Cases
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_evidence') {
+    csrf_verify();
+    try {
+        $dispute_id = intval($_POST['dispute_id'] ?? 0);
+        $notes = trim($_POST['notes'] ?? '');
+
+        // Verify authorization: current user is creator or defendant of this dispute
+        $check = $pdo->prepare("SELECT id, status FROM disputes WHERE id = ? AND (creator_id = ? OR defendant_id = ?)");
+        $check->execute([$dispute_id, $my_id, $my_id]);
+        $dis = $check->fetch();
+
+        if (!$dis) {
+            throw new Exception("Unauthorized dispute reference.");
+        }
+
+        if (!in_array($dis['status'], ['pending', 'under_review', 'open'])) {
+            throw new Exception("This case context is locked and cannot accept updates.");
+        }
+
+        if (!empty($_FILES['evidence']['name'][0])) {
+            $allowed_exts = ['jpg', 'jpeg', 'png', 'pdf', 'docx', 'txt'];
+            $target_dir = __DIR__ . "/../uploads/disputes/dispute_{$dispute_id}/";
+            if (!file_exists($target_dir)) {
+                mkdir($target_dir, 0777, true);
+            }
+
+            foreach ($_FILES['evidence']['tmp_name'] as $key => $tmpName) {
+                if ($_FILES['evidence']['error'][$key] === UPLOAD_ERR_OK) {
+                    $original_name = $_FILES['evidence']['name'][$key];
+                    $ext = strtolower(pathinfo($original_name, PATHINFO_EXTENSION));
+
+                    if (in_array($ext, $allowed_exts)) {
+                        $filename = "evidence_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
+                        if (move_uploaded_file($tmpName, $target_dir . $filename)) {
+                            $file_type = str_contains($_FILES['evidence']['type'][$key], 'image') ? 'image' : 'document';
+                            $evStmt = $pdo->prepare("INSERT INTO dispute_evidence (dispute_id, uploader_id, filename, file_type, notes) VALUES (?, ?, ?, ?, ?)");
+                            $evStmt->execute([$dispute_id, $my_id, $filename, $file_type, $notes]);
+                        }
+                    } else {
+                        throw new Exception("Unsupported file format included in supplemental uploads.");
+                    }
+                }
+            }
+            $successMessage = "Additional evidence files have been attached successfully.";
+        } else {
+            throw new Exception("Please select valid files to attach.");
+        }
+    } catch (Exception $e) {
+        $errorMessage = $e->getMessage();
+    }
+}
+
+// Handle Uploaded Evidence Deletion
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_evidence') {
+    csrf_verify();
+    try {
+        $evidence_id = intval($_POST['evidence_id'] ?? 0);
+
+        // Fetch evidence record and check ownership constraints
+        $stmt = $pdo->prepare("SELECT * FROM dispute_evidence WHERE id = ?");
+        $stmt->execute([$evidence_id]);
+        $evidence = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($evidence) {
+            if ((int)$evidence['uploader_id'] === (int)$my_id) {
+                $filePath = __DIR__ . "/../uploads/disputes/dispute_{$evidence['dispute_id']}/" . $evidence['filename'];
+                if (file_exists($filePath) && is_file($filePath)) {
+                    unlink($filePath);
+                }
+                
+                $del = $pdo->prepare("DELETE FROM dispute_evidence WHERE id = ?");
+                $del->execute([$evidence_id]);
+                $successMessage = "Selected evidence has been deleted.";
+            } else {
+                throw new Exception("You are not authorized to delete this file.");
+            }
+        } else {
+            throw new Exception("Evidence record not found.");
+        }
+    } catch (Exception $e) {
+        $errorMessage = $e->getMessage();
+    }
+}
+
 // Fetch list of users worked with currently/recently (via loans)
 if ($my_role === 'farmer') {
     $eligibleStmt = $pdo->prepare("
@@ -196,8 +309,8 @@ $eligible_transactions = $eligibleStmt->fetchAll(PDO::FETCH_ASSOC);
 $disputesStmt = $pdo->prepare("
     SELECT d.*, 
            la.title AS loan_title, 
-           uc.name AS creator_name, 
-           ud.name AS defendant_name
+           uc.name AS creator_name, uc.role AS creator_role,
+           ud.name AS defendant_name, ud.role AS defendant_role
     FROM disputes d
     JOIN loan_applications la ON d.loan_id = la.id
     JOIN users uc ON d.creator_id = uc.id
@@ -223,7 +336,6 @@ $my_disputes = $disputesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 <style>
     :root {
-        /* Palette adjusts dynamically based on the active login role */
         --primary: <?= ($my_role === 'farmer') ? '#059669' : '#1e40af' ?>; 
         --primary-dark: <?= ($my_role === 'farmer') ? '#064e3b' : '#172554' ?>;
         --secondary: <?= ($my_role === 'farmer') ? '#10b981' : '#3b82f6' ?>;
@@ -261,6 +373,7 @@ $my_disputes = $disputesStmt->fetchAll(PDO::FETCH_ASSOC);
         transition: width 0.3s ease;
         z-index: 100;
         box-shadow: 4px 0 10px rgba(0,0,0,0.1);
+        flex-shrink: 0;
     }
 
     .sidebar.collapsed { width: var(--sidebar-collapsed); padding: 20px 10px; }
@@ -386,21 +499,68 @@ $my_disputes = $disputesStmt->fetchAll(PDO::FETCH_ASSOC);
     .alert-danger { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
     .alert-success { background: #ecfdf5; color: #064e3b; border: 1px solid #a7f3d0; }
 
-    /* Dispute Tables */
-    table { width: 100%; border-collapse: collapse; min-width: 600px; }
-    th, td { padding: 16px; text-align: left; border-bottom: 1px solid #f3f4f6; }
-    th {
-        font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
-        color: var(--text-muted); font-weight: 600; background: #f9fafb;
-    }
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background: #f9fafb; }
-
+    /* Badges */
     .badge { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: capitalize; display: inline-block; }
     .badge-pending { background: #fef3c7; color: #92400e; }
     .badge-under_review { background: #e0f2fe; color: #0369a1; }
     .badge-resolved { background: #d1fae5; color: #065f46; }
     .badge-dismissed { background: #f3f4f6; color: #374151; }
+
+    /* Case Columns Layout */
+    .dispute-item { border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; background: #fff; margin-bottom: 25px; }
+    .split-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 15px; }
+    .split-column { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; }
+    .split-col-title { font-size: 12px; font-weight: 700; margin: 0 0 10px 0; text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
+
+    /* Dynamic Evidence Grid from Admin Disputes */
+    .evidence-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+        gap: 10px;
+        margin-top: 10px;
+    }
+    .evidence-item {
+        position: relative;
+        width: 100%;
+        height: 90px;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #cbd5e1;
+        background: #f1f5f9;
+    }
+    .evidence-item img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .evidence-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0,0,0,0.75);
+        opacity: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 10px;
+        transition: opacity 0.2s;
+        text-align: center;
+        padding: 4px;
+    }
+    .evidence-item:hover .evidence-overlay {
+        opacity: 1;
+    }
+    .evidence-note {
+        font-size: 11px;
+        background: #ffffff;
+        padding: 6px 10px;
+        border-radius: 6px;
+        border-left: 3px solid #cbd5e1;
+        color: #475569;
+        margin-top: 6px;
+        line-height: 1.4;
+    }
 
     /* RESPONSIVE */
     @media (max-width: 768px) {
@@ -413,7 +573,7 @@ $my_disputes = $disputesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 <body>
 
-    <!-- SIDEBAR (Differentiated exactly by user role) -->
+    <!-- SIDEBAR -->
     <?php if ($my_role === 'farmer'): ?>
         <aside class="sidebar" id="sidebar">
             <div class="brand">
@@ -442,7 +602,7 @@ $my_disputes = $disputesStmt->fetchAll(PDO::FETCH_ASSOC);
                     <i data-feather="credit-card"></i>
                     <span>Repayments</span>
                 </a>
-                <a href="dispute_center.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'dispute_center.php' ? 'active' : '' ?>">
+                <a href="dispute_center.php" class="nav-link active">
                     <i data-feather="alert-triangle"></i>
                     <span>Dispute Center</span>
                 </a>
@@ -453,6 +613,9 @@ $my_disputes = $disputesStmt->fetchAll(PDO::FETCH_ASSOC);
             </nav>
 
             <form action="logout.php" method="POST">
+                <?php if (isset($_SESSION['csrf_token'])): ?>
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                <?php endif; ?>
                 <button class="logout-btn">
                     <i data-feather="log-out"></i>
                     <span>Logout</span>
@@ -483,7 +646,7 @@ $my_disputes = $disputesStmt->fetchAll(PDO::FETCH_ASSOC);
                     <i data-feather="credit-card"></i>
                     <span>Repayments</span>
                 </a>
-                <a href="dispute_center.php" class="nav-link <?= basename($_SERVER['PHP_SELF']) == 'dispute_center.php' ? 'active' : '' ?>">
+                <a href="dispute_center.php" class="nav-link active">
                     <i data-feather="alert-triangle"></i>
                     <span>Dispute Center</span>
                 </a>
@@ -494,6 +657,9 @@ $my_disputes = $disputesStmt->fetchAll(PDO::FETCH_ASSOC);
             </nav>
 
             <form action="logout.php" method="POST">
+                <?php if (isset($_SESSION['csrf_token'])): ?>
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                <?php endif; ?>
                 <button class="logout-btn">
                     <i data-feather="log-out"></i>
                     <span>Logout</span>
@@ -543,6 +709,9 @@ $my_disputes = $disputesStmt->fetchAll(PDO::FETCH_ASSOC);
                         You may file disputes exclusively against counterparts whom you have collaborated with on system loan records.
                     </p>
                     <form method="POST" enctype="multipart/form-data">
+                        <?php if (isset($_SESSION['csrf_token'])): ?>
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                        <?php endif; ?>
                         <input type="hidden" name="action" value="launch_dispute">
                         
                         <div class="form-group">
@@ -568,8 +737,8 @@ $my_disputes = $disputesStmt->fetchAll(PDO::FETCH_ASSOC);
                         </div>
 
                         <div class="form-group">
-                            <label for="evidence">Upload Evidence (Optional)</label>
-                            <input type="file" id="evidence" name="evidence" style="font-size:13px;">
+                            <label for="evidence">Upload Evidence Files (Multiple Allowed)</label>
+                            <input type="file" id="evidence" name="evidence[]" multiple style="font-size:13px;">
                             <p style="font-size:11px; color: var(--text-muted); margin-top:5px;">Allowed types: JPG, PNG, PDF, DOCX, TXT. Max size: 5MB.</p>
                         </div>
 
@@ -592,44 +761,191 @@ $my_disputes = $disputesStmt->fetchAll(PDO::FETCH_ASSOC);
                 </div>
             </div>
 
-            <!-- Bottom: Dispute History Section -->
-            <div class="card" style="overflow-x:auto;">
+            <!-- Bottom: Dispute History Section (Cards with Split Columns and Notes) -->
+            <div class="card">
                 <h3 style="margin-top:0; font-size:18px; margin-bottom:15px;">Historical Dispute Folder</h3>
                 <?php if (empty($my_disputes)): ?>
                     <p style="color: var(--text-muted); text-align:center; padding: 20px; font-size:14px;">No dispute cases recorded for your profile.</p>
                 <?php else: ?>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Transaction</th>
-                                <th>Initiated By</th>
-                                <th>Target Person</th>
-                                <th>Title</th>
-                                <th>Status</th>
-                                <th>Decision Message</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($my_disputes as $d): ?>
-                                <tr>
-                                    <td>#<?= $d['id'] ?></td>
-                                    <td><strong><?= htmlspecialchars($d['loan_title']) ?></strong></td>
-                                    <td><?= ($d['creator_id'] == $my_id) ? 'You' : htmlspecialchars($d['creator_name']) ?></td>
-                                    <td><?= ($d['defendant_id'] == $my_id) ? 'You' : htmlspecialchars($d['defendant_name']) ?></td>
-                                    <td><?= htmlspecialchars($d['title']) ?></td>
-                                    <td>
+                    <div style="display:flex; flex-direction:column; gap:25px;">
+                        <?php foreach ($my_disputes as $d): ?>
+                            <?php
+                            // Fetch evidence for this specific dispute case
+                            $evStmt = $pdo->prepare("
+                                SELECT de.*, u.role AS uploader_role, u.name AS uploader_name 
+                                FROM dispute_evidence de
+                                JOIN users u ON de.uploader_id = u.id
+                                WHERE de.dispute_id = ?
+                                ORDER BY de.uploaded_at ASC
+                            ");
+                            $evStmt->execute([$d['id']]);
+                            $evidences = $evStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                            $farmer_evidences = [];
+                            $agent_evidences = [];
+                            foreach ($evidences as $ev) {
+                                if ($ev['uploader_role'] === 'farmer') {
+                                    $farmer_evidences[] = $ev;
+                                } else {
+                                    $agent_evidences[] = $ev;
+                                }
+                            }
+                            ?>
+                            <div class="dispute-item">
+                                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:15px; border-bottom:1px solid #f3f4f6; padding-bottom:12px;">
+                                    <div>
+                                        <h4 style="margin:0; font-size:16px; color:var(--text-main);">
+                                            Case #<?= $d['id'] ?>: <?= htmlspecialchars($d['title']) ?>
+                                        </h4>
+                                        <p style="margin:4px 0 0 0; font-size:12px; color:var(--text-muted);">
+                                            Transaction: <strong><?= htmlspecialchars($d['loan_title']) ?></strong> &middot; Opened <?= date('d M Y, h:i A', strtotime($d['created_at'])) ?>
+                                        </p>
+                                    </div>
+                                    <div>
                                         <span class="badge badge-<?= $d['status'] ?>">
                                             <?= str_replace('_', ' ', ucfirst($d['status'])) ?>
                                         </span>
-                                    </td>
-                                    <td style="font-size:13px; color:#374151; max-width: 300px; word-wrap:break-word;">
-                                        <?= $d['admin_decision'] ? htmlspecialchars($d['admin_decision']) : '<em style="color:var(--text-muted);">Awaiting verification decisions...</em>' ?>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                                    </div>
+                                </div>
+
+                                <div style="font-size:12px; color:var(--text-muted); margin-bottom:15px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                                    <div>Initiated By: <strong style="color:var(--text-main);"><?= ($d['creator_id'] == $my_id) ? 'You' : htmlspecialchars($d['creator_name']) ?> (<?= ucfirst($d['creator_role']) ?>)</strong></div>
+                                    <div>Defendant: <strong style="color:var(--text-main);"><?= ($d['defendant_id'] == $my_id) ? 'You' : htmlspecialchars($d['defendant_name']) ?> (<?= ucfirst($d['defendant_role']) ?>)</strong></div>
+                                </div>
+
+                                <!-- Segmented Statements & Supporting Evidence List -->
+                                <div class="split-grid">
+                                    <!-- Farmer Column -->
+                                    <div class="split-column">
+                                        <h5 class="split-col-title" style="color: #065f46;">
+                                            <i data-feather="user" style="width:14px;"></i> Farmer's Case & Evidence
+                                        </h5>
+                                        <?php if ($d['creator_role'] === 'farmer'): ?>
+                                            <div style="font-size:12px; color:#475569; font-style:italic; margin-bottom:10px; background:#fff; border:1px solid #e5e7eb; padding:8px; border-radius:6px; line-height:1.4;">
+                                                <strong>Statement:</strong> "<?= htmlspecialchars($d['description']) ?>"
+                                            </div>
+                                        <?php endif; ?>
+
+                                        <?php if (empty($farmer_evidences)): ?>
+                                            <p style="font-size:11px; color:var(--text-muted); font-style:italic; margin:0;">No evidence files attached.</p>
+                                        <?php else: ?>
+                                            <div class="evidence-grid">
+                                                <?php foreach ($farmer_evidences as $ev): ?>
+                                                    <?php $filePath = "../uploads/disputes/dispute_{$d['id']}/" . rawurlencode($ev['filename']); ?>
+                                                    <div>
+                                                        <div class="evidence-item">
+                                                            <img src="<?= $filePath ?>" alt="Farmer Evidence" onerror="this.src='https://via.placeholder.com/90?text=File';">
+                                                            <div class="evidence-overlay">
+                                                                <a href="<?= $filePath ?>" target="_blank" style="color:#34d399; text-decoration:none; font-weight:bold; margin-bottom:8px;">Open File</a>
+                                                                <?php if ((int)$ev['uploader_id'] === (int)$my_id): ?>
+                                                                    <form method="POST" onsubmit="return confirm('Are you sure you want to delete this file?');" style="margin:0;">
+                                                                        <?php if (isset($_SESSION['csrf_token'])): ?>
+                                                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                                                        <?php endif; ?>
+                                                                        <input type="hidden" name="action" value="delete_evidence">
+                                                                        <input type="hidden" name="evidence_id" value="<?= $ev['id'] ?>">
+                                                                        <button type="submit" style="background:none; border:none; color:#fca5a5; cursor:pointer; font-size:10px; font-weight:600; padding:0; text-decoration:underline;">Delete</button>
+                                                                    </form>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                        </div>
+                                                        <?php if (!empty($ev['notes'])): ?>
+                                                            <div class="evidence-note" style="border-left-color: #059669;">
+                                                                <strong>Note:</strong> <?= htmlspecialchars($ev['notes']) ?>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <!-- Agent Column -->
+                                    <div class="split-column">
+                                        <h5 class="split-col-title" style="color: #1e40af;">
+                                            <i data-feather="user" style="width:14px;"></i> Agent's Case & Evidence
+                                        </h5>
+                                        <?php if ($d['creator_role'] === 'agent'): ?>
+                                            <div style="font-size:12px; color:#475569; font-style:italic; margin-bottom:10px; background:#fff; border:1px solid #e5e7eb; padding:8px; border-radius:6px; line-height:1.4;">
+                                                <strong>Statement:</strong> "<?= htmlspecialchars($d['description']) ?>"
+                                            </div>
+                                        <?php endif; ?>
+
+                                        <?php if (empty($agent_evidences)): ?>
+                                            <p style="font-size:11px; color:var(--text-muted); font-style:italic; margin:0;">No evidence files attached.</p>
+                                        <?php else: ?>
+                                            <div class="evidence-grid">
+                                                <?php foreach ($agent_evidences as $ev): ?>
+                                                    <?php $filePath = "../uploads/disputes/dispute_{$d['id']}/" . rawurlencode($ev['filename']); ?>
+                                                    <div>
+                                                        <div class="evidence-item">
+                                                            <img src="<?= $filePath ?>" alt="Agent Evidence" onerror="this.src='https://via.placeholder.com/90?text=File';">
+                                                            <div class="evidence-overlay">
+                                                                <a href="<?= $filePath ?>" target="_blank" style="color:#34d399; text-decoration:none; font-weight:bold; margin-bottom:8px;">Open File</a>
+                                                                <?php if ((int)$ev['uploader_id'] === (int)$my_id): ?>
+                                                                    <form method="POST" onsubmit="return confirm('Are you sure you want to delete this file?');" style="margin:0;">
+                                                                        <?php if (isset($_SESSION['csrf_token'])): ?>
+                                                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                                                        <?php endif; ?>
+                                                                        <input type="hidden" name="action" value="delete_evidence">
+                                                                        <input type="hidden" name="evidence_id" value="<?= $ev['id'] ?>">
+                                                                        <button type="submit" style="background:none; border:none; color:#fca5a5; cursor:pointer; font-size:10px; font-weight:600; padding:0; text-decoration:underline;">Delete</button>
+                                                                    </form>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                        </div>
+                                                        <?php if (!empty($ev['notes'])): ?>
+                                                            <div class="evidence-note" style="border-left-color: #1e40af;">
+                                                                <strong>Note:</strong> <?= htmlspecialchars($ev['notes']) ?>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+
+                                <!-- Supplemental Evidence Form (Active Cases Only) -->
+                                <?php if (in_array($d['status'], ['pending', 'under_review', 'open'])): ?>
+                                    <details style="margin-top:15px; border-top:1px solid #f3f4f6; padding-top:12px;">
+                                        <summary style="font-size:12px; font-weight:600; color:var(--primary); cursor:pointer; display:flex; align-items:center; gap:4px; list-style:none;">
+                                            <i data-feather="plus-circle" style="width:14px;"></i> Submit Additional Evidence
+                                        </summary>
+                                        <form method="POST" enctype="multipart/form-data" style="margin-top:12px; display:flex; flex-direction:column; gap:10px; max-width:400px;">
+                                            <?php if (isset($_SESSION['csrf_token'])): ?>
+                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                            <?php endif; ?>
+                                            <input type="hidden" name="action" value="add_evidence">
+                                            <input type="hidden" name="dispute_id" value="<?= $d['id'] ?>">
+                                            
+                                            <div>
+                                                <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:3px;">Select Files *</label>
+                                                <input type="file" name="evidence[]" multiple required style="font-size:12px;">
+                                            </div>
+                                            <div>
+                                                <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:3px;">Short Clarification Note</label>
+                                                <input type="text" name="notes" placeholder="Reason or clarification for this attachment..." style="width:100%; padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px;">
+                                            </div>
+                                            <button type="submit" class="btn-submit" style="padding:6px 12px; font-size:12px; width:auto; align-self:flex-start; border-radius:6px;">
+                                                Upload Evidences
+                                            </button>
+                                        </form>
+                                    </details>
+                                <?php endif; ?>
+
+                                <!-- Decision Resolution Panel -->
+                                <?php if ($d['status'] === 'resolved' || $d['status'] === 'dismissed'): ?>
+                                    <div style="margin-top:15px; padding:12px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; font-size:13px;">
+                                        <strong>Administrative Resolution Details:</strong>
+                                        <div style="font-style:italic; color:#166534; margin-top:4px; line-height:1.4;">
+                                            "<?= htmlspecialchars($d['admin_decision'] ?? 'No formal statement submitted.') ?>"
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
                 <?php endif; ?>
             </div>
         </div>

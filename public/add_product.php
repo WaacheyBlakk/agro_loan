@@ -1,5 +1,9 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/users.php';
 
@@ -14,11 +18,6 @@ $farmer_id = $_SESSION['user_id'];
 $pdo = getPDO();
 $errors = [];
 $success = false;
-
-// Generate CSRF Token
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
 
 // Load Categories
 try {

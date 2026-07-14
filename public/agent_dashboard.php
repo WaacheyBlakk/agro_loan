@@ -1,5 +1,8 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/users.php';
 
@@ -394,7 +397,7 @@ $total_proofs = count($proofs);
                                 <td><?= date('M d, Y', strtotime($loan['created_at'])) ?></td>
                                 <td><span class="badge badge-pending">Pending Review</span></td>
                                 <td>
-                                    <a href="view_application.php?id=<?= $loan['id'] ?>" class="btn-sm">Review</a>
+                                    <a href="farmer_vetting.php?id=<?= $loan['id'] ?>" class="btn-sm">Review</a>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

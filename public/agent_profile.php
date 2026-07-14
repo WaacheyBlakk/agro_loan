@@ -1,6 +1,10 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 // public/agent_profile.php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once '../src/db.php';
 
 $pdo = getPDO();
@@ -12,7 +16,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'agent') {
 }
 
 $user_id = $_SESSION['user_id'];
-$username = $_SESSION['name'] ?? 'Agent'; // Added for Topbar
+$username = $_SESSION['name'] ?? 'Agent';
 $message = "";
 $msgType = "";
 
@@ -50,7 +54,8 @@ function uploadFile($fieldName, $prevFile) {
 
 // HANDLE UPDATE
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mode']) && $_POST['mode'] === "edit") {
-
+    csrf_verify();
+    
     $phone = trim($_POST['phone']);
     $gps_address = trim($_POST['gps_address']);
     $id_card_number = trim($_POST['id_card_number']);

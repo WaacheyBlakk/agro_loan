@@ -1,6 +1,9 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
 // public/services.php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -487,10 +490,10 @@ footer {
             <a href="index.php">Home</a>
             <a href="about.php">About</a>
             <a href="services.php" class="active">Services</a>
-            <a href="shop.php">Shop</a>
-            <a href="register.php">Register</a>
             <a href="contact.php">Contact Us</a>
+            <a href="shop.php">Shop</a>
             <a href="login.php" class="btn-login">Login</a>
+            <a href="register.php" class="btn-login">Register</a>
         </nav>
         
         <!-- Theme Toggle -->
@@ -514,10 +517,10 @@ footer {
     <a href="index.php">Home</a>
     <a href="about.php">About</a>
     <a href="services.php" style="color:var(--primary);">Services</a>
-    <a href="shop.php">Shop</a>
-    <a href="register.php">Register</a>
     <a href="contact.php">Contact Us</a>
+    <a href="shop.php">Shop</a>
     <a href="login.php">Login</a>
+    <a href="register.php">Register</a>
 </div>
 
 <!-- Hero Header -->

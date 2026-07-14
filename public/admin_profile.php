@@ -1,5 +1,8 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once '../src/db.php';
 
 // Ensure admin

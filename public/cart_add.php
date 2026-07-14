@@ -1,8 +1,17 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 // cart_add.php — AJAX endpoint
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 header('Content-Type: application/json');
+
+if (!csrf_verify_json()) {
+    echo json_encode(['success' => false, 'message' => 'Invalid request token. Please refresh the page and try again.']);
+    exit;
+}
 
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
 if (!$user_id) {
@@ -10,12 +19,13 @@ if (!$user_id) {
     exit;
 }
 
-// Farmers cannot buy
+/* Farmers cannot buy
 $role = $_SESSION['role'] ?? 'buyer';
 if ($role === 'farmer') {
     echo json_encode(['success' => false, 'message' => 'Farmer accounts cannot purchase items']);
     exit;
 }
+*/
 
 $produce_id = filter_input(INPUT_POST, 'product_id', FILTER_VALIDATE_INT);
 $quantity   = max(1, (int)(filter_input(INPUT_POST, 'quantity', FILTER_VALIDATE_INT) ?? 1));

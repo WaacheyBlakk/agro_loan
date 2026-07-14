@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 // public/forgot_password.php
 require_once __DIR__ . '/../src/db.php';
 $pdo = getPDO(); 
@@ -7,6 +9,7 @@ $message = '';
 $msgType = ''; 
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
     $email = trim($_POST['email'] ?? '');
 
     if ($email) {
@@ -47,6 +50,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Demo Link for testing
             $demoLink = $resetLink; 
+            /*
+            @mail(
+                $email,
+                "AgroLoan Password Reset",
+                "We received a request to reset your AgroLoan password.\n\n" .
+                "Click the link below to choose a new password (valid for 1 hour):\n" .
+                $resetLink . "\n\n" .
+                "If you did not request this, you can safely ignore this email."
+            ); */
         }
 
         // Standard security practice: display the confirmation message regardless of whether the email was found
@@ -283,6 +295,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- Form -->
         <form method="POST">
+        <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
             <div class="input-group">
                 <i class="ri-mail-line"></i>
                 <input type="email" name="email" placeholder="name@company.com" required value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">

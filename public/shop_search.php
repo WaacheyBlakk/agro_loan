@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
 require_once '../src/db.php';
 $pdo = getPDO();
 

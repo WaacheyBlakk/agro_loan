@@ -1,5 +1,9 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
@@ -10,7 +14,7 @@ if (!$id) {
 
 $pdo = getPDO();
 
-// Fetch product details along with category and farmer/user info
+// Fetch product details along with category, farmer/user info, and farmer_id
 $sql = "
     SELECT 
         p.id, 
@@ -20,6 +24,7 @@ $sql = "
         p.bags_available, 
         p.description, 
         p.category_id,
+        p.farmer_id,
         u.name AS farmer_name, 
         u.email AS farmer_email,
         c.name AS category_name,
@@ -40,6 +45,8 @@ if (!$product) {
 
 $is_logged = isset($_SESSION['user_id']) || isset($_SESSION['id']);
 $user_role = $_SESSION['role'] ?? null;
+$current_user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
+
 $imgSrc = !empty($product['image']) ? "../uploads/produce/" . htmlspecialchars($product['image']) : "https://via.placeholder.com/600?text=No+Image";
 $inStock = $product['bags_available'] > 0;
 
@@ -151,11 +158,13 @@ $reviews_count = ($product['id'] * 12) % 200;
 
             <!-- Interaction Form -->
             <div class="space-y-4">
-                <?php if ($user_role === 'farmer'): ?>
+                <?php if ($user_role === 'farmer' && $current_user_id !== null && (int)$product['farmer_id'] === (int)$current_user_id): ?>
+                    <!-- Displayed only to the farmer who owns this specific listing -->
                     <a href="edit_produce.php?id=<?= $product['id'] ?>" class="block w-full bg-gray-800 text-white text-center font-bold py-3.5 rounded-xl hover:bg-black transition">
                         Edit Listing Details
                     </a>
                 <?php else: ?>
+                    <!-- Displayed to buyers and other farmers -->
                     <form id="detailsCartForm" onsubmit="handleDetailsSubmit(event)" class="space-y-4">
                         <input type="hidden" name="product_id" value="<?= $product['id'] ?>">
                         
@@ -199,6 +208,7 @@ $reviews_count = ($product['id'] * 12) % 200;
 <div id="toastContainer" class="fixed top-4 right-4 z-[100] space-y-2 pointer-events-none"></div>
 
 <script>
+    const CSRF_TOKEN = "<?= csrf_token() ?>";
     function adjustQty(amount) {
         const qtyInput = document.getElementById('purchaseQuantity');
         if (!qtyInput) return;
@@ -213,6 +223,7 @@ $reviews_count = ($product['id'] * 12) % 200;
         e.preventDefault();
         const form = document.getElementById('detailsCartForm');
         const formData = new FormData(form);
+        formData.append('csrf_token', CSRF_TOKEN);
 
         fetch('cart_add.php', {
             method: 'POST',
@@ -221,7 +232,6 @@ $reviews_count = ($product['id'] * 12) % 200;
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                // Modified to include a dynamic action button inside the success message
                 showToast(
                     `${data.message} <a href="cart.php" class="underline ml-2 font-extrabold hover:text-gray-100">View Cart &rarr;</a>`, 
                     'success'
@@ -240,6 +250,7 @@ $reviews_count = ($product['id'] * 12) % 200;
     function addToWishlistDetails(productId) {
         const formData = new FormData();
         formData.append('product_id', productId);
+        formData.append('csrf_token', CSRF_TOKEN);
 
         fetch('wishlist_add.php', {
             method: 'POST',
@@ -275,7 +286,7 @@ $reviews_count = ($product['id'] * 12) % 200;
             toast.classList.add('translate-x-full');
             toast.classList.add('opacity-0');
             setTimeout(() => toast.remove(), 300);
-        }, 4000); // Extended toast visible time slightly to allow users to read/click the 'View Cart' link
+        }, 4000);
     }
 </script>
 </body>

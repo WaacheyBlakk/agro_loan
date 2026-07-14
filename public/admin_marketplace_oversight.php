@@ -1,6 +1,10 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 // public/admin_marketplace_oversight.php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/momo.php'; // Required for transaction and payout disbursements
 
@@ -62,41 +66,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
             $successMessage = "Dispute Case #{$dispute_id} is now updated to Under Review.";
         }
 
-        // 3. Force Escrow & Lifecycle Override
+        // 3. Force Escrow & Lifecycle Override (Scoped to Order Group ID)
         elseif ($intervention === 'execute_intervention') {
             $action_type = $_POST['action_type'] ?? ''; // release_to_seller or refund_to_buyer
             $decision_text = trim($_POST['decision'] ?? '');
+            $group_id = isset($_POST['group_id']) ? intval($_POST['group_id']) : 0;
 
-            if ($order_id <= 0 || empty($decision_text)) {
-                throw new Exception("Please select a valid order and provide an intervention ruling statement.");
+            if ($group_id <= 0 || empty($decision_text)) {
+                throw new Exception("Please select a valid order group and provide an intervention ruling statement.");
             }
 
-            // Fetch held escrow records associated with this order
+            // Retrieve general details of parent order group to map hierarchy and trace events
+            $groupQuery = $pdo->prepare("SELECT order_id, group_code FROM order_groups WHERE id = ?");
+            $groupQuery->execute([$group_id]);
+            $groupMeta = $groupQuery->fetch(PDO::FETCH_ASSOC);
+
+            if (!$groupMeta) {
+                throw new Exception("Referenced order group details could not be found.");
+            }
+
+            $order_id = (int)$groupMeta['order_id'];
+            $group_code = $groupMeta['group_code'];
+
+            // Fetch held escrow records associated with this specific order group
             $escrowStmt = $pdo->prepare("
                 SELECT e.*, u.momo_phone, u.name AS farmer_name
                 FROM escrow e
                 JOIN users u ON e.farmer_id = u.id
-                WHERE e.order_id = ? AND e.status = 'held'
+                WHERE e.order_group_id = ? AND e.status = 'held'
             ");
-            $escrowStmt->execute([$order_id]);
+            $escrowStmt->execute([$group_id]);
             $escrowRecords = $escrowStmt->fetchAll(PDO::FETCH_ASSOC);
 
             if ($action_type === 'release_to_seller') {
                 if (empty($escrowRecords)) {
-                    throw new Exception("No active, held escrow records found for this transaction.");
+                    throw new Exception("No active, held escrow records found for this order group.");
                 }
 
-                // Update order status to delivered
-                $pdo->prepare("UPDATE orders SET order_status = 'delivered', updated_at = NOW() WHERE id = ?")
-                    ->execute([$order_id]);
+                // Update order group status to delivered
+                $pdo->prepare("UPDATE order_groups SET group_status = 'delivered', updated_at = NOW() WHERE id = ?")
+                    ->execute([$group_id]);
 
                 // Record administrative intervention in tracker logs
                 $pdo->prepare("INSERT INTO order_tracking (order_id, status, notes, updated_by) VALUES (?, 'delivered', ?, ?)")
-                    ->execute([$order_id, 'Admin Intervention: Released escrow to seller. Decision: ' . $decision_text, $admin_id]);
+                    ->execute([$order_id, "Admin Intervention: Released escrow for Group {$group_code}. Decision: " . $decision_text, $admin_id]);
 
-                // Settle any open disputes on this transaction
-                $pdo->prepare("UPDATE market_disputes SET status = 'resolved', decision = ?, decision_date = NOW() WHERE order_id = ? AND status IN ('open', 'under_review')")
-                    ->execute([$decision_text, $order_id]);
+                // Settle any open disputes on this order group
+                $pdo->prepare("UPDATE market_disputes SET status = 'resolved', decision = ?, decision_date = NOW() WHERE order_group_id = ? AND status IN ('open', 'under_review')")
+                    ->execute([$decision_text, $group_id]);
 
                 // Disburse held balances to vendors
                 $warnings = [];
@@ -116,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
                         'currency'    => 'GHS',
                         'phone'       => $momoPhone,
                         'external_id' => 'ESCROW-ADMIN-' . $escrow['id'] . '-' . time(),
-                        'description' => "AgroMarket Escrow Override Order #{$order_id}",
+                        'description' => "AgroMarket Escrow Override Group #{$group_id}",
                     ]);
 
                     $ref = $disburse['reference'] ?? ('ADMIN-RELEASE-' . uniqid());
@@ -125,10 +142,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
                         ->execute([$ref, $escrow['id']]);
 
                     $pdo->prepare("INSERT INTO order_tracking (order_id, status, notes) VALUES (?, 'escrow_released', ?)")
-                        ->execute([$order_id, "₵" . number_format($escrow['amount'], 2) . " released to {$escrow['farmer_name']}."]);
+                        ->execute([$order_id, "₵" . number_format($escrow['amount'], 2) . " released to {$escrow['farmer_name']} for Group {$group_code}."]);
                 }
 
-                $successMessage = "Intervention successful: Escrow funds released to seller(s).";
+                $successMessage = "Intervention successful: Escrow funds released to seller(s) for Group {$group_code}.";
                 if (!empty($warnings)) {
                     $successMessage .= ' ' . implode(' ', $warnings);
                 }
@@ -142,19 +159,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
                     throw new Exception("Unable to resolve buyer details for processing refund.");
                 }
 
-                // Update status to cancelled
-                $pdo->prepare("UPDATE orders SET order_status = 'cancelled', updated_at = NOW() WHERE id = ?")
-                    ->execute([$order_id]);
+                // Update order group status to cancelled
+                $pdo->prepare("UPDATE order_groups SET group_status = 'cancelled', updated_at = NOW() WHERE id = ?")
+                    ->execute([$group_id]);
 
                 // Record intervention tracking log
                 $pdo->prepare("INSERT INTO order_tracking (order_id, status, notes, updated_by) VALUES (?, 'cancelled', ?, ?)")
-                    ->execute([$order_id, 'Admin Intervention: Transaction cancelled and refunded. Decision: ' . $decision_text, $admin_id]);
+                    ->execute([$order_id, "Admin Intervention: Group {$group_code} cancelled and refunded. Decision: " . $decision_text, $admin_id]);
 
                 // Settle linked disputes
-                $pdo->prepare("UPDATE market_disputes SET status = 'resolved', decision = ?, decision_date = NOW() WHERE order_id = ? AND status IN ('open', 'under_review')")
-                    ->execute([$decision_text, $order_id]);
+                $pdo->prepare("UPDATE market_disputes SET status = 'resolved', decision = ?, decision_date = NOW() WHERE order_group_id = ? AND status IN ('open', 'under_review')")
+                    ->execute([$decision_text, $group_id]);
 
-                // Calculate total refund sum from held escrow (Farmer portion + fee)
+                // Calculate total refund sum from held escrow (Farmer portion + fee) for this specific group
                 $refundSum = 0;
                 foreach ($escrowRecords as $escrow) {
                     $refundSum += ($escrow['amount'] + $escrow['platform_fee_portion']);
@@ -163,15 +180,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
                 }
 
                 if ($refundSum <= 0) {
-                    $orderAmountStmt = $pdo->prepare("SELECT total_amount FROM orders WHERE id = ?");
-                    $orderAmountStmt->execute([$order_id]);
-                    $refundSum = (float)$orderAmountStmt->fetchColumn();
+                    // Fallback calculations for refund total based on relevant group items if active escrows are missing
+                    $groupAmountStmt = $pdo->prepare("SELECT SUM(subtotal) FROM order_items WHERE order_group_id = ?");
+                    $groupAmountStmt->execute([$group_id]);
+                    $refundSum = (float)$groupAmountStmt->fetchColumn();
                 }
 
                 $buyerPhoneNum = $buyerData['momo_phone'] ?: $buyerData['phone'];
 
                 if (empty($buyerPhoneNum)) {
-                    $successMessage = "Escrow successfully marked as refunded. Manual refund required (No buyer phone configured).";
+                    $successMessage = "Group escrow successfully marked as refunded. Manual refund required (No buyer phone configured).";
                 } else {
                     $momoPhone = '233' . ltrim(preg_replace('/\D/', '', $buyerPhoneNum), '0');
 
@@ -180,16 +198,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
                         'amount'      => $refundSum,
                         'currency'    => 'GHS',
                         'phone'       => $momoPhone,
-                        'external_id' => 'REFUND-ADMIN-' . $order_id . '-' . time(),
-                        'description' => "AgroMarket Refund Override Order #{$order_id}",
+                        'external_id' => 'REFUND-ADMIN-' . $group_id . '-' . time(),
+                        'description' => "AgroMarket Refund Override Group {$group_code}",
                     ]);
 
                     $ref = $disburse['reference'] ?? ('ADMIN-REFUND-' . uniqid());
 
                     $pdo->prepare("INSERT INTO order_tracking (order_id, status, notes) VALUES (?, 'escrow_refunded', ?)")
-                        ->execute([$order_id, "₵" . number_format($refundSum, 2) . " refunded back to buyer {$buyerData['name']} (Ref: $ref)."]);
+                        ->execute([$order_id, "₵" . number_format($refundSum, 2) . " refunded back to buyer {$buyerData['name']} for Group {$group_code} (Ref: $ref)."]);
 
-                    $successMessage = "Transaction cancelled successfully. Escrow refunded to buyer MoMo account.";
+                    $successMessage = "Group {$group_code} transaction cancelled. Escrow refunded to buyer MoMo account.";
                 }
             } else {
                 throw new Exception("Unknown override intervention action specified.");
@@ -211,6 +229,7 @@ $selected_order_id = isset($_GET['id']) ? intval($_GET['id']) : null;
 $selected_dispute_id = isset($_GET['dispute_id']) ? intval($_GET['dispute_id']) : null;
 
 $selected_order         = null;
+$selected_order_groups  = [];
 $selected_order_items    = [];
 $selected_order_tracking = [];
 $selected_order_escrow   = [];
@@ -224,13 +243,15 @@ if ($selected_dispute_id) {
         SELECT d.*, 
                CASE WHEN d.initiator_role = 'buyer' THEN b.name ELSE u.name END AS initiator_name,
                CASE WHEN d.defendant_role = 'buyer' THEN b2.name ELSE u2.name END AS defendant_name,
-               o.total_amount AS order_amount, o.order_status
+               o.total_amount AS order_amount, o.order_status,
+               og.group_code
         FROM market_disputes d
         LEFT JOIN buyers b ON (d.initiator_id = b.id AND d.initiator_role = 'buyer')
         LEFT JOIN users u ON (d.initiator_id = u.id AND d.initiator_role = 'farmer')
         LEFT JOIN buyers b2 ON (d.defendant_id = b2.id AND d.defendant_role = 'buyer')
         LEFT JOIN users u2 ON (d.defendant_id = u2.id AND d.defendant_role = 'farmer')
         LEFT JOIN orders o ON d.order_id = o.id
+        LEFT JOIN order_groups og ON d.order_group_id = og.id
         WHERE d.id = ?
     ");
     $sdStmt->execute([$selected_dispute_id]);
@@ -257,6 +278,16 @@ if ($selected_order_id) {
     $selected_order = $soStmt->fetch(PDO::FETCH_ASSOC);
 
     if ($selected_order) {
+        // Fetch order groups
+        $sogStmt = $pdo->prepare("
+            SELECT og.*, u.name AS farmer_name, u.momo_phone AS farmer_momo
+            FROM order_groups og
+            JOIN users u ON og.farmer_id = u.id
+            WHERE og.order_id = ?
+        ");
+        $sogStmt->execute([$selected_order_id]);
+        $selected_order_groups = $sogStmt->fetchAll(PDO::FETCH_ASSOC);
+
         // Fetch order items list
         $soiStmt = $pdo->prepare("
             SELECT oi.*, p.produce_name, p.photo, u.name AS farmer_name, u.momo_phone AS farmer_momo
@@ -283,17 +314,19 @@ if ($selected_order_id) {
         $soeStmt->execute([$selected_order_id]);
         $selected_order_escrow = $soeStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Fetch related disputes
+        // Fetch related disputes (with joined order_groups context)
         if (!$selected_dispute) {
             $sodStmt = $pdo->prepare("
                 SELECT d.*, 
                        CASE WHEN d.initiator_role = 'buyer' THEN b.name ELSE u.name END AS initiator_name,
-                       CASE WHEN d.defendant_role = 'buyer' THEN b2.name ELSE u2.name END AS defendant_name
+                       CASE WHEN d.defendant_role = 'buyer' THEN b2.name ELSE u2.name END AS defendant_name,
+                       og.group_code
                 FROM market_disputes d
                 LEFT JOIN buyers b ON (d.initiator_id = b.id AND d.initiator_role = 'buyer')
                 LEFT JOIN users u ON (d.initiator_id = u.id AND d.initiator_role = 'farmer')
                 LEFT JOIN buyers b2 ON (d.defendant_id = b2.id AND d.defendant_role = 'buyer')
                 LEFT JOIN users u2 ON (d.defendant_id = u2.id AND d.defendant_role = 'farmer')
+                LEFT JOIN order_groups og ON d.order_group_id = og.id
                 WHERE d.order_id = ?
                 ORDER BY d.created_at DESC
             ");
@@ -349,13 +382,15 @@ if ($activeTab === 'disputes') {
         SELECT d.*, 
                CASE WHEN d.initiator_role = 'buyer' THEN b.name ELSE u.name END AS initiator_name,
                CASE WHEN d.defendant_role = 'buyer' THEN b2.name ELSE u2.name END AS defendant_name,
-               o.total_amount AS order_amount, o.order_status
+               o.total_amount AS order_amount, o.order_status,
+               og.group_code
         FROM market_disputes d
         LEFT JOIN buyers b ON (d.initiator_id = b.id AND d.initiator_role = 'buyer')
         LEFT JOIN users u ON (d.initiator_id = u.id AND d.initiator_role = 'farmer')
         LEFT JOIN buyers b2 ON (d.defendant_id = b2.id AND d.defendant_role = 'buyer')
         LEFT JOIN users u2 ON (d.defendant_id = u2.id AND d.defendant_role = 'farmer')
         LEFT JOIN orders o ON d.order_id = o.id
+        LEFT JOIN order_groups og ON d.order_group_id = og.id
         ORDER BY d.created_at DESC
     ";
     $allDisputes = $pdo->query($disputeQuery)->fetchAll(PDO::FETCH_ASSOC);
@@ -743,84 +778,219 @@ $escrowConfig = [
             <?php if ($selected_order_id && $selected_order): ?>
                 <div class="split-view">
                     
-                    <!-- Left Column: Detailed Order Record -->
+                    <!-- Left Column: Order Groups with Independent Lifecycles -->
                     <div>
-                        <!-- Main Record Sheet - exact loan details panel structure -->
-                        <div class="card">
-                            <div class="flex-header">
-                                <h2 class="card-title"><i data-feather="file-text"></i> Audit Sheet: Transaction ID #<?= $selected_order['id'] ?></h2>
-                                <?php $sc = $statusConfig[$selected_order['order_status']] ?? ['label'=>$selected_order['order_status'],'color'=>'badge-pending']; ?>
-                                <span class="badge <?= $sc['color'] ?>"><?= $sc['label'] ?></span>
-                            </div>
-
-                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
-                                <div>
-                                    <strong style="font-size:12px; color:var(--text-muted); text-transform:uppercase;">Recipient Customer</strong>
-                                    <div style="font-size:14px; font-weight:600; margin-top:3px;"><?= htmlspecialchars($selected_order['buyer_name'] ?? 'Guest Buyer') ?></div>
-                                    <div style="font-size:12px; color:var(--text-muted);"><?= htmlspecialchars($selected_order['buyer_email'] ?? 'No Email') ?></div>
-                                    <div style="font-size:12px; color:var(--text-muted);"><?= htmlspecialchars($selected_order['buyer_phone'] ?? 'No Phone') ?></div>
+                        <?php if (empty($selected_order_groups)): ?>
+                            <div class="card">
+                                <h2 class="card-title" style="margin-bottom:15px;"><i data-feather="package"></i> Order Items</h2>
+                                <div class="table-wrap">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Listing</th>
+                                                <th>Farmer Vendor</th>
+                                                <th>Quantity</th>
+                                                <th>Unit Cost</th>
+                                                <th>Subtotal</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($selected_order_items as $item): ?>
+                                            <tr>
+                                                <td>
+                                                    <div style="display:flex; align-items:center; gap:10px;">
+                                                        <img src="<?= !empty($item['photo']) ? "../uploads/produce/".htmlspecialchars($item['photo']) : "https://via.placeholder.com/40" ?>" style="width:36px; height:36px; border-radius:6px; object-fit:cover;" onerror="this.src='https://via.placeholder.com/40'">
+                                                        <span style="font-weight:600;"><?= htmlspecialchars($item['produce_name']) ?></span>
+                                                    </div>
+                                                </td>
+                                                <td><?= htmlspecialchars($item['farmer_name']) ?></td>
+                                                <td><?= $item['quantity'] ?> bags</td>
+                                                <td>₵<?= number_format($item['unit_price'], 2) ?></td>
+                                                <td style="font-weight:600;">₵<?= number_format($item['subtotal'], 2) ?></td>
+                                            </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
                                 </div>
-                                <div>
-                                    <strong style="font-size:12px; color:var(--text-muted); text-transform:uppercase;">Financial Ledger</strong>
-                                    <div style="font-size:14px; font-weight:600; margin-top:3px;">Total Cost: ₵<?= number_format($selected_order['total_amount'], 2) ?></div>
-                                    <div style="font-size:12px; color:var(--success); font-weight:600;">Platform Fee: ₵<?= number_format($selected_order['platform_fee'], 2) ?></div>
-                                    <div style="font-size:12px; color:var(--text-muted);">Payout Phone: <?= htmlspecialchars($selected_order['buyer_momo'] ?: 'None Set') ?></div>
-                                </div>
-                                <div>
-                                    <strong style="font-size:12px; color:var(--text-muted); text-transform:uppercase;">Delivery Address</strong>
-                                    <div style="font-size:14px; font-weight:600; margin-top:3px;"><?= htmlspecialchars($selected_order['delivery_name']) ?></div>
-                                    <div style="font-size:12px; color:var(--text-muted);"><?= htmlspecialchars($selected_order['delivery_address']) ?></div>
-                                    <div style="font-size:12px; color:var(--text-muted);">Phone: <?= htmlspecialchars($selected_order['delivery_phone']) ?></div>
-                                </div>
                             </div>
+                        <?php else: ?>
+                            <?php foreach ($selected_order_groups as $group): ?>
+                                <?php 
+                                $group_id = $group['id'];
+                                $group_status = $group['group_status'] ?? 'pending';
+                                $scGroup = $statusConfig[$group_status] ?? ['label' => $group_status, 'color' => 'badge-pending'];
 
-                            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border:1px solid #e2e8f0; margin-bottom: 20px;">
-                                <strong style="font-size:12px; color:var(--text-muted); text-transform:uppercase; display:block; margin-bottom:5px;">Payment Details</strong>
-                                <div style="font-size:13px; color:var(--text-main);">Payment State: <strong style="text-transform:uppercase;"><?= htmlspecialchars($selected_order['payment_status']) ?></strong></div>
-                                <div style="font-size:12px; color:var(--text-muted); margin-top:3px;">Created On: <?= date('d M Y, h:i A', strtotime($selected_order['created_at'])) ?></div>
-                            </div>
+                                // Filter items belonging to this order group
+                                $group_items = array_filter($selected_order_items, function($item) use ($group_id) {
+                                    return (isset($item['order_group_id']) && $item['order_group_id'] == $group_id);
+                                });
 
-                            <?php if (!empty($selected_order['buyer_notes'])): ?>
-                            <div style="background: #faf8f5; padding: 15px; border-radius: 8px; border: 1px dashed #f59e0b;">
-                                <strong style="font-size:11px; color:var(--warning); text-transform:uppercase; display:block; margin-bottom:4px;">Direct Instruction Notes</strong>
-                                <p style="font-size:12.5px; margin: 0; line-height:1.5; font-style: italic;">"<?= htmlspecialchars($selected_order['buyer_notes']) ?>"</p>
-                            </div>
-                            <?php endif; ?>
-                        </div>
+                                // Filter escrow records belonging to this order group
+                                $group_escrows = array_filter($selected_order_escrow, function($escrow) use ($group_id) {
+                                    return (isset($escrow['order_group_id']) && $escrow['order_group_id'] == $group_id);
+                                });
 
-                        <!-- Order Line Items -->
-                        <div class="card">
-                            <h2 class="card-title" style="margin-bottom:15px;"><i data-feather="package"></i> Line Items in Current Lifecycle</h2>
-                            <div class="table-wrap">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Listing</th>
-                                            <th>Farmer Vendor</th>
-                                            <th>Quantity</th>
-                                            <th>Unit Cost</th>
-                                            <th>Subtotal</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php foreach ($selected_order_items as $item): ?>
-                                        <tr>
-                                            <td>
-                                                <div style="display:flex; align-items:center; gap:10px;">
-                                                    <img src="<?= !empty($item['photo']) ? "../uploads/produce/".htmlspecialchars($item['photo']) : "https://via.placeholder.com/40" ?>" style="width:36px; height:36px; border-radius:6px; object-fit:cover;" onerror="this.src='https://via.placeholder.com/40'">
-                                                    <span style="font-weight:600;"><?= htmlspecialchars($item['produce_name']) ?></span>
+                                // Filter disputes belonging to this order group
+                                $group_disputes = array_filter($selected_disputes, function($dispute) use ($group_id) {
+                                    return (isset($dispute['order_group_id']) && $dispute['order_group_id'] == $group_id);
+                                });
+                                ?>
+                                <div class="card" style="border-left: 4px solid var(--primary);">
+                                    <div class="flex-header" style="margin-bottom: 15px;">
+                                        <div>
+                                            <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Vendor Lifecycle Segment</span>
+                                            <h3 style="margin: 2px 0 0 0; font-size: 17px; font-weight: 600;">
+                                                Group Reference: <span style="color: var(--primary);"><?= htmlspecialchars($group['group_code'] ?? 'N/A') ?></span>
+                                            </h3>
+                                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+                                                Farmer Vendor: <strong><?= htmlspecialchars($group['farmer_name']) ?></strong> (<?= htmlspecialchars($group['farmer_momo'] ?: 'No MoMo configured') ?>)
+                                            </div>
+                                        </div>
+                                        <span class="badge <?= $scGroup['color'] ?>"><?= $scGroup['label'] ?></span>
+                                    </div>
+
+                                    <!-- Group Line Items -->
+                                    <div class="table-wrap" style="margin-bottom: 15px;">
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>Listing</th>
+                                                    <th>Quantity</th>
+                                                    <th>Unit Cost</th>
+                                                    <th>Subtotal</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php if (empty($group_items)): ?>
+                                                    <tr>
+                                                        <td colspan="4" style="text-align: center; font-style: italic; color: var(--text-muted); font-size: 12px;">No individual line items stored under this group reference.</td>
+                                                    </tr>
+                                                <?php else: ?>
+                                                    <?php foreach ($group_items as $item): ?>
+                                                    <tr>
+                                                        <td>
+                                                            <div style="display:flex; align-items:center; gap:10px;">
+                                                                <img src="<?= !empty($item['photo']) ? "../uploads/produce/".htmlspecialchars($item['photo']) : "https://via.placeholder.com/40" ?>" style="width:32px; height:32px; border-radius:6px; object-fit:cover;" onerror="this.src='https://via.placeholder.com/40'">
+                                                                <span style="font-weight:600; font-size: 13px;"><?= htmlspecialchars($item['produce_name']) ?></span>
+                                                            </div>
+                                                        </td>
+                                                        <td style="font-size: 13px;"><?= $item['quantity'] ?> bags</td>
+                                                        <td style="font-size: 13px;">₵<?= number_format($item['unit_price'], 2) ?></td>
+                                                        <td style="font-weight:600; font-size: 13px;">₵<?= number_format($item['subtotal'], 2) ?></td>
+                                                    </tr>
+                                                    <?php endforeach; ?>
+                                                <?php endif; ?>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <!-- Group Financial Escrow Ledgers -->
+                                    <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 15px;">
+                                        <h4 style="margin: 0 0 8px 0; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 4px;">
+                                            <i data-feather="shield" style="width: 12px; height: 12px;"></i> Group Escrow Ledger
+                                        </h4>
+                                        <?php if (empty($group_escrows)): ?>
+                                            <p style="font-size:12px; color:var(--text-muted); font-style:italic; margin: 0;">No escrow assets generated for this group context.</p>
+                                        <?php else: ?>
+                                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                                <?php foreach ($group_escrows as $esc): ?>
+                                                <?php $ec = $escrowConfig[$esc['status']] ?? ['label'=>'Unknown','color'=>'badge-pending']; ?>
+                                                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px;">
+                                                    <div>
+                                                        <span style="font-weight: 600;">₵<?= number_format($esc['amount'], 2) ?></span> 
+                                                        <span style="color: var(--text-muted);"> (Fee Portion: ₵<?= number_format($esc['platform_fee_portion'], 2) ?>)</span>
+                                                    </div>
+                                                    <span class="badge <?= $ec['color'] ?>" style="font-size: 9px; padding: 2px 6px;"><?= $ec['label'] ?></span>
                                                 </div>
-                                            </td>
-                                            <td><?= htmlspecialchars($item['farmer_name']) ?></td>
-                                            <td><?= $item['quantity'] ?> bags</td>
-                                            <td>₵<?= number_format($item['unit_price'], 2) ?></td>
-                                            <td style="font-weight:600;">₵<?= number_format($item['subtotal'], 2) ?></td>
-                                        </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                                                <?php if ($esc['momo_disbursement_ref']): ?>
+                                                <div style="font-size:10px; font-family:monospace; color:var(--text-muted); word-break: break-all; background: #fff; padding: 4px; border-radius: 4px; border: 1px solid #e2e8f0;">
+                                                    Disbursement Reference: <?= htmlspecialchars($esc['momo_disbursement_ref']) ?>
+                                                </div>
+                                                <?php endif; ?>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <!-- Group Disputes Docket -->
+                                    <?php if (!empty($group_disputes)): ?>
+                                        <div style="border: 1px solid #fecaca; border-radius: 8px; padding: 12px; background: #fffdfd; margin-bottom: 15px;">
+                                            <h4 style="margin: 0 0 8px 0; font-size: 11px; color: var(--danger); text-transform: uppercase; display: flex; align-items: center; gap: 4px;">
+                                                <i data-feather="alert-triangle" style="width: 12px; height: 12px;"></i> Segment Disputes
+                                            </h4>
+                                            <?php foreach ($group_disputes as $disp): ?>
+                                            <div style="border-bottom: 1px dashed #fecaca; padding-bottom: 8px; margin-bottom: 8px;">
+                                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                                    <strong style="font-size:12px;"><?= htmlspecialchars($disp['title']) ?></strong>
+                                                    <span class="badge badge-rejected" style="font-size: 9px; padding: 2px 6px;"><?= str_replace('_', ' ', $disp['status']) ?></span>
+                                                </div>
+                                                <p style="font-size:12px; margin: 4px 0; font-style:italic;">"<?= htmlspecialchars($disp['description']) ?>"</p>
+                                                
+                                                <?php if ($disp['decision']): ?>
+                                                    <div style="font-size:11px; margin-top:4px; color:var(--text-main);">
+                                                        <strong>Resolution Decision:</strong> <em>"<?= htmlspecialchars($disp['decision']) ?>"</em>
+                                                    </div>
+                                                <?php endif; ?>
+
+                                                <?php if ($disp['status'] === 'open'): ?>
+                                                <form method="POST" style="margin-top:6px; display:inline-block;">
+                                                    <input type="hidden" name="intervention_type" value="review_dispute">
+                                                    <input type="hidden" name="order_id" value="<?= $selected_order['id'] ?>">
+                                                    <input type="hidden" name="dispute_id" value="<?= $disp['id'] ?>">
+                                                    <button type="submit" class="btn btn-secondary" style="font-size:10px; padding:3px 6px;"><i data-feather="eye" style="width:10px;"></i> Mark Under Review</button>
+                                                </form>
+                                                <?php endif; ?>
+
+                                                <?php if (in_array($disp['status'], ['open', 'under_review'])): ?>
+                                                    <form method="POST" style="margin-top:8px; border-top:1px dashed #e2e8f0; padding-top:8px;">
+                                                        <input type="hidden" name="intervention_type" value="resolve_dispute">
+                                                        <input type="hidden" name="order_id" value="<?= $selected_order['id'] ?>">
+                                                        <input type="hidden" name="dispute_id" value="<?= $disp['id'] ?>">
+                                                        
+                                                        <div style="margin-bottom:6px;">
+                                                            <textarea name="admin_decision" rows="2" placeholder="Write official resolution directive..." required style="font-size:11px; padding: 6px;"></textarea>
+                                                        </div>
+                                                        <div style="display:flex; gap:6px;">
+                                                            <button type="submit" name="status" value="resolved" class="btn btn-primary" style="font-size:10px; padding:4px 8px;">Resolve Dispute</button>
+                                                            <button type="submit" name="status" value="dismissed" class="btn btn-secondary" style="font-size:10px; padding:4px 8px;">Dismiss Case</button>
+                                                        </div>
+                                                    </form>
+                                                <?php endif; ?>
+                                            </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php endif; ?>
+
+                                    <!-- Group Escrow Override Intervention Console -->
+                                    <?php if ($group_status !== 'delivered' && $group_status !== 'cancelled'): ?>
+                                        <div class="intervention-box" style="margin-top: 15px; padding: 15px;">
+                                            <h4 style="margin: 0 0 8px 0; color: #b45309; font-size: 13px; display: flex; align-items: center; gap: 4px;">
+                                                <i data-feather="sliders" style="width: 13px; height: 13px;"></i> Escrow Group Override
+                                            </h4>
+                                            <form method="POST">
+                                                <input type="hidden" name="intervention_type" value="execute_intervention">
+                                                <input type="hidden" name="group_id" value="<?= $group_id ?>">
+
+                                                <div style="margin-bottom:10px;">
+                                                    <label style="font-size:10px; font-weight:600; text-transform:uppercase; display:block; margin-bottom:3px;">Action Type</label>
+                                                    <select name="action_type" required style="font-size:11px; padding: 6px;">
+                                                        <option value="release_to_seller">Release Escrow (Mark Segment Delivered)</option>
+                                                        <option value="refund_to_buyer">Refund Escrow (Cancel Segment & Reimburse Buyer)</option>
+                                                    </select>
+                                                </div>
+
+                                                <div style="margin-bottom:10px;">
+                                                    <label style="font-size:10px; font-weight:600; text-transform:uppercase; display:block; margin-bottom:3px;">Justification Note</label>
+                                                    <textarea name="decision" rows="2" required placeholder="State official reasoning for system audit trail..." style="font-size:11px; padding: 6px;"></textarea>
+                                                </div>
+
+                                                <button type="submit" onclick="return confirm('You are authorizing a direct manual intervention for group <?= htmlspecialchars($group['group_code']) ?>. Proceed?');" class="btn btn-primary" style="font-size:11px; width:100%; padding: 6px; justify-content:center;">Execute Group Intervention</button>
+                                            </form>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
 
                         <!-- Progression Events Timeline -->
                         <div class="card">
@@ -843,133 +1013,50 @@ $escrowConfig = [
                         </div>
                     </div>
 
-                    <!-- Right Column: Escrow Statements, Disputes, Overrides -->
+                    <!-- Right Column: Detailed Order Meta & Ledger Records -->
                     <div>
-                        <!-- Escrow Assets Statement - Sturdy stacked vertical layout matching loan details -->
+                        <!-- Main Record Sheet - exact loan details panel structure -->
                         <div class="card">
-                            <h2 class="card-title" style="margin-bottom:15px;"><i data-feather="shield"></i> Active Financial Escrow Ledgers</h2>
-                            <?php if (empty($selected_order_escrow)): ?>
-                                <p style="font-size:12px; color:var(--text-muted); font-style:italic; text-align:center; padding:15px 0;">No escrow assets generated for this ledger context.</p>
-                            <?php else: ?>
-                                <?php foreach ($selected_order_escrow as $esc): ?>
-                                <?php $ec = $escrowConfig[$esc['status']] ?? ['label'=>'Unknown','color'=>'badge-pending']; ?>
-                                <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom:12px; background:#fff;">
-                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                                        <strong style="font-size:13px; color:var(--text-main);"><?= htmlspecialchars($esc['farmer_name']) ?></strong>
-                                        <span class="badge <?= $ec['color'] ?>"><?= $ec['label'] ?></span>
-                                    </div>
-                                    <div style="font-size:16px; font-weight:700; color:var(--text-main); margin-bottom:6px;">₵<?= number_format($esc['amount'], 2) ?></div>
-                                    <div style="font-size:12px; color:var(--text-muted);">Fee Portion: <strong>₵<?= number_format($esc['platform_fee_portion'], 2) ?></strong></div>
-                                    <?php if ($esc['momo_disbursement_ref']): ?>
-                                    <div style="font-size:11px; margin-top:8px; background:#f1f5f9; padding:6px; border-radius:4px; font-family:monospace; color:var(--text-muted); word-break: break-all;">
-                                        Disbursement Ref: <?= htmlspecialchars($esc['momo_disbursement_ref']) ?>
-                                    </div>
-                                    <?php endif; ?>
+                            <div class="flex-header">
+                                <h2 class="card-title"><i data-feather="file-text"></i> Audit Details: ID #<?= $selected_order['id'] ?></h2>
+                                <?php $sc = $statusConfig[$selected_order['order_status']] ?? ['label'=>$selected_order['order_status'],'color'=>'badge-pending']; ?>
+                                <span class="badge <?= $sc['color'] ?>"><?= $sc['label'] ?></span>
+                            </div>
+
+                            <div style="display:flex; flex-direction:column; gap: 15px; margin-bottom: 20px;">
+                                <div>
+                                    <strong style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Recipient Customer</strong>
+                                    <div style="font-size:13px; font-weight:600; margin-top:3px;"><?= htmlspecialchars($selected_order['buyer_name'] ?? 'Guest Buyer') ?></div>
+                                    <div style="font-size:11px; color:var(--text-muted);"><?= htmlspecialchars($selected_order['buyer_email'] ?? 'No Email') ?></div>
+                                    <div style="font-size:11px; color:var(--text-muted);"><?= htmlspecialchars($selected_order['buyer_phone'] ?? 'No Phone') ?></div>
                                 </div>
-                                <?php endforeach; ?>
+                                <div>
+                                    <strong style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Financial Ledger</strong>
+                                    <div style="font-size:13px; font-weight:600; margin-top:3px;">Total Cost: ₵<?= number_format($selected_order['total_amount'], 2) ?></div>
+                                    <div style="font-size:11px; color:var(--success); font-weight:600;">Platform Fee: ₵<?= number_format($selected_order['platform_fee'], 2) ?></div>
+                                    <div style="font-size:11px; color:var(--text-muted);">Payout Phone: <?= htmlspecialchars($selected_order['buyer_momo'] ?: 'None Set') ?></div>
+                                </div>
+                                <div>
+                                    <strong style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Delivery Address</strong>
+                                    <div style="font-size:13px; font-weight:600; margin-top:3px;"><?= htmlspecialchars($selected_order['delivery_name']) ?></div>
+                                    <div style="font-size:11px; color:var(--text-muted);"><?= htmlspecialchars($selected_order['delivery_address']) ?></div>
+                                    <div style="font-size:11px; color:var(--text-muted);">Phone: <?= htmlspecialchars($selected_order['delivery_phone']) ?></div>
+                                </div>
+                            </div>
+
+                            <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border:1px solid #e2e8f0; margin-bottom: 15px;">
+                                <strong style="font-size:11px; color:var(--text-muted); text-transform:uppercase; display:block; margin-bottom:5px;">Payment Details</strong>
+                                <div style="font-size:12px; color:var(--text-main);">Payment State: <strong style="text-transform:uppercase;"><?= htmlspecialchars($selected_order['payment_status']) ?></strong></div>
+                                <div style="font-size:11px; color:var(--text-muted); margin-top:3px;">Created On: <?= date('d M Y, h:i A', strtotime($selected_order['created_at'])) ?></div>
+                            </div>
+
+                            <?php if (!empty($selected_order['buyer_notes'])): ?>
+                            <div style="background: #faf8f5; padding: 12px; border-radius: 8px; border: 1px dashed #f59e0b;">
+                                <strong style="font-size:11px; color:var(--warning); text-transform:uppercase; display:block; margin-bottom:4px;">Instruction Notes</strong>
+                                <p style="font-size:12px; margin: 0; line-height:1.5; font-style: italic;">"<?= htmlspecialchars($selected_order['buyer_notes']) ?>"</p>
+                            </div>
                             <?php endif; ?>
                         </div>
-
-                        <!-- Dispute Handling Card - exact clone of the loan oversight dispute panel -->
-                        <div class="card" style="border-color:#fecaca; background:#fffdfd;">
-                            <h2 class="card-title" style="color:var(--danger);"><i data-feather="alert-triangle"></i> Disputes Registry Docket</h2>
-                            <p style="font-size:12px; color:var(--text-muted); margin-bottom:15px;">Historical claims, complaints, and active dispute profiles mapped to this record.</p>
-
-                            <?php 
-                            $active_disputes = $selected_dispute ? [$selected_dispute] : $selected_disputes;
-                            if (empty($active_disputes)): 
-                            ?>
-                                <p style="font-size:12px; color:var(--text-muted); text-align:center; padding:15px 0;">No active disputes registered against this sheet.</p>
-                            <?php else: ?>
-                                <?php foreach ($active_disputes as $disp): ?>
-                                <div style="border: 1px solid #fecaca; border-radius: 8px; padding: 12px; margin-bottom:12px; background:#fff;">
-                                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                                        <strong style="font-size:13px;"><?= htmlspecialchars($disp['title']) ?></strong>
-                                        <span class="badge" style="background:<?= (in_array($disp['status'], ['open', 'under_review'])) ? '#fee2e2; color:#ef4444;' : '#e2e8f0; color:#475569;' ?>"><?= str_replace('_', ' ', $disp['status']) ?></span>
-                                    </div>
-                                    <div style="font-size:12px; color:var(--text-muted); margin-top:3px;">Lodge Initiator: <?= htmlspecialchars($disp['initiator_name']) ?> | Target: <?= htmlspecialchars($disp['defendant_name']) ?></div>
-                                    <p style="font-size:13px; margin: 8px 0; background:#fefefe; border: 1px solid #f3f4f6; padding: 8px; border-radius:4px; font-style:italic;">
-                                        "<?= htmlspecialchars($disp['description']) ?>"
-                                    </p>
-
-                                    <?php if (!empty($dispute_evidence) && $selected_dispute['id'] == $disp['id']): ?>
-                                    <div style="margin: 10px 0; border-top: 1px dashed #cbd5e1; padding-top:8px;">
-                                        <span style="font-size:10px; font-weight:700; text-transform:uppercase; color:var(--text-muted); display:block; margin-bottom:5px;">Evidence Attachments (<?= count($dispute_evidence) ?>)</span>
-                                        <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                                            <?php foreach ($dispute_evidence as $ev): ?>
-                                            <a href="../uploads/disputes/<?= htmlspecialchars($ev['file_path']) ?>" target="_blank" style="font-size:11px; color:var(--primary); font-weight:500; text-decoration:none; display:inline-flex; align-items:center; gap:2px;">
-                                                <i data-feather="image" style="width:12px; height:12px;"></i> View File
-                                            </a>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    </div>
-                                    <?php endif; ?>
-
-                                    <?php if ($disp['decision']): ?>
-                                        <div style="font-size:12px; border-top:1px dashed #cbd5e1; padding-top:8px; margin-top:8px; color:var(--text-main);">
-                                            <strong>Ruling Decision Note:</strong> <em>"<?= htmlspecialchars($disp['decision']) ?>"</em>
-                                        </div>
-                                    <?php endif; ?>
-
-                                    <?php if ($disp['status'] === 'open'): ?>
-                                    <form method="POST" style="margin-top:10px; display:inline-block;">
-                                        <input type="hidden" name="intervention_type" value="review_dispute">
-                                        <input type="hidden" name="order_id" value="<?= $selected_order['id'] ?>">
-                                        <input type="hidden" name="dispute_id" value="<?= $disp['id'] ?>">
-                                        <button type="submit" class="btn btn-secondary" style="font-size:11px; padding:4px 8px;"><i data-feather="eye" style="width:12px;"></i> Mark Under Review</button>
-                                    </form>
-                                    <?php endif; ?>
-
-                                    <?php if (in_array($disp['status'], ['open', 'under_review'])): ?>
-                                        <form method="POST" style="margin-top:10px; border-top:1px dashed #e2e8f0; padding-top:10px;">
-                                            <input type="hidden" name="intervention_type" value="resolve_dispute">
-                                            <input type="hidden" name="order_id" value="<?= $selected_order['id'] ?>">
-                                            <input type="hidden" name="dispute_id" value="<?= $disp['id'] ?>">
-                                            
-                                            <div style="margin-bottom:8px;">
-                                                <label style="font-size:11px; font-weight:600; text-transform:uppercase; display:block; margin-bottom:3px;">Write Official Resolution directive</label>
-                                                <textarea name="admin_decision" rows="2" placeholder="Resolution directive message..." required style="font-size:11px;"></textarea>
-                                            </div>
-                                            <div style="display:flex; gap:8px;">
-                                                <button type="submit" name="status" value="resolved" class="btn btn-primary" style="font-size:11px; padding:6px 12px;">Resolve Dispute</button>
-                                                <button type="submit" name="status" value="dismissed" class="btn btn-secondary" style="font-size:11px; padding:6px 12px;">Dismiss Case</button>
-                                            </div>
-                                        </form>
-                                    <?php endif; ?>
-                                </div>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </div>
-
-                        <!-- Direct Escrow Override Systems - standard intervention-box styles -->
-                        <?php if ($selected_order['order_status'] !== 'delivered' && $selected_order['order_status'] !== 'cancelled'): ?>
-                        <div class="intervention-box">
-                            <h3><i data-feather="sliders"></i> Escrow Overrides</h3>
-                            <p style="font-size:12px; color:#92400e; margin-bottom:15px; line-height:1.4;">
-                                Authoritative bypass system. Use this console to manually release funds to the seller or trigger direct cancellations to refund the buyer's payment.
-                            </p>
-                            
-                            <form method="POST">
-                                <input type="hidden" name="intervention_type" value="execute_intervention">
-                                <input type="hidden" name="order_id" value="<?= $selected_order['id'] ?>">
-
-                                <div style="margin-bottom:12px;">
-                                    <label style="font-size:11px; font-weight:600; text-transform:uppercase; display:block; margin-bottom:4px;">Directive Override Mode</label>
-                                    <select name="action_type" required style="font-size:12px;">
-                                        <option value="release_to_seller">Release Escrow Funds to Seller (Deliver Order manual override)</option>
-                                        <option value="refund_to_buyer">Refund Escrow Funds to Buyer (Cancel Transaction and reverse payment)</option>
-                                    </select>
-                                </div>
-
-                                <div style="margin-bottom:12px;">
-                                    <label style="font-size:11px; font-weight:600; text-transform:uppercase; display:block; margin-bottom:4px;">Official Statement / Decision Note</label>
-                                    <textarea name="decision" rows="3" required placeholder="State clear reasoning or administrative reference notes for system logs..." style="font-size:12px;"></textarea>
-                                </div>
-
-                                <button type="submit" onclick="return confirm('WARNING: You are triggering an override intervention. Direct MoMo disbursements or refunds may be immediately executed. Proceed?');" class="btn btn-primary" style="font-size:12px; width:100%; justify-content:center;">Authorize Override Execution</button>
-                            </form>
-                        </div>
-                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -1024,13 +1111,13 @@ $escrowConfig = [
 
                     <!-- Render Tab Contents -->
                     <?php if ($activeTab === 'disputes'): ?>
-                        <!-- Disputes logs view -->
+                        <!-- Disputes logs view with Group Code Context -->
                         <div class="table-wrap">
                             <?php 
                             $filteredDisputes = array_filter($allDisputes, function($disp) use ($search) {
                                 if (!empty($search)) {
                                     $s = strtolower($search);
-                                    return (str_contains(strtolower($disp['title']), $s) || str_contains(strtolower($disp['initiator_name'] ?? ''), $s) || $disp['order_id'] == $s);
+                                    return (str_contains(strtolower($disp['title']), $s) || str_contains(strtolower($disp['initiator_name'] ?? ''), $s) || $disp['order_id'] == $s || str_contains(strtolower($disp['group_code'] ?? ''), $s));
                                 }
                                 return true;
                             });
@@ -1043,6 +1130,7 @@ $escrowConfig = [
                                         <tr>
                                             <th>Case ID</th>
                                             <th>Order ID</th>
+                                            <th>Group Code</th>
                                             <th>Claim Overview Title</th>
                                             <th>Lodge Party</th>
                                             <th>Target Defendant</th>
@@ -1056,6 +1144,7 @@ $escrowConfig = [
                                         <tr style="background:#fff5f5;">
                                             <td>#<?= $disp['id'] ?></td>
                                             <td><strong>#<?= $disp['order_id'] ?></strong></td>
+                                            <td><span class="badge badge-completed"><?= htmlspecialchars($disp['group_code'] ?? 'N/A') ?></span></td>
                                             <td><strong style="color:var(--text-main); font-size:13px;"><?= htmlspecialchars($disp['title']) ?></strong></td>
                                             <td><?= htmlspecialchars($disp['initiator_name'] ?? 'System User') ?> <span style="font-size:10px; font-weight:700; color:var(--text-muted);">(<?= strtoupper($disp['initiator_role']) ?>)</span></td>
                                             <td><?= htmlspecialchars($disp['defendant_name'] ?? 'System User') ?> <span style="font-size:10px; font-weight:700; color:var(--text-muted);">(<?= strtoupper($disp['defendant_role']) ?>)</span></td>

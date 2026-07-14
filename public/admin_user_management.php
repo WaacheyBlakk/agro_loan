@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 require_once __DIR__ . '/../src/config.php';
 require_once __DIR__ . '/../src/sessions.php';
 require_once __DIR__ . '/../src/db.php';
@@ -39,6 +41,7 @@ $alert_message = "";
 $alert_type = "";
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'override_status') {
+    csrf_verify();    
     $target_id = filter_input(INPUT_POST, 'user_id', FILTER_VALIDATE_INT);
     $target_role = $_POST['target_role'] ?? '';
     $new_status = $_POST['new_status'] ?? '';

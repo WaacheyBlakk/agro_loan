@@ -1,11 +1,15 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 
 // Check authorization: Must be logged in as a farmer (seller)
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
 if (!$user_id) { 
-    header('Location: buyers_login.php'); 
+    header('Location: login.php'); 
     exit; 
 }
 
@@ -42,6 +46,7 @@ $success = '';
 
 // Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
     $name = trim(filter_input(INPUT_POST, 'produce_name', FILTER_SANITIZE_SPECIAL_CHARS));
     $category_id = filter_input(INPUT_POST, 'category_id', FILTER_VALIDATE_INT);
     $price = filter_input(INPUT_POST, 'price_per_bag', FILTER_VALIDATE_FLOAT);
@@ -306,6 +311,9 @@ $is_logged = true;
         <?php endif; ?>
 
         <form method="POST" enctype="multipart/form-data" class="space-y-5">
+            <?php if (isset($_SESSION['csrf_token'])): ?>
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+            <?php endif; ?>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                 
                 <!-- Produce Name -->

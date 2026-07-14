@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 // public/reset_password.php
 require_once __DIR__ . '/../src/db.php';
 $pdo = getPDO();
@@ -58,6 +60,7 @@ if (!$error) {
 
 // 3. Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
+    csrf_verify();
     $new_password = $_POST['password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
 

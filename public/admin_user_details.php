@@ -1,11 +1,11 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once '../src/db.php';
 require_once '../src/sessions.php';
-
-// 1. Security Headers
-header("X-Frame-Options: DENY");
-header("X-Content-Type-Options: nosniff");
 
 // 2. Auth Check
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
@@ -304,6 +304,10 @@ function getStatusColor($status) {
         gap: 24px;
     }
 
+    .data-box {
+        min-width: 0; /* Allows content to shrink and wrap inside the CSS grid */
+    }
+
     .data-box label {
         display: block;
         font-size: 11px;
@@ -312,11 +316,16 @@ function getStatusColor($status) {
         font-weight: 600;
         margin-bottom: 6px;
         letter-spacing: 0.5px;
+        word-break: break-word;
+        overflow-wrap: break-word;
     }
     .data-box span {
+        display: block;
         font-size: 15px;
         font-weight: 500;
         color: var(--text-main);
+        word-break: break-word;
+        overflow-wrap: break-word;
     }
 
     /* --- Documents --- */
@@ -333,6 +342,9 @@ function getStatusColor($status) {
         transition: transform 0.2s ease, box-shadow 0.2s ease;
         cursor: pointer;
         background: var(--bg-card);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
     }
     .doc-card:hover {
         transform: translateY(-4px);
@@ -354,14 +366,38 @@ function getStatusColor($status) {
         color: #e11d48;
         font-size: 42px;
     }
+    
     .doc-footer {
         padding: 12px;
         background: white;
+        border-top: 1px solid var(--border);
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .doc-label {
         font-size: 12px;
         font-weight: 600;
         color: var(--text-main);
-        border-top: 1px solid var(--border);
-        text-align: center;
+    }
+
+    .doc-filename {
+        font-size: 11px;
+        font-weight: 400;
+        color: var(--text-muted);
+        word-break: break-all;
+        overflow-wrap: break-word;
+        width: 100%;
+    }
+
+    .doc-external-icon {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-top: 2px;
     }
 
     /* --- Action Buttons --- */
@@ -527,7 +563,7 @@ function getStatusColor($status) {
                         <?php foreach ($profile as $key => $value): ?>
                             <?php 
                                 if ($key === 'id' || $key === 'user_id' || empty($value)) continue; 
-                                $label = str_replace("_", " ", $key);
+                                $label = ucwords(str_replace("_", " ", $key));
                             ?>
                             <div class="data-box">
                                 <label><?= htmlspecialchars($label) ?></label>
@@ -564,6 +600,7 @@ function getStatusColor($status) {
                                 $hasDocs = true;
                                 $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
                                 $label = ucfirst(str_replace("_", " ", $field));
+                                $filename = basename($filePath); // Extract raw filename
                     ?>
                                 <div class="doc-card" onclick="<?= (in_array($ext, ['jpg','jpeg','png'])) ? "openLightbox('$filePath')" : "window.open('$filePath', '_blank')" ?>">
                                     <?php if (in_array($ext, ['jpg','jpeg','png'])): ?>
@@ -573,8 +610,11 @@ function getStatusColor($status) {
                                     <?php endif; ?>
                                     
                                     <div class="doc-footer">
-                                        <?= $label ?>
-                                        <?php if($ext === 'pdf') echo '<i class="fas fa-external-link-alt" style="margin-left:4px"></i>'; ?>
+                                        <span class="doc-label"><?= htmlspecialchars($label) ?></span>
+                                        <span class="doc-filename" title="<?= htmlspecialchars($filename) ?>"><?= htmlspecialchars($filename) ?></span>
+                                        <?php if($ext === 'pdf'): ?>
+                                            <span class="doc-external-icon"><i class="fas fa-external-link-alt"></i></span>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                     <?php 

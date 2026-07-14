@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
 require_once __DIR__ . '/../src/db.php';
 $order_id = intval($_GET['order_id'] ?? 0);
 $pdo = getPDO();

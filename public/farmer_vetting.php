@@ -1,5 +1,9 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 require_once __DIR__ . '/../src/db.php';
 
@@ -55,6 +59,7 @@ $username = $_SESSION['name'];
 $successMessage = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['application_id'], $_POST['action'])) {
+    csrf_verify();
     $application_id = $_POST['application_id'];
     $action = ($_POST['action'] === 'approve') ? 'approved' : 'rejected';
     $rejection_reason = $_POST['rejection_reason'] ?? null;
@@ -491,6 +496,9 @@ $applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
         </nav>
 
         <form action="logout.php" method="POST">
+            <?php if (isset($_SESSION['csrf_token'])): ?>
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+            <?php endif; ?>
             <button class="logout-btn">
                 <i data-feather="log-out"></i>
                 <span>Logout</span>
@@ -585,12 +593,18 @@ $applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                     <?php if ($app['status'] === 'pending'): ?>
                                         <form method="POST" class="action-form approve-form" style="display:inline-block; margin-right:5px;">
+                                            <?php if (isset($_SESSION['csrf_token'])): ?>
+                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                            <?php endif; ?>
                                             <input type="hidden" name="application_id" value="<?= $app['application_id'] ?>">
                                             <button type="submit" name="action" value="approve" class="btn-sm btn-approve" title="Approve">
                                                 <i data-feather="check" style="width:14px; height:14px;"></i>
                                             </button>
                                         </form>
                                         <form method="POST" class="action-form reject-form" style="display:inline-block; margin-right:5px;">
+                                            <?php if (isset($_SESSION['csrf_token'])): ?>
+                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                            <?php endif; ?>
                                             <input type="hidden" name="application_id" value="<?= $app['application_id'] ?>">
                                             <button type="button" class="btn-sm btn-reject trigger-reject-btn" title="Reject">
                                                 <i data-feather="x" style="width:14px; height:14px;"></i>

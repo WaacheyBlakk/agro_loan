@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
 // public/about.php
 session_start();
 ?>
@@ -19,7 +20,6 @@ session_start();
 
 <style>
 :root {
-    /* Exact Variables from index.php */
     --primary: #15803d;       
     --primary-dark: #14532d;  
     --accent: #22c55e;        
@@ -561,10 +561,10 @@ footer {
             <a href="index.php">Home</a>
             <a href="about.php" class="active">About</a>
             <a href="services.php">Services</a>
-            <a href="shop.php">Shop</a>
-            <a href="register.php">Register</a>
             <a href="contact.php">Contact Us</a>
+            <a href="shop.php">Shop</a>
             <a href="login.php" class="btn-login">Login</a>
+            <a href="register.php" class="btn-login">Register</a>
         </nav>
         
         <!-- Theme Toggle -->
@@ -588,10 +588,10 @@ footer {
     <a href="index.php">Home</a>
     <a href="about.php" style="color:var(--primary);">About</a>
     <a href="services.php">Services</a>
-    <a href="shop.php">Shop</a>
-    <a href="register.php">Register</a>
     <a href="contact.php">Contact Us</a>
+    <a href="shop.php">Shop</a>
     <a href="login.php">Login</a>
+    <a href="register.php">Register</a>
 </div>
 
 <!-- Hero Header -->

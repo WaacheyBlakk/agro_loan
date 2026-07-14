@@ -1,5 +1,9 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
@@ -9,7 +13,6 @@ $pdo       = getPDO();
 $user_role = $_SESSION['role'] ?? 'buyer';
 $is_logged = true;
 
-// Note: Ensure this percentage matches the one set in checkout_process.php (1.0%)
 define('PLATFORM_FEE_PERCENT', 1.0);
 
 // Cart count for nav badge
@@ -19,7 +22,7 @@ $cart_count = (int)$cStmt->fetchColumn();
 
 if ($cart_count === 0) { header('Location: cart.php'); exit; }
 
-// Fetch cart items (Uses c.product_id)
+// Fetch cart items
 $sql = "
     SELECT c.product_id, c.quantity,
            p.produce_name AS name, p.photo AS image, p.price_per_bag, p.bags_available,

@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
 
 function sendMailToFarmer($farmer_id, $buyer_name, $product_name) {
     // Fetch farmer email

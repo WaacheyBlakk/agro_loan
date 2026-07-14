@@ -1,5 +1,10 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+//buyer_dashboard.php
 require_once __DIR__ . '/../src/db.php';
 
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
@@ -69,15 +74,15 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['update_profile'])) {
 $activeTab = $_GET['tab'] ?? 'overview';
 $highlight = filter_input(INPUT_GET,'order_id',FILTER_VALIDATE_INT);
 
-// Status config
+// Status config optimized for light and dark modes (High Contrast colors)
 $statusConfig = [
-    'pending_payment'   => ['label'=>'Pending Payment',   'color'=>'bg-amber-50 text-amber-700 border border-amber-200/30', 'icon'=>'ri-time-line'],
-    'payment_confirmed' => ['label'=>'Confirmed', 'color'=>'bg-blue-50 text-blue-700 border border-blue-200/30',    'icon'=>'ri-check-double-line'],
-    'preparing'         => ['label'=>'Preparing',   'color'=>'bg-purple-50 text-purple-700 border border-purple-200/30','icon'=>'ri-box-3-line'],
-    'in_transit'        => ['label'=>'In Transit',        'color'=>'bg-orange-50 text-orange-700 border border-orange-200/30','icon'=>'ri-truck-line'],
-    'ready_for_pickup'  => ['label'=>'Ready for Pickup',  'color'=>'bg-cyan-50 text-cyan-700 border border-cyan-200/30',    'icon'=>'ri-store-line'],
-    'delivered'         => ['label'=>'Delivered',         'color'=>'bg-emerald-50 text-emerald-700 border border-emerald-200/30',  'icon'=>'ri-checkbox-circle-line'],
-    'cancelled'         => ['label'=>'Cancelled',         'color'=>'bg-rose-50 text-rose-700 border border-rose-200/30',      'icon'=>'ri-close-circle-line'],
+    'pending_payment'   => ['label'=>'Pending Payment',   'color'=>'bg-amber-50 text-amber-800 border border-amber-200/50 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/40', 'icon'=>'ri-time-line'],
+    'payment_confirmed' => ['label'=>'Confirmed', 'color'=>'bg-blue-50 text-blue-800 border border-blue-200/50 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-900/40',    'icon'=>'ri-check-double-line'],
+    'preparing'         => ['label'=>'Preparing',   'color'=>'bg-purple-50 text-purple-800 border border-purple-200/50 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-900/40','icon'=>'ri-box-3-line'],
+    'in_transit'        => ['label'=>'In Transit',        'color'=>'bg-orange-50 text-orange-800 border border-orange-200/50 dark:bg-orange-950/30 dark:text-orange-300 dark:border-orange-900/40','icon'=>'ri-truck-line'],
+    'ready_for_pickup'  => ['label'=>'Ready for Pickup',  'color'=>'bg-cyan-50 text-cyan-800 border border-cyan-200/50 dark:bg-cyan-950/30 dark:text-cyan-300 dark:border-cyan-900/40',    'icon'=>'ri-store-line'],
+    'delivered'         => ['label'=>'Delivered',         'color'=>'bg-emerald-50 text-emerald-800 border border-emerald-200/50 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/40',  'icon'=>'ri-checkbox-circle-line'],
+    'cancelled'         => ['label'=>'Cancelled',         'color'=>'bg-rose-50 text-rose-800 border border-rose-200/50 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-900/40',      'icon'=>'ri-close-circle-line'],
 ];
 
 $trackingSteps = [
@@ -89,6 +94,28 @@ $trackingSteps = [
     'delivered'         => 4,
 ];
 
+// Reusable prepared statements for scoped order items, groups, and tracking
+$groupsStmt = $pdo->prepare("
+    SELECT og.*, u.name AS farmer_name
+    FROM order_groups og
+    JOIN users u ON u.id = og.farmer_id
+    WHERE og.order_id = ?
+    ORDER BY og.id
+");
+
+$oiStmt = $pdo->prepare("
+    SELECT oi.*, p.produce_name, p.photo
+    FROM order_items oi
+    JOIN produce_listings p ON oi.produce_id=p.id
+    WHERE oi.order_group_id=?
+");
+
+$trackStmt = $pdo->prepare("
+    SELECT * FROM order_tracking 
+    WHERE order_group_id=? 
+    ORDER BY created_at ASC
+");
+
 $page_title = 'My Dashboard | AgroMarket';
 $active_nav = 'dashboard';
 include 'nav.php';
@@ -96,14 +123,16 @@ include 'nav.php';
 
 <style>
 .tab-btn { 
-    padding: 0.625rem 1.25rem; 
-    font-size: 0.875rem; 
+    padding: 0.625rem 1rem; 
+    font-size: 0.8125rem; 
     font-weight: 600; 
     border-radius: 0.75rem; 
     transition: all 0.2s ease-in-out; 
     display: inline-flex; 
     align-items: center; 
+    justify-content: center;
     gap: 0.5rem;
+    width: 100%;
 }
 .tab-btn.active { 
     background: var(--primary); 
@@ -122,112 +151,118 @@ include 'nav.php';
     height: 3px; 
     border-radius: 9999px;
 }
+@media (min-width: 768px) {
+    .tab-btn {
+        width: auto;
+        font-size: 0.875rem;
+        padding: 0.625rem 1.25rem;
+    }
+}
 </style>
 
-<div class="pt-28 md:pt-32 pb-16 min-h-screen px-4 sm:px-6 max-w-6xl mx-auto">
+<div class="pt-24 md:pt-32 pb-24 md:pb-16 min-h-screen px-3 sm:px-6 max-w-6xl mx-auto">
 
     <!-- Header Section -->
-    <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 md:p-8 shadow-sm mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div class="flex items-center gap-4">
-            <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center text-white text-2xl font-extrabold shadow-md">
+    <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm mb-6 md:mb-8 flex flex-col md:flex-row items-center justify-between gap-5 text-center md:text-left">
+        <div class="flex flex-col md:flex-row items-center gap-4">
+            <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center text-white text-2xl font-extrabold shadow-md flex-shrink-0">
                 <?= strtoupper(substr($buyer['name'],0,1)) ?>
             </div>
             <div>
-                <h1 class="text-2xl font-extrabold text-[var(--text-main)] leading-tight flex items-center gap-2">
+                <h1 class="text-xl md:text-2xl font-extrabold text-[var(--text-main)] leading-tight flex items-center justify-center md:justify-start gap-2">
                     Welcome back, <?= htmlspecialchars(explode(' ',$buyer['name'])[0]) ?>
                 </h1>
-                <p class="text-[var(--text-muted)] text-xs mt-1 font-medium flex items-center gap-1.5">
-                    <i class="ri-calendar-line text-[var(--primary)]"></i> Member since <?= date('F Y', strtotime($buyer['created_at'])) ?>
+                <p class="text-[var(--text-muted)] text-xs mt-1 font-medium flex items-center justify-center md:justify-start gap-1.5">
+                    <i class="ri-calendar-line text-emerald-600 dark:text-emerald-400"></i> Member since <?= date('F Y', strtotime($buyer['created_at'])) ?>
                 </p>
             </div>
         </div>
-        <a href="shop.php" class="bg-[var(--primary)] text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition shadow-md hover:shadow-lg flex items-center justify-center gap-2">
-            <i class="ri-store-2-line text-base"></i> Shop Products
+        <a href="shop.php" class="w-full md:w-auto bg-[var(--primary)] text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition shadow-md hover:shadow-lg flex items-center justify-center gap-2">
+            <i class="ri-store-2-line text-base text-white"></i> Shop Products
         </a>
     </div>
 
     <!-- Tab Container -->
-    <div class="flex gap-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-1.5 mb-8 w-full sm:w-auto overflow-x-auto shadow-sm">
+    <div class="grid grid-cols-2 md:flex md:flex-row gap-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-1.5 mb-6 md:mb-8 w-full shadow-sm">
         <button onclick="setTab('overview')"  id="tab-overview"  class="tab-btn <?= $activeTab==='overview'?'active':'' ?>">
-            <i class="ri-dashboard-line text-base"></i>Overview
+            <i class="ri-dashboard-line text-base"></i><span>Overview</span>
         </button>
         <button onclick="setTab('orders')"    id="tab-orders"    class="tab-btn <?= $activeTab==='orders'?'active':'' ?>">
-            <i class="ri-file-list-3-line text-base"></i>My Orders
+            <i class="ri-file-list-3-line text-base"></i><span>My Orders</span>
         </button>
         <button onclick="setTab('profile')"   id="tab-profile"   class="tab-btn <?= $activeTab==='profile'?'active':'' ?>">
-            <i class="ri-user-line text-base"></i>Profile Settings
+            <i class="ri-user-line text-base"></i><span>Profile</span>
         </button>
-
-        <a href="market_disputes.php" class="tab-btn text-red-600 hover:text-red-700 font-semibold">
-            <i class="ri-scales-3-line text-base"></i> Dispute Center
+        <a href="market_disputes.php" class="tab-btn text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 font-semibold justify-center">
+            <i class="ri-scales-3-line text-base"></i><span>Disputes</span>
         </a>
     </div>
 
     <!-- ===== TAB: OVERVIEW ===== -->
     <div id="panel-overview" class="<?= $activeTab!=='overview'?'hidden':'' ?> space-y-6 animate-fadeIn">
         <!-- Stat Cards Grid -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
             <?php
             $cards = [
-                ['icon'=>'ri-shopping-bag-3-line','color'=>'text-blue-600 bg-blue-50 dark:bg-blue-950/20 dark:text-blue-400','label'=>'Total Orders','value'=>$stats['total_orders']],
-                ['icon'=>'ri-wallet-3-line','color'=>'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 dark:text-emerald-400','label'=>'Total Spent','value'=>'₵ '.number_format($stats['total_spent'],2)],
-                ['icon'=>'ri-truck-line','color'=>'text-orange-600 bg-orange-50 dark:bg-orange-950/20 dark:text-orange-400','label'=>'Active Shipments','value'=>$stats['active']],
-                ['icon'=>'ri-checkbox-circle-line','color'=>'text-purple-600 bg-purple-50 dark:bg-purple-950/20 dark:text-purple-400','label'=>'Completed Delivery','value'=>$stats['delivered']],
+                ['icon'=>'ri-shopping-bag-3-line','color'=>'text-blue-600 bg-blue-50 dark:bg-blue-950/40 dark:text-blue-300','label'=>'Total Orders','value'=>$stats['total_orders']],
+                ['icon'=>'ri-wallet-3-line','color'=>'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300','label'=>'Total Spent','value'=>'₵ '.number_format($stats['total_spent'],2)],
+                ['icon'=>'ri-truck-line','color'=>'text-orange-600 bg-orange-50 dark:bg-orange-950/40 dark:text-orange-300','label'=>'Active Shipments','value'=>$stats['active']],
+                ['icon'=>'ri-checkbox-circle-line','color'=>'text-purple-600 bg-purple-50 dark:bg-purple-950/40 dark:text-purple-300','label'=>'Completed Delivery','value'=>$stats['delivered']],
             ];
             foreach($cards as $c): ?>
-            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-300">
-                <div class="flex items-center justify-between mb-4">
-                    <span class="text-xs text-[var(--text-muted)] font-bold uppercase tracking-wider"><?= $c['label'] ?></span>
-                    <div class="w-10 h-10 rounded-xl <?= $c['color'] ?> flex items-center justify-center">
-                        <i class="<?= $c['icon'] ?> text-lg"></i>
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-3 sm:p-5 shadow-sm hover:shadow-md transition-shadow duration-300">
+                <div class="flex items-center justify-between mb-2 md:mb-4">
+                    <span class="text-[10px] md:text-xs text-[var(--text-muted)] font-bold uppercase tracking-wider"><?= $c['label'] ?></span>
+                    <div class="w-8 h-8 md:w-10 md:h-10 rounded-xl <?= $c['color'] ?> flex items-center justify-center flex-shrink-0">
+                        <i class="<?= $c['icon'] ?> text-sm md:text-lg"></i>
                     </div>
                 </div>
-                <div class="text-xl md:text-2xl font-black text-[var(--text-main)] tracking-tight"><?= $c['value'] ?></div>
+                <div class="text-base sm:text-lg md:text-2xl font-black text-[var(--text-main)] tracking-tight truncate"><?= $c['value'] ?></div>
             </div>
             <?php endforeach; ?>
         </div>
 
         <!-- Recent Activity Section -->
         <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm overflow-hidden">
-            <div class="px-6 py-5 border-b border-[var(--border)] flex justify-between items-center">
-                <h2 class="font-extrabold text-[var(--text-main)] text-lg flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-[var(--primary)]"></span> Recent Orders
+            <div class="px-4 py-4 border-b border-[var(--border)] flex justify-between items-center">
+                <h2 class="font-extrabold text-[var(--text-main)] text-base md:text-lg flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-600 dark:bg-emerald-400"></span> Recent Orders
                 </h2>
-                <button onclick="setTab('orders')" class="text-sm text-[var(--primary)] font-bold hover:underline">View All Activity</button>
+                <button onclick="setTab('orders')" class="text-xs md:text-sm text-emerald-600 dark:text-emerald-400 font-bold hover:underline">View All</button>
             </div>
             
             <?php if(empty($orders)): ?>
-            <div class="p-12 text-center text-[var(--text-muted)]">
-                <div class="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-900/40 flex items-center justify-center mx-auto mb-4">
-                    <i class="ri-shopping-bag-3-line text-2xl text-[var(--text-muted)] opacity-40"></i>
+            <div class="p-12 text-center">
+                <div class="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-900/40 flex items-center justify-center mx-auto mb-4 border border-[var(--border)]">
+                    <i class="ri-shopping-bag-3-line text-2xl text-slate-400 dark:text-slate-300"></i>
                 </div>
-                <p class="font-semibold text-sm">No purchases recorded yet</p>
-                <a href="shop.php" class="inline-block mt-4 bg-[var(--primary-light)] text-[var(--primary)] px-5 py-2 rounded-xl text-xs font-bold hover:bg-[var(--primary)] hover:text-white transition-all duration-200">Start Shopping</a>
+                <p class="font-semibold text-sm text-[var(--text-muted)]">No purchases recorded yet</p>
+                <a href="shop.php" class="inline-block mt-4 bg-[var(--primary-light)] text-[var(--primary)] dark:bg-emerald-950/20 dark:text-emerald-400 px-5 py-2 rounded-xl text-xs font-bold hover:bg-[var(--primary)] hover:text-white transition-all duration-200">Start Shopping</a>
             </div>
             <?php else: ?>
             <div class="divide-y divide-[var(--border)]">
                 <?php foreach(array_slice($orders,0,5) as $o): ?>
-                <?php $sc = $statusConfig[$o['order_status']] ?? ['label'=>$o['order_status'],'color'=>'bg-gray-50 text-gray-700','icon'=>'ri-circle-line']; ?>
-                <div class="px-6 py-4 flex items-center justify-between gap-4 hover:bg-[var(--primary-light)]/20 transition-all duration-200">
-                    <div class="flex items-center gap-4 min-w-0">
-                        <div class="w-12 h-12 bg-[var(--bg-body)] border border-[var(--border)] rounded-xl flex items-center justify-center flex-shrink-0 text-[var(--text-main)]">
-                            <i class="<?= $sc['icon'] ?> text-lg"></i>
+                <?php $sc = $statusConfig[$o['order_status']] ?? ['label'=>$o['order_status'],'color'=>'bg-gray-50 text-gray-800 border border-gray-200/30 dark:bg-gray-900 dark:text-gray-300','icon'=>'ri-circle-line']; ?>
+                <div class="px-4 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:bg-[var(--primary-light)]/10 transition-all duration-200">
+                    <div class="flex items-center gap-3 w-full min-w-0">
+                        <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 <?= $sc['color'] ?>">
+                            <i class="<?= $sc['icon'] ?> text-base"></i>
                         </div>
-                        <div class="min-w-0">
-                            <div class="text-sm font-bold text-[var(--text-main)] flex items-center gap-2">
+                        <div class="min-w-0 flex-grow">
+                            <div class="text-sm font-bold text-[var(--text-main)] flex items-center gap-1.5">
                                 Order #<?= $o['id'] ?>
                             </div>
-                            <div class="text-xs text-[var(--text-muted)] mt-0.5 flex items-center gap-1.5 font-medium">
+                            <div class="text-[11px] text-[var(--text-muted)] mt-0.5 flex items-center gap-1.5 font-medium flex-wrap">
                                 <span><?= $o['item_count'] ?> item<?= $o['item_count']!=1?'s':'' ?></span>
                                 <span class="text-slate-300 dark:text-slate-700">•</span>
                                 <span><?= date('d M Y', strtotime($o['created_at'])) ?></span>
                             </div>
                         </div>
                     </div>
-                    <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
-                        <div class="text-sm font-extrabold text-[var(--text-main)]">₵<?= number_format($o['total_amount'],2) ?></div>
-                        <span class="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider <?= $sc['color'] ?>">
-                            <i class="<?= $sc['icon'] ?> text-[10px]"></i> <?= $sc['label'] ?>
+                    <div class="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 w-full sm:w-auto border-t sm:border-t-0 border-slate-100 dark:border-slate-800/60 pt-2 sm:pt-0">
+                        <div class="text-sm sm:text-base font-extrabold text-[var(--text-main)]">₵<?= number_format($o['total_amount'],2) ?></div>
+                        <span class="inline-flex items-center gap-1 text-[9px] md:text-[10px] px-2 py-0.5 md:py-1 rounded-full font-bold uppercase tracking-wider <?= $sc['color'] ?>">
+                            <i class="<?= $sc['icon'] ?> text-[9px]"></i> <?= $sc['label'] ?>
                         </span>
                     </div>
                 </div>
@@ -240,159 +275,210 @@ include 'nav.php';
     <!-- ===== TAB: ORDERS ===== -->
     <div id="panel-orders" class="<?= $activeTab!=='orders'?'hidden':'' ?> space-y-6 animate-fadeIn">
         <?php if(empty($orders)): ?>
-        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-16 text-center shadow-sm">
-            <div class="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-900/40 flex items-center justify-center mx-auto mb-4">
-                <i class="ri-shopping-cart-2-line text-2xl text-[var(--text-muted)] opacity-40"></i>
+        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-10 md:p-16 text-center shadow-sm">
+            <div class="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-900/40 flex items-center justify-center mx-auto mb-4 border border-[var(--border)]">
+                <i class="ri-shopping-cart-2-line text-2xl text-slate-400 dark:text-slate-300"></i>
             </div>
             <h3 class="text-lg font-bold text-[var(--text-main)] mb-1">Your Order Shelf is Empty</h3>
             <p class="text-[var(--text-muted)] text-sm mb-6 max-w-sm mx-auto">Your physical produce shipments will show up here as soon as you place an order.</p>
-            <a href="shop.php" class="bg-[var(--primary)] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition-all">Browse Produce</a>
+            <a href="shop.php" class="inline-block bg-[var(--primary)] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition-all">Browse Produce</a>
         </div>
         <?php else: ?>
         <div class="space-y-6">
             <?php foreach($orders as $o): ?>
             <?php
-                $sc        = $statusConfig[$o['order_status']] ?? ['label'=>$o['order_status'],'color'=>'bg-gray-100 text-gray-700','icon'=>'ri-circle-line'];
-                $stepIndex = $trackingSteps[$o['order_status']] ?? 0;
-                $isNew     = ($highlight == $o['id']);
+                $isNew = ($highlight == $o['id']);
 
-                // Fetch order items for this order
-                $oiStmt = $pdo->prepare("
-                    SELECT oi.*, p.produce_name, p.photo, u.name AS farmer_name
-                    FROM order_items oi
-                    JOIN produce_listings p ON oi.produce_id=p.id
-                    JOIN users u ON oi.farmer_id=u.id
-                    WHERE oi.order_id=?
-                ");
-                $oiStmt->execute([$o['id']]);
-                $oItems = $oiStmt->fetchAll(PDO::FETCH_ASSOC);
+                // Fetch database order groups directly for this order
+                $groupsStmt->execute([$o['id']]);
+                $orderGroups = $groupsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-                // Fetch tracking history
-                $trackStmt = $pdo->prepare("SELECT * FROM order_tracking WHERE order_id=? ORDER BY created_at ASC");
-                $trackStmt->execute([$o['id']]);
-                $trackHistory = $trackStmt->fetchAll(PDO::FETCH_ASSOC);
-
-                $canConfirm = in_array($o['order_status'],['in_transit','ready_for_pickup']) && $o['payment_status']==='confirmed';
+                $farmerPackages = [];
+                foreach ($orderGroups as $g) {
+                    $oiStmt->execute([$g['id']]);
+                    $g['items'] = $oiStmt->fetchAll(PDO::FETCH_ASSOC);
+                    $farmerPackages[$g['id']] = $g;
+                }
             ?>
             <div class="bg-[var(--bg-card)] border-2 <?= $isNew?'border-[var(--primary)] shadow-md':'border-[var(--border)] shadow-sm' ?> rounded-2xl overflow-hidden transition-all duration-300">
                 <!-- Order Header -->
-                <div class="p-5 border-b border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10 flex flex-wrap gap-4 justify-between items-center">
+                <div class="p-4 md:p-5 border-b border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10 flex flex-col sm:flex-row gap-4 justify-between sm:items-center">
                     <div>
-                        <div class="flex items-center gap-3 flex-wrap">
-                            <span class="font-black text-[var(--text-main)] text-lg">Order ID: #<?= $o['id'] ?></span>
-                            <span class="inline-flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-full font-extrabold uppercase tracking-wider <?= $sc['color'] ?>">
-                                <i class="<?= $sc['icon'] ?>"></i> <?= $sc['label'] ?>
-                            </span>
-                            <?php if($isNew): ?><span class="text-xs bg-[var(--primary)] text-white px-2 py-0.5 rounded-full font-black tracking-wide animate-pulse">HIGHLIGHT</span><?php endif; ?>
+                        <div class="flex items-center gap-2.5 flex-wrap">
+                            <span class="font-black text-[var(--text-main)] text-base md:text-lg">Order ID: #<?= $o['id'] ?></span>
+                            <?php if($isNew): ?><span class="text-[9px] bg-[var(--primary)] text-white px-2 py-0.5 rounded-full font-black tracking-wide animate-pulse">HIGHLIGHT</span><?php endif; ?>
                         </div>
-                        <p class="text-xs text-[var(--text-muted)] mt-1.5 font-medium">
+                        <p class="text-[11px] md:text-xs text-[var(--text-muted)] mt-1.5 font-medium">
                             Date: <span class="text-[var(--text-main)]"><?= date('d M Y, h:i A', strtotime($o['created_at'])) ?></span>
                             <span class="text-slate-300 dark:text-slate-700 mx-1.5">|</span>
-                            Items: <span class="text-[var(--text-main)]"><?= count($oItems) ?></span>
+                            Packages: <span class="text-[var(--text-main)] font-semibold"><?= count($farmerPackages) ?> source vendor(s)</span>
                         </p>
                     </div>
-                    <div class="text-right">
-                        <div class="text-xl font-black text-[var(--text-main)]">₵<?= number_format($o['total_amount'],2) ?></div>
-                        <div class="text-xs text-[var(--text-muted)] mt-0.5 font-bold uppercase tracking-wider"><?= str_replace('_',' ',$o['payment_method']) ?></div>
+                    <div class="sm:text-right flex sm:flex-col justify-between items-center sm:items-end gap-1 border-t sm:border-t-0 border-[var(--border)] pt-3 sm:pt-0">
+                        <div class="text-lg md:text-xl font-black text-[var(--text-main)]">₵<?= number_format($o['total_amount'],2) ?></div>
+                        <div class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider"><?= str_replace('_',' ',$o['payment_method']) ?></div>
                     </div>
                 </div>
 
-                <!-- Tracking Stepper -->
-                <?php if($o['order_status'] !== 'cancelled'): ?>
-                <div class="px-6 py-6 border-b border-[var(--border)] bg-[var(--bg-body)]">
-                    <?php
-                    $steps = [
-                        ['icon'=>'ri-wallet-3-line',      'label'=>'Paid'],
-                        ['icon'=>'ri-check-double-line',  'label'=>'Verified'],
-                        ['icon'=>'ri-box-3-line',         'label'=>'Prepping'],
-                        ['icon'=>'ri-truck-line',         'label'=>'Dispatched'],
-                        ['icon'=>'ri-home-heart-line',    'label'=>'Delivered'],
-                    ];
+                <!-- Farmer Packages Section -->
+                <div class="divide-y-4 divide-[var(--border)]">
+                    <?php foreach ($farmerPackages as $gId => $pkg): ?>
+                    <?php 
+                        // Map internal group package status directly to style configurations
+                        $mappedStatus = $pkg['status'] ?? 'pending_payment';
+                        $sc = $statusConfig[$mappedStatus] ?? ['label'=>$pkg['status'],'color'=>'bg-gray-50 text-gray-800 border border-gray-200/30 dark:bg-gray-900 dark:text-gray-300','icon'=>'ri-circle-line'];
+                        $stepIndex = $trackingSteps[$mappedStatus] ?? 0;
+                        $canConfirmPkg = in_array($pkg['status'], ['in_transit', 'ready_for_pickup']) && $o['payment_status'] === 'confirmed';
+
+                        // Fetch package-specific tracking details
+                        $trackStmt->execute([$pkg['id']]);
+                        $allTrackHistory = $trackStmt->fetchAll(PDO::FETCH_ASSOC);
                     ?>
-                    <div class="flex items-center relative">
-                        <?php foreach($steps as $si => $step): ?>
-                        <?php $done = $si <= $stepIndex; $current = $si === $stepIndex; ?>
-                        <div class="flex flex-col items-center flex-shrink-0 z-10">
-                            <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300
-                                <?= $done ? 'bg-[var(--primary)] text-white shadow-md shadow-emerald-500/10' : 'bg-[var(--border)] text-[var(--text-muted)]' ?>
-                                <?= $current ? 'ring-4 ring-emerald-500/20 scale-110' : '' ?>">
-                                <i class="<?= $step['icon'] ?> text-base"></i>
+                    <div class="p-4 md:p-6 bg-[var(--bg-card)] space-y-4">
+                        <!-- Package Header / Group Code Meta -->
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-[var(--border)]">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-[var(--primary)]"></span>
+                                <span class="text-xs font-bold text-[var(--text-main)]">
+                                    Package <span class="text-[var(--primary)] font-extrabold"><?= htmlspecialchars($pkg['group_code']) ?></span> from <?= htmlspecialchars($pkg['farmer_name']) ?>
+                                </span>
                             </div>
-                            <span class="text-[10px] mt-2 font-bold uppercase tracking-wide <?= $done?'text-[var(--primary)]':'text-[var(--text-muted)]' ?> hidden sm:block text-center w-16">
-                                <?= $step['label'] ?>
+                            <span class="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider <?= $sc['color'] ?>">
+                                <i class="<?= $sc['icon'] ?> text-[10px]"></i> <?= $sc['label'] ?>
                             </span>
                         </div>
-                        <?php if($si < count($steps)-1): ?>
-                        <div class="step-line <?= $si < $stepIndex?'bg-[var(--primary)]':'bg-[var(--border)]' ?> mx-1"></div>
-                        <?php endif; ?>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-                <?php endif; ?>
 
-                <!-- Order Products -->
-                <div class="p-5 divide-y divide-[var(--border)]">
-                    <?php foreach($oItems as $oi): ?>
-                    <?php $img = !empty($oi['photo']) ? "../uploads/produce/".htmlspecialchars($oi['photo']) : "https://via.placeholder.com/60?text=?"; ?>
-                    <div class="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
-                        <div class="w-14 h-14 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900 border border-[var(--border)] flex-shrink-0 flex items-center justify-center p-1">
-                            <img src="<?= $img ?>" alt="<?= htmlspecialchars($oi['produce_name']) ?>" class="w-full h-full object-cover rounded-lg">
+                        <!-- Package Stepper Tracking -->
+                        <?php if($pkg['status'] !== 'cancelled'): ?>
+                        <div class="py-3 px-2 border border-[var(--border)] rounded-2xl bg-[var(--bg-body)]">
+                            <?php
+                            $steps = [
+                                ['icon'=>'ri-wallet-3-line',      'label'=>'Paid'],
+                                ['icon'=>'ri-check-double-line',  'label'=>'Verified'],
+                                ['icon'=>'ri-box-3-line',         'label'=>'Prepping'],
+                                ['icon'=>'ri-truck-line',         'label'=>'Dispatched'],
+                                ['icon'=>'ri-home-heart-line',    'label'=>'Delivered'],
+                            ];
+                            ?>
+                            <!-- Desktop Stepper view -->
+                            <div class="hidden md:flex items-center relative py-2">
+                                <?php foreach($steps as $si => $step): ?>
+                                <?php $done = $si <= $stepIndex; $current = $si === $stepIndex; ?>
+                                <div class="flex flex-col items-center flex-shrink-0 z-10">
+                                    <div class="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300
+                                        <?= $done ? 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-md shadow-emerald-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-400' ?>
+                                        <?= $current ? 'ring-4 ring-emerald-500/20 dark:ring-emerald-500/10 scale-105' : '' ?>">
+                                        <i class="<?= $step['icon'] ?> text-sm"></i>
+                                    </div>
+                                    <span class="text-[9px] mt-1.5 font-bold uppercase tracking-wide <?= $done?'text-emerald-600 dark:text-emerald-400':'text-slate-400 dark:text-slate-400' ?> text-center w-14">
+                                        <?= $step['label'] ?>
+                                    </span>
+                                </div>
+                                <?php if($si < count($steps)-1): ?>
+                                <div class="step-line <?= $si < $stepIndex?'bg-emerald-600 dark:bg-emerald-500':'bg-slate-200 dark:bg-slate-800' ?> mx-1"></div>
+                                <?php endif; ?>
+                                <?php endforeach; ?>
+                            </div>
+
+                            <!-- Mobile Progressive Stepper view -->
+                            <div class="flex md:hidden flex-col gap-2">
+                                <div class="grid grid-cols-5 gap-1.5">
+                                    <?php foreach($steps as $si => $step): ?>
+                                    <?php $done = $si <= $stepIndex; $current = $si === $stepIndex; ?>
+                                    <div class="flex flex-col items-center text-center">
+                                        <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300
+                                            <?= $done ? 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-400' ?>
+                                            <?= $current ? 'ring-2 ring-emerald-500/20 scale-105' : '' ?>">
+                                            <i class="<?= $step['icon'] ?> text-[10px]"></i>
+                                        </div>
+                                        <span class="text-[7px] mt-1 font-bold uppercase tracking-tight leading-none <?= $done?'text-emerald-600 dark:text-emerald-400':'text-slate-400 dark:text-slate-400' ?>">
+                                            <?= $step['label'] ?>
+                                        </span>
+                                    </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
                         </div>
-                        <div class="flex-grow min-w-0">
-                            <p class="text-sm font-extrabold text-[var(--text-main)] truncate"><?= htmlspecialchars($oi['produce_name']) ?></p>
-                            <p class="text-xs text-[var(--text-muted)] mt-0.5 font-medium">Vendor: <span class="text-[var(--text-main)] font-semibold"><?= htmlspecialchars($oi['farmer_name']) ?></span> · Qty: <span class="text-[var(--text-main)] font-semibold"><?= $oi['quantity'] ?></span></p>
+                        <?php endif; ?>
+
+                        <!-- Items in this Package -->
+                        <div class="divide-y divide-[var(--border)] border-t border-b border-[var(--border)] py-2">
+                            <?php foreach($pkg['items'] as $oi): ?>
+                            <?php $img = !empty($oi['photo']) ? "../uploads/produce/".htmlspecialchars($oi['photo']) : "https://via.placeholder.com/60?text=?"; ?>
+                            <div class="flex items-center gap-3 md:gap-4 py-3 first:pt-0 last:pb-0">
+                                <div class="w-12 h-12 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900 border border-[var(--border)] flex-shrink-0 flex items-center justify-center p-1">
+                                    <img src="<?= $img ?>" alt="<?= htmlspecialchars($oi['produce_name']) ?>" class="w-full h-full object-cover rounded-lg">
+                                </div>
+                                <div class="flex-grow min-w-0">
+                                    <p class="text-xs md:text-sm font-extrabold text-[var(--text-main)] truncate"><?= htmlspecialchars($oi['produce_name']) ?></p>
+                                    <p class="text-[10px] md:text-xs text-[var(--text-muted)] mt-0.5 font-medium truncate">Qty: <span class="text-[var(--text-main)] font-semibold"><?= $oi['quantity'] ?></span></p>
+                                </div>
+                                <div class="text-xs md:text-sm font-extrabold text-[var(--text-main)] flex-shrink-0">₵<?= number_format($oi['subtotal'],2) ?></div>
+                            </div>
+                            <?php endforeach; ?>
                         </div>
-                        <div class="text-sm font-extrabold text-[var(--text-main)] flex-shrink-0">₵<?= number_format($oi['subtotal'],2) ?></div>
+
+                        <!-- Package Confirmation Status / Timeline details -->
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--border)] pb-4">
+                            <div class="text-[10px] text-[var(--text-muted)] font-semibold">
+                                * Individual package milestones update independently depending on seller dispatch schedules.
+                            </div>
+                            <div>
+                                <?php if($canConfirmPkg): ?>
+                                <button onclick="confirmDelivery(<?= $gId ?>, this)"
+                                    class="w-full sm:w-auto bg-green-600 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-green-700 transition flex items-center justify-center gap-2 shadow-md">
+                                    <i class="ri-checkbox-circle-line text-sm text-white"></i> Confirm Package Receipt
+                                </button>
+                                <?php elseif($pkg['status'] === 'delivered'): ?>
+                                <span class="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-extrabold uppercase tracking-wider py-1">
+                                    <i class="ri-checkbox-circle-fill text-sm"></i> Package Received
+                                </span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <!-- Scoped Activity Logs for this Package Group -->
+                        <details class="group">
+                            <summary class="text-[11px] text-slate-500 dark:text-slate-400 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 font-bold flex items-center gap-2 transition-all duration-200">
+                                <i class="ri-history-line"></i> Activity Logs & History
+                                <i class="ri-arrow-down-s-line text-slate-400 transition ml-auto group-open:rotate-180"></i>
+                            </summary>
+                            <div class="pb-2 pt-3 pl-2 space-y-3 bg-slate-50/20 dark:bg-slate-900/5 rounded-xl border border-dashed border-[var(--border)] mt-2">
+                                <?php if(empty($allTrackHistory)): ?>
+                                    <p class="text-[10px] text-[var(--text-muted)] italic pl-1">No transaction status updates logged yet.</p>
+                                <?php else: ?>
+                                    <?php foreach(array_reverse($allTrackHistory) as $th): ?>
+                                    <div class="flex gap-2.5 text-[11px]">
+                                        <div class="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 mt-1.5 flex-shrink-0"></div>
+                                        <div>
+                                            <p class="font-bold text-[var(--text-main)] capitalize"><?= str_replace('_',' ',$th['status']) ?></p>
+                                            <?php if($th['notes']): ?><p class="text-[var(--text-muted)] font-medium mt-0.5"><?= htmlspecialchars($th['notes']) ?></p><?php endif; ?>
+                                            <p class="text-[var(--text-muted)] text-[9px] mt-0.5 font-semibold"><?= date('d M Y, h:i A', strtotime($th['created_at'])) ?></p>
+                                        </div>
+                                    </div>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </div>
+                        </details>
                     </div>
                     <?php endforeach; ?>
                 </div>
 
-                <!-- Shipping Metadata & Action Bar -->
-                <div class="px-5 py-4 flex flex-wrap gap-4 justify-between items-center border-t border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10">
-                    <div class="text-xs text-[var(--text-muted)] flex items-start gap-2 max-w-md">
-                        <i class="ri-map-pin-line text-[var(--primary)] text-sm mt-0.5"></i>
-                        <div>
-                            <p class="font-bold text-[var(--text-main)]"><?= htmlspecialchars($o['delivery_name']) ?></p>
-                            <p class="font-medium mt-0.5 text-[11px] leading-relaxed"><?= htmlspecialchars($o['delivery_address']) ?> · <?= htmlspecialchars($o['delivery_phone']) ?></p>
+                <!-- Shipping Metadata & Global Actions -->
+                <div class="px-4 py-4 flex flex-col sm:flex-row gap-4 justify-between sm:items-center border-t border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10">
+                    <div class="text-[11px] md:text-xs text-[var(--text-muted)] flex items-start gap-2 max-w-md w-full">
+                        <i class="ri-map-pin-line text-emerald-600 dark:text-emerald-400 text-sm mt-0.5 flex-shrink-0"></i>
+                        <div class="min-w-0">
+                            <p class="font-bold text-[var(--text-main)] truncate"><?= htmlspecialchars($o['delivery_name']) ?></p>
+                            <p class="font-medium mt-0.5 text-[10px] md:text-[11px] leading-relaxed truncate"><?= htmlspecialchars($o['delivery_address']) ?> · <?= htmlspecialchars($o['delivery_phone']) ?></p>
                         </div>
                     </div>
-                    <div class="flex-shrink-0">
-                        <a href="market_disputes.php" class="text-xs text-red-600 font-extrabold hover:underline uppercase tracking-wider flex items-center gap-1">
-                            <i class="ri-alert-line"></i> Dispute Order
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto border-t sm:border-t-0 border-[var(--border)] pt-3 sm:pt-0">
+                        <a href="market_disputes.php" class="text-xs text-red-600 dark:text-red-400 font-extrabold hover:text-red-700 dark:hover:text-red-300 uppercase tracking-wider flex items-center gap-1 justify-center py-2 sm:py-0 transition">
+                            <i class="ri-alert-line text-current"></i> Dispute Order
                         </a>
-
-                        <?php if($canConfirm): ?>
-                        <button onclick="confirmDelivery(<?= $o['id'] ?>, this)"
-                            class="bg-green-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold hover:bg-green-700 transition flex items-center gap-2 shadow-md hover:shadow-lg">
-                            <i class="ri-checkbox-circle-line text-sm"></i> Confirm Receipt
-                        </button>
-                        <?php elseif($o['order_status']==='delivered'): ?>
-                        <span class="inline-flex items-center gap-1.5 text-xs text-emerald-600 font-extrabold uppercase tracking-wider">
-                            <i class="ri-checkbox-circle-fill text-sm"></i> Order Fulfilled
-                        </span>
-                        <?php endif; ?>
                     </div>
                 </div>
-
-                <!-- Accordion Timeline -->
-                <details class="border-t border-[var(--border)] group">
-                    <summary class="px-5 py-3.5 text-xs text-[var(--text-muted)] cursor-pointer hover:text-[var(--primary)] hover:bg-[var(--primary-light)]/20 font-bold flex items-center gap-2 transition-colors duration-200">
-                        <i class="ri-history-line"></i> Activity Logs & History
-                        <i class="ri-arrow-down-s-line group-open:rotate-180 transition ml-auto"></i>
-                    </summary>
-                    <div class="px-5 pb-5 pt-3 space-y-4 bg-slate-50/20 dark:bg-slate-900/5">
-                        <?php foreach(array_reverse($trackHistory) as $th): ?>
-                        <div class="flex gap-3 text-xs">
-                            <div class="w-2 h-2 rounded-full bg-[var(--primary)] mt-1.5 flex-shrink-0 ring-4 ring-emerald-500/10"></div>
-                            <div>
-                                <p class="font-bold text-[var(--text-main)] capitalize"><?= str_replace('_',' ',$th['status']) ?></p>
-                                <?php if($th['notes']): ?><p class="text-[var(--text-muted)] font-medium mt-0.5"><?= htmlspecialchars($th['notes']) ?></p><?php endif; ?>
-                                <p class="text-[var(--text-muted)] text-[10px] mt-1 font-semibold"><?= date('d M Y, h:i A', strtotime($th['created_at'])) ?></p>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                </details>
             </div>
             <?php endforeach; ?>
         </div>
@@ -401,95 +487,95 @@ include 'nav.php';
 
     <!-- ===== TAB: PROFILE ===== -->
     <div id="panel-profile" class="<?= $activeTab!=='profile'?'hidden':'' ?> space-y-6 animate-fadeIn">
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
 
             <!-- Profile Overview Card -->
             <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm flex flex-col items-center justify-between text-center self-start">
                 <div class="w-full">
-                    <div class="w-24 h-24 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center text-white text-4xl font-extrabold mx-auto mb-4 shadow-md relative">
+                    <div class="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center text-white text-3xl md:text-4xl font-extrabold mx-auto mb-4 shadow-md relative">
                         <?= strtoupper(substr($buyer['name'],0,1)) ?>
                     </div>
-                    <h2 class="font-extrabold text-xl text-[var(--text-main)]"><?= htmlspecialchars($buyer['name']) ?></h2>
-                    <p class="text-sm text-[var(--text-muted)] mt-1 font-medium"><?= htmlspecialchars($buyer['email']) ?></p>
-                    <span class="inline-block mt-3 text-[10px] bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 px-3.5 py-1 rounded-full font-bold uppercase tracking-wider border border-emerald-200/20">Buyer Account</span>
+                    <h2 class="font-extrabold text-lg md:text-xl text-[var(--text-main)] truncate"><?= htmlspecialchars($buyer['name']) ?></h2>
+                    <p class="text-xs md:text-sm text-[var(--text-muted)] mt-1 font-medium truncate"><?= htmlspecialchars($buyer['email']) ?></p>
+                    <span class="inline-block mt-3 text-[9px] md:text-[10px] bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 px-3.5 py-1 rounded-full font-bold uppercase tracking-wider border border-emerald-200/20">Buyer Account</span>
 
                     <?php if($buyer['location']): ?>
                     <p class="text-xs text-[var(--text-muted)] mt-4 flex items-center justify-center gap-1.5 font-medium">
-                        <i class="ri-map-pin-line text-[var(--primary)]"></i> <?= htmlspecialchars($buyer['location']) ?>
+                        <i class="ri-map-pin-line text-emerald-600 dark:text-emerald-400"></i> <?= htmlspecialchars($buyer['location']) ?>
                     </p>
                     <?php endif; ?>
                 </div>
 
-                <div class="mt-6 w-full grid grid-cols-2 gap-4 text-center border-t border-[var(--border)] pt-6">
-                    <div class="bg-[var(--bg-body)] rounded-2xl p-4">
-                        <div class="text-2xl font-black text-[var(--text-main)]"><?= $stats['total_orders'] ?></div>
-                        <div class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider mt-1">Orders</div>
+                <div class="mt-6 w-full grid grid-cols-2 gap-3 md:gap-4 text-center border-t border-[var(--border)] pt-6">
+                    <div class="bg-[var(--bg-body)] rounded-2xl p-3 md:p-4 border border-[var(--border)]">
+                        <div class="text-xl md:text-2xl font-black text-[var(--text-main)]"><?= $stats['total_orders'] ?></div>
+                        <div class="text-[9px] md:text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider mt-1">Orders</div>
                     </div>
-                    <div class="bg-[var(--bg-body)] rounded-2xl p-4">
-                        <div class="text-2xl font-black text-[var(--text-main)]"><?= $stats['delivered'] ?></div>
-                        <div class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider mt-1">Delivered</div>
+                    <div class="bg-[var(--bg-body)] rounded-2xl p-3 md:p-4 border border-[var(--border)]">
+                        <div class="text-xl md:text-2xl font-black text-[var(--text-main)]"><?= $stats['delivered'] ?></div>
+                        <div class="text-[9px] md:text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider mt-1">Delivered</div>
                     </div>
                 </div>
             </div>
 
             <!-- Profile Form Column -->
-            <div class="lg:col-span-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 md:p-8 shadow-sm">
-                <h2 class="font-extrabold text-lg text-[var(--text-main)] mb-6 flex items-center gap-2">
-                    <i class="ri-user-settings-line text-[var(--primary)] text-xl"></i> Personal Settings
+            <div class="lg:col-span-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 md:p-8 shadow-sm">
+                <h2 class="font-extrabold text-base md:text-lg text-[var(--text-main)] mb-6 flex items-center gap-2">
+                    <i class="ri-user-settings-line text-emerald-600 dark:text-emerald-400 text-lg md:text-xl"></i> Personal Settings
                 </h2>
 
                 <?php if($profileError): ?>
                 <div class="mb-5 p-4 bg-red-50 dark:bg-red-950/10 border border-red-200/50 rounded-xl text-red-700 dark:text-red-400 text-sm flex items-center gap-2">
-                    <i class="ri-error-warning-line"></i> <?= htmlspecialchars($profileError) ?>
+                    <i class="ri-error-warning-line text-red-600 dark:text-red-400"></i> <?= htmlspecialchars($profileError) ?>
                 </div>
                 <?php endif; ?>
                 <?php if($profileSuccess): ?>
                 <div class="mb-5 p-4 bg-emerald-50 dark:bg-emerald-950/10 border border-emerald-200/50 rounded-xl text-emerald-700 dark:text-emerald-400 text-sm flex items-center gap-2">
-                    <i class="ri-checkbox-circle-line"></i> <?= htmlspecialchars($profileSuccess) ?>
+                    <i class="ri-checkbox-circle-line text-emerald-600 dark:text-emerald-400"></i> <?= htmlspecialchars($profileSuccess) ?>
                 </div>
                 <?php endif; ?>
 
-                <form method="POST" action="buyer_dashboard.php?tab=profile" class="space-y-6">
+                <form method="POST" action="buyer_dashboard.php?tab=profile" class="space-y-5 md:space-y-6">
                     <input type="hidden" name="update_profile" value="1">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-5">
                         <div>
-                            <label class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Full Name *</label>
+                            <label class="block text-[10px] md:text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Full Name *</label>
                             <input type="text" name="name" required value="<?= htmlspecialchars($buyer['name']??'') ?>"
-                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition">
+                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-base md:text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Email Address (Read-only)</label>
+                            <label class="block text-[10px] md:text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Email Address (Read-only)</label>
                             <input type="email" value="<?= htmlspecialchars($buyer['email']??'') ?>" disabled
-                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-sm bg-slate-50 dark:bg-slate-900/60 text-[var(--text-muted)] cursor-not-allowed">
+                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-base md:text-sm bg-slate-50 dark:bg-slate-900/60 text-[var(--text-muted)] cursor-not-allowed">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Phone Contact</label>
+                            <label class="block text-[10px] md:text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Phone Contact</label>
                             <input type="tel" name="phone" value="<?= htmlspecialchars($buyer['phone']??'') ?>"
-                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition"
+                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-base md:text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition"
                                 placeholder="e.g. 0244000000">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Mobile Money Number</label>
+                            <label class="block text-[10px] md:text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Mobile Money Number</label>
                             <input type="tel" name="momo_phone" value="<?= htmlspecialchars($buyer['momo_phone']??'') ?>"
-                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition"
+                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-base md:text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition"
                                 placeholder="For expedited checkout">
                         </div>
                         <div class="sm:col-span-2">
-                            <label class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Delivery Location & Address</label>
+                            <label class="block text-[10px] md:text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Delivery Location & Address</label>
                             <input type="text" name="location" value="<?= htmlspecialchars($buyer['location']??'') ?>"
-                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition"
+                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-base md:text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition"
                                 placeholder="City / District / Landmark details">
                         </div>
                         <div class="sm:col-span-2">
-                            <label class="block text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Profile Bio & Extra Notes</label>
+                            <label class="block text-[10px] md:text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Profile Bio & Extra Notes</label>
                             <textarea name="profile_bio" rows="4"
-                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition resize-none"
+                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-base md:text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition resize-none"
                                 placeholder="Add preferences or shipping details for vendors..."><?= htmlspecialchars($buyer['profile_bio']??'') ?></textarea>
                         </div>
                     </div>
                     <div class="flex justify-end pt-2">
                         <button type="submit"
-                            class="bg-[var(--primary)] text-white px-8 py-3 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition shadow-md hover:shadow-lg">
+                            class="w-full sm:w-auto bg-[var(--primary)] text-white px-8 py-3 rounded-xl font-bold text-sm hover:bg-[var(--primary-dark)] transition shadow-md hover:shadow-lg">
                             Apply Updates
                         </button>
                     </div>
@@ -500,17 +586,31 @@ include 'nav.php';
 </div>
 
 <!-- Mobile Bottom Nav -->
-<nav class="md:hidden fixed bottom-0 left-0 w-full bg-[var(--bg-card)] border-t border-[var(--border)] z-50 flex justify-between items-center px-6 py-2.5 text-[10px] font-bold tracking-wide uppercase text-[var(--text-muted)] shadow-2xl">
-    <a href="index.php"          class="flex flex-col items-center gap-1.5 hover:text-[var(--primary)] transition"><i class="ri-home-4-line text-xl"></i>Home</a>
-    <a href="shop.php"           class="flex flex-col items-center gap-1.5 hover:text-[var(--primary)] transition"><i class="ri-store-2-line text-xl"></i>Shop</a>
-    <a href="wishlist.php"       class="flex flex-col items-center gap-1.5 hover:text-[var(--primary)] transition"><i class="ri-heart-3-line text-xl"></i>Saved</a>
-    <a href="buyer_dashboard.php" class="flex flex-col items-center gap-1.5 text-[var(--primary)] transition"><i class="ri-user-fill text-xl"></i>Account</a>
+<nav class="md:hidden fixed bottom-0 left-0 w-full bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-50 flex justify-between items-center px-6 py-2.5 text-[10px] font-bold tracking-wide uppercase shadow-2xl transition-colors duration-200">
+    <a href="index.php" class="flex flex-col items-center gap-1 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition">
+        <i class="ri-home-4-line text-xl transition"></i>
+        <span>Home</span>
+    </a>
+    <a href="shop.php" class="flex flex-col items-center gap-1 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition">
+        <i class="ri-store-2-line text-xl transition"></i>
+        <span>Shop</span>
+    </a>
+    <a href="wishlist.php" class="flex flex-col items-center gap-1 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition">
+        <i class="ri-heart-3-line text-xl transition"></i>
+        <span>Saved</span>
+    </a>
+    <a href="buyer_dashboard.php" class="flex flex-col items-center gap-1 text-emerald-600 dark:text-emerald-400 transition">
+        <i class="ri-user-fill text-xl transition"></i>
+        <span>Account</span>
+    </a>
 </nav>
 
 <script>
+const csrfToken = '<?= $_SESSION['csrf_token'] ?? (function_exists('get_csrf_token') ? get_csrf_token() : (function_exists('csrf_token') ? csrf_token() : '')) ?>';
+
 if (typeof showToast !== 'function') {
     window.showToast = function(message, type) {
-        alert((type === 'error' ? '❌ ' : '✅ ') + message);
+        alert(message);
     };
 }
 
@@ -524,17 +624,28 @@ function setTab(tab) {
     history.replaceState(null,'','?tab='+tab);
 }
 
-async function confirmDelivery(orderId, btn) {
-    if (!confirm('Are you sure you want to confirm receipt of this order? Confirming will finalize payment verification.')) return;
+async function confirmDelivery(groupId, btn) {
+    if (!confirm('Are you sure you want to confirm receipt of this package? Confirming will finalize payment verification for this vendor.')) return;
 
     btn.disabled = true;
+    const originalText = btn.innerHTML;
     btn.innerHTML = '<i class="ri-loader-4-line animate-spin text-sm"></i> Wait...';
 
-    const form = new FormData();
-    form.append('order_id', orderId);
+    const payload = {
+        group_id: groupId,
+        csrf_token: csrfToken
+    };
 
     try {
-        const res  = await fetch('confirm_delivery.php', { method:'POST', body:form });
+        const res = await fetch('confirm_delivery.php', { 
+            method: 'POST', 
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(payload)
+        });
         const data = await res.json();
 
         if (data.success) {
@@ -543,12 +654,12 @@ async function confirmDelivery(orderId, btn) {
         } else {
             showToast(data.message || 'Error processing confirmation', 'error');
             btn.disabled = false;
-            btn.innerHTML = '<i class="ri-checkbox-circle-line"></i> Confirm Receipt';
+            btn.innerHTML = originalText;
         }
     } catch(e) {
         showToast('Connection timed out', 'error');
         btn.disabled = false;
-        btn.innerHTML = '<i class="ri-checkbox-circle-line"></i> Confirm Receipt';
+        btn.innerHTML = originalText;
     }
 }
 </script>

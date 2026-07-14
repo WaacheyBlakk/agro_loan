@@ -1,6 +1,9 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
 // public/index.php — Landing Page
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 // Redirect logged-in users automatically
 if (isset($_SESSION['user'])) {
@@ -10,6 +13,9 @@ if (isset($_SESSION['user'])) {
         exit;
     } elseif ($role === 'agent') {
         header('Location: agent_dashboard.php');
+        exit;
+    } elseif ($role === 'buyer') {
+        header('Location: buyer_dashboard.php');
         exit;
     }
 }
@@ -49,7 +55,7 @@ if (isset($_SESSION['user'])) {
 }
 
 body.dark {
-    /* Dark Variables from about.php */
+    /* Dark Variables */
     --primary: #22c55e;
     --primary-dark: #4ade80;
     --accent: #15803d;
@@ -80,7 +86,7 @@ body {
     overflow-x: hidden;
 }
 
-/* --- Header / Navbar (Exact from about.php) --- */
+/* --- Header / Navbar --- */
 header {
     position: fixed;
     top: 0;
@@ -571,10 +577,10 @@ footer {
             <a href="index.php" class="active">Home</a>
             <a href="about.php">About</a>
             <a href="services.php">Services</a>
-            <a href="shop.php">Shop</a>
-            <a href="register.php">Register</a>
             <a href="contact.php">Contact Us</a>
+            <a href="shop.php">Shop</a>
             <a href="login.php" class="btn-login">Login</a>
+            <a href="register.php" class="btn-login">Register</a>
         </nav>
         
         <!-- Theme Toggle -->
@@ -598,10 +604,10 @@ footer {
     <a href="index.php" style="color:var(--primary);">Home</a>
     <a href="about.php">About</a>
     <a href="services.php">Services</a>
-    <a href="shop.php">Shop</a>
-    <a href="register.php">Register</a>
     <a href="contact.php">Contact Us</a>
+    <a href="shop.php">Shop</a>
     <a href="login.php">Login</a>
+    <a href="register.php">Register</a>
 </div>
 
 <!-- Hero Section -->

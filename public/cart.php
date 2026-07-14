@@ -1,5 +1,9 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
@@ -44,7 +48,7 @@ include 'nav.php';
     <h1 class="text-2xl font-bold text-[var(--text-main)] mb-6 flex items-center gap-2">
         <i class="ri-shopping-bag-3-line text-[var(--primary)]"></i>
         My Cart
-        <span class="text-base font-normal text-[var(--text-muted)] ml-1">(<?= $cart_count ?> item<?= $cart_count!=1?'s':'' ?>)</span>
+        <span id="cartHeaderCount" class="text-base font-normal text-[var(--text-muted)] ml-1">(<?= $cart_count ?> item<?= $cart_count!=1?'s':'' ?>)</span>
     </h1>
 
     <?php if(empty($items)): ?>
@@ -176,6 +180,14 @@ include 'nav.php';
 </nav>
 
 <script>
+// Check for toast notification function presence or establish a fallback handler
+if (typeof showToast !== 'function') {
+    window.showToast = function(message, type) {
+        alert((type === 'error' ? '' : '') + message);
+    };
+}
+
+const CSRF_TOKEN = "<?= csrf_token() ?>";
 const PLATFORM_FEE_PCT = <?= PLATFORM_FEE_PERCENT ?> / 100;
 
 async function changeQty(productId, delta, unitPrice, maxQty) {
@@ -190,6 +202,7 @@ async function changeQty(productId, delta, unitPrice, maxQty) {
     const form = new FormData();
     form.append('product_id', productId);
     form.append('quantity', newQty);
+    form.append('csrf_token', CSRF_TOKEN); // Sent CSRF token to fix request validation issues
 
     try {
         const res  = await fetch('cart_update.php', { method:'POST', body:form });
@@ -199,41 +212,71 @@ async function changeQty(productId, delta, unitPrice, maxQty) {
             qtyEl.textContent = newQty;
             subEl.textContent = '₵ ' + (unitPrice * newQty).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
             updateSummary(data.cart_total);
+            updateHeaderCount(data.cart_count);
         } else {
-            showToast(data.message, 'error');
+            showToast(data.message || 'Error updating quantity', 'error');
         }
     } catch(e) { showToast('Update failed', 'error'); }
 }
 
 async function removeItem(productId) {
     const row  = document.getElementById('cart-row-' + productId);
-    row.style.transition = 'all .3s';
-    row.style.opacity    = '0';
-    row.style.transform  = 'translateX(20px)';
+    if (row) {
+        row.style.transition = 'all .3s';
+        row.style.opacity    = '0';
+        row.style.transform  = 'translateX(20px)';
+    }
 
     const form = new FormData();
     form.append('product_id', productId);
+    form.append('csrf_token', CSRF_TOKEN);
 
     try {
         const res  = await fetch('cart_remove.php', { method:'POST', body:form });
         const data = await res.json();
-        setTimeout(() => { row.remove(); }, 300);
+        
+        setTimeout(() => { 
+            if (row) row.remove(); 
+        }, 300);
+        
         updateSummary(data.cart_total);
+        updateHeaderCount(data.cart_count);
         showToast('Item removed', 'success');
-        if(data.cart_count === 0) setTimeout(()=>location.reload(), 800);
+        
+        if (parseInt(data.cart_count) === 0) {
+            setTimeout(() => location.reload(), 800);
+        }
     } catch(e) { showToast('Error removing item', 'error'); }
 }
 
 function updateSummary(cartTotalStr) {
-    const total    = parseFloat(cartTotalStr.replace(/,/g,''));
+    if (cartTotalStr === undefined || cartTotalStr === null) return;
+    
+    // Safely parse the value regardless of whether it is returned as a string or number
+    const totalRaw = String(cartTotalStr).replace(/,/g, '');
+    const total = parseFloat(totalRaw) || 0;
+    
     const fee      = total * PLATFORM_FEE_PCT;
     const subtotal = total;
     const grandTotal = total + fee;
 
     const fmt = n => '₵ ' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    document.getElementById('summarySubtotal').textContent = fmt(subtotal);
-    document.getElementById('summaryFee').textContent      = fmt(fee);
-    document.getElementById('summaryTotal').textContent    = fmt(grandTotal);
+    
+    const subtotalEl = document.getElementById('summarySubtotal');
+    const feeEl      = document.getElementById('summaryFee');
+    const totalEl    = document.getElementById('summaryTotal');
+    
+    if (subtotalEl) subtotalEl.textContent = fmt(subtotal);
+    if (feeEl) feeEl.textContent           = fmt(fee);
+    if (totalEl) totalEl.textContent       = fmt(grandTotal);
+}
+
+function updateHeaderCount(count) {
+    const countVal = parseInt(count) || 0;
+    const headerCountEl = document.getElementById('cartHeaderCount');
+    if (headerCountEl) {
+        headerCountEl.textContent = `(${countVal} item${countVal !== 1 ? 's' : ''})`;
+    }
 }
 </script>
 </body>

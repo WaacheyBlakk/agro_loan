@@ -1,6 +1,10 @@
 <?php
-// public/agent_repayments.php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+//agent_repayments.php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/users.php';
 
@@ -17,6 +21,8 @@ $successMsg = '';
 $errorMsg   = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repayment_id'], $_POST['action'])) {
+    csrf_verify();
+    
     $repayment_id = (int) $_POST['repayment_id'];
     $action       = in_array($_POST['action'], ['confirmed', 'rejected']) ? $_POST['action'] : null;
     $agent_note   = trim($_POST['agent_note'] ?? '');
@@ -27,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repayment_id'], $_POS
         try {
             $pdo->beginTransaction();
 
-            // 1. Fetch the repayment record (must belong to one of this agent's Stage 3 loans)
+            // 1. Fetch the repayment record (must belong to one of this agent's Stage > 3 loans)
             $stmt = $pdo->prepare("
                 SELECT r.*, la.farmer_id, la.outstanding_balance, la.amount, la.agent_id,
                        ap.interest_rate
@@ -37,13 +43,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repayment_id'], $_POS
                  WHERE r.id = ? 
                    AND la.agent_id = ? 
                    AND r.status = 'pending' 
-                   AND la.current_stage = 3
+                   AND la.current_stage > 3
             ");
             $stmt->execute([$repayment_id, $agent_id]);
             $repayment = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$repayment) {
-                throw new Exception("Repayment record not found, already processed, or loan has not reached Stage 3.");
+                throw new Exception("Repayment record not found, already processed, or loan has not reached the eligible stage.");
             }
 
             // 2. Update the repayment record status
@@ -97,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repayment_id'], $_POS
     }
 }
 
-// Fetch pending repayments specifically for loans in Stage 3
+// Fetch pending repayments specifically for loans in Stage > 3 (where farmers make repayments)
 $pendingStmt = $pdo->prepare("
     SELECT r.*,
            la.title   AS loan_title,
@@ -112,7 +118,7 @@ $pendingStmt = $pdo->prepare("
       LEFT JOIN agent_profiles ap ON la.agent_id = ap.user_id
      WHERE la.agent_id = ? 
        AND r.status = 'pending' 
-       AND la.current_stage = 3
+       AND la.current_stage > 3
      ORDER BY r.submitted_at DESC
 ");
 $pendingStmt->execute([$agent_id]);
@@ -157,16 +163,23 @@ $total_confirmed_amt = array_sum(array_map(
         --primary: #1e40af;
         --primary-dark: #172554;
         --secondary: #3b82f6;
-        --bg-body: #f3f4f6;
+        --bg-body: #f8fafc;
         --bg-card: #ffffff;
-        --text-main: #1f2937;
-        --text-muted: #6b7280;
+        --text-main: #0f172a;
+        --text-muted: #64748b;
         --danger: #ef4444;
         --warning: #f59e0b;
         --success: #10b981;
         --sidebar-width: 260px;
         --sidebar-collapsed: 80px;
-        --shadow: 0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -1px rgba(0,0,0,.06);
+        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+        --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.04), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+        --border-color: #e2e8f0;
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --radius-lg: 16px;
+        --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     }
     * { box-sizing: border-box; }
     body {
@@ -213,7 +226,8 @@ $total_confirmed_amt = array_sum(array_map(
     .topbar {
         background: var(--bg-card); padding: 15px 30px;
         display: flex; justify-content: space-between; align-items: center;
-        box-shadow: var(--shadow); position: sticky; top: 0; z-index: 50;
+        box-shadow: var(--shadow-sm); position: sticky; top: 0; z-index: 50;
+        border-bottom: 1px solid var(--border-color);
     }
     .toggle-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 5px; }
     .toggle-btn:hover { color: var(--primary); }
@@ -225,127 +239,159 @@ $total_confirmed_amt = array_sum(array_map(
     }
 
     /* ── CONTENT ── */
-    .content { padding: 30px; }
-    .page-title { font-size: 24px; font-weight: 700; margin: 0 0 5px; }
-    .page-subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 30px; }
+    .content { padding: 32px 30px; max-width: 1400px; width: 100%; margin: 0 auto; }
+    .page-title { font-size: 26px; font-weight: 700; color: var(--text-main); margin: 0 0 4px; letter-spacing: -0.5px; }
+    .page-subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 32px; }
 
-    /* Stats */
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+    /* Stats Grid */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 36px; }
     .stat-card {
-        background: var(--bg-card); padding: 20px; border-radius: 16px;
-        box-shadow: var(--shadow); display: flex; align-items: center; gap: 16px;
-        border: 1px solid #f0f0f0;
+        background: var(--bg-card); padding: 24px; border-radius: var(--radius-lg);
+        box-shadow: var(--shadow); display: flex; align-items: center; gap: 20px;
+        border: 1px solid var(--border-color); transition: var(--transition);
     }
-    .icon-box { width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .icon-box svg { width: 22px; height: 22px; }
-    .stat-info h3 { margin: 0; font-size: 12px; color: var(--text-muted); font-weight: 500; }
-    .stat-info p  { margin: 4px 0 0; font-size: 22px; font-weight: 700; color: var(--text-main); }
-    .theme-orange { background: #fff7ed; color: #ea580c; }
-    .theme-green  { background: #ecfdf5; color: #059669; }
-    .theme-red    { background: #fee2e2; color: #dc2626; }
+    .stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+    .icon-box {
+        width: 52px; height: 52px; border-radius: var(--radius-md);
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        box-shadow: inset 0 -2px 4px rgba(0,0,0,0.03);
+    }
+    .icon-box svg { width: 24px; height: 24px; stroke-width: 2.2px; }
+    .stat-info h3 { margin: 0; font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; }
+    .stat-info p  { margin: 6px 0 0; font-size: 24px; font-weight: 700; color: var(--text-main); line-height: 1.1; }
+    .theme-orange { background: #fff7ed; color: #f97316; }
+    .theme-green  { background: #f0fdf4; color: #16a34a; }
+    .theme-red    { background: #fef2f2; color: #dc2626; }
     .theme-blue   { background: #eff6ff; color: #2563eb; }
 
-    /* Alert */
+    /* Alert Styling */
     .alert {
-        padding: 14px 18px; border-radius: 10px; margin-bottom: 24px;
-        display: flex; align-items: flex-start; gap: 10px; font-size: 14px; font-weight: 500;
+        padding: 16px 20px; border-radius: var(--radius-md); margin-bottom: 30px;
+        display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 500;
+        box-shadow: var(--shadow-sm); border-left: 4px solid;
     }
-    .alert svg { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; }
-    .alert.success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
-    .alert.error   { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .alert svg { flex-shrink: 0; width: 20px; height: 20px; }
+    .alert.success { background: #f0fdf4; color: #15803d; border-color: #16a34a; }
+    .alert.error   { background: #fef2f2; color: #b91c1c; border-color: #dc2626; }
 
-    /* Section */
-    .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-    .section-title  { font-size: 18px; font-weight: 700; color: var(--text-main); margin: 0; }
+    /* Section Header */
+    .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .section-title  { font-size: 20px; font-weight: 700; color: var(--text-main); margin: 0; letter-spacing: -0.3px; }
     .count-badge {
         background: var(--warning); color: white; padding: 2px 10px;
         border-radius: 20px; font-size: 12px; font-weight: 700;
+        box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
     }
-    .count-badge.zero { background: #e5e7eb; color: var(--text-muted); }
+    .count-badge.zero { background: #e2e8f0; color: var(--text-muted); box-shadow: none; }
 
-    /* Repayment Cards (pending) */
-    .repayment-cards { display: flex; flex-direction: column; gap: 16px; margin-bottom: 36px; }
+    /* Repayment Cards Container */
+    .repayment-cards { display: flex; flex-direction: column; gap: 24px; margin-bottom: 40px; }
     .repayment-card {
-        background: var(--bg-card); border-radius: 16px; padding: 24px;
-        box-shadow: var(--shadow); border: 1px solid #f0f0f0;
-        display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: start;
+        background: var(--bg-card); border-radius: var(--radius-lg); padding: 28px;
+        box-shadow: var(--shadow); border: 1px solid var(--border-color);
+        display: flex; flex-direction: column; gap: 20px; transition: var(--transition);
+        position: relative; overflow: hidden;
     }
-    .rc-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
-    .rc-farmer-name { font-size: 16px; font-weight: 700; color: var(--text-main); }
-    .rc-farmer-email { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-    .rc-loan-title { font-size: 13px; color: var(--secondary); font-weight: 500; margin-top: 4px; }
-    .rc-type-badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
-    .rc-type-badge.partial { background: #eff6ff; color: #1d4ed8; }
-    .rc-type-badge.full    { background: #faf5ff; color: #6d28d9; }
+    .repayment-card:hover { box-shadow: var(--shadow-lg); border-color: #cbd5e1; }
+    .repayment-card::before {
+        content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%;
+        background: var(--secondary);
+    }
+
+    .rc-top { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 18px; }
+    .rc-farmer-details { display: flex; flex-direction: column; }
+    .rc-farmer-name { font-size: 18px; font-weight: 700; color: var(--text-main); line-height: 1.2; }
+    .rc-farmer-email { font-size: 13px; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+    .rc-farmer-email::before { content: '•'; color: var(--secondary); font-size: 16px; line-height: 1; }
+    .rc-loan-title { font-size: 13px; color: var(--primary); font-weight: 600; margin-top: 8px; background: #eff6ff; padding: 4px 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; width: fit-content; }
+    
+    .rc-type-badge { padding: 6px 14px; border-radius: 30px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .rc-type-badge.partial { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .rc-type-badge.full    { background: #faf5ff; color: #6d28d9; border: 1px solid #e9d5ff; }
 
     .rc-amounts {
-        display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
-        background: #f9fafb; border-radius: 12px; padding: 14px; margin-bottom: 14px;
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+        background: #f8fafc; border-radius: var(--radius-md); padding: 18px;
+        border: 1px solid #f1f5f9;
     }
-    .rc-amt-item label { display: block; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; font-weight: 500; margin-bottom: 4px; }
-    .rc-amt-item .val { font-size: 15px; font-weight: 700; color: var(--text-main); }
+    .rc-amt-item label { display: block; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .8px; font-weight: 600; margin-bottom: 6px; }
+    .rc-amt-item .val { font-size: 16px; font-weight: 700; color: var(--text-main); }
     .rc-amt-item .val.paid { color: var(--success); }
     .rc-amt-item .val.balance { color: var(--danger); }
 
-    .rc-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
-    .rc-meta span { margin-right: 16px; }
+    .rc-meta {
+        display: flex; flex-wrap: wrap; gap: 16px 24px; font-size: 13px; color: var(--text-muted);
+        background: #fafccc; border: 1px dashed #e2e8f0; border-radius: var(--radius-md); padding: 12px 18px;
+    }
+    .rc-meta span { display: inline-flex; align-items: center; gap: 6px; }
 
+    .rc-proof-box { margin-bottom: 4px; }
     .rc-proof-link {
-        display: inline-flex; align-items: center; gap: 6px;
-        padding: 8px 16px; border-radius: 8px; background: #eff6ff;
-        color: var(--secondary); font-size: 13px; font-weight: 600;
-        text-decoration: none; transition: background .2s; margin-bottom: 16px;
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 10px 16px; border-radius: var(--radius-md); background: #f1f5f9;
+        color: #334155; font-size: 13px; font-weight: 600;
+        text-decoration: none; transition: var(--transition); border: 1px solid #cbd5e1;
     }
-    .rc-proof-link:hover { background: #dbeafe; }
+    .rc-proof-link:hover { background: #e2e8f0; color: var(--text-main); }
+    .rc-proof-link svg { width: 16px; height: 16px; }
 
-    /* Action Form */
-    .action-form { border-top: 1px solid #f3f4f6; padding-top: 16px; }
-    .action-row  { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
-    .note-group  { flex: 1; min-width: 200px; }
-    .note-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+    /* Action Form Layout */
+    .action-form { border-top: 1px solid #f1f5f9; padding-top: 20px; }
+    .action-row  { display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; }
+    .note-group  { flex: 1; min-width: 280px; }
+    .note-group label { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .8px; }
     .note-group textarea {
-        width: 100%; padding: 10px; border-radius: 8px; border: 1.5px solid #e5e7eb;
+        width: 100%; padding: 12px; border-radius: var(--radius-sm); border: 1.5px solid #cbd5e1;
         font-family: inherit; font-size: 13px; color: var(--text-main);
-        resize: vertical; min-height: 60px; outline: none; transition: .2s;
-        background: #f9fafb;
+        resize: vertical; min-height: 52px; outline: none; transition: var(--transition);
+        background: #ffffff;
     }
-    .note-group textarea:focus { border-color: var(--secondary); background: #fff; box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
+    .note-group textarea:focus { border-color: var(--secondary); box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
 
+    .actions-buttons-container { display: flex; gap: 12px; }
     .btn-confirm, .btn-reject {
-        padding: 10px 20px; border-radius: 10px; border: none;
-        font-family: inherit; font-size: 13px; font-weight: 700;
+        padding: 12px 24px; border-radius: var(--radius-sm); border: none;
+        font-family: inherit; font-size: 13px; font-weight: 600;
         cursor: pointer; display: flex; align-items: center; gap: 8px; white-space: nowrap;
-        transition: all .2s;
+        transition: var(--transition); box-shadow: var(--shadow-sm);
     }
     .btn-confirm { background: var(--success); color: white; }
-    .btn-confirm:hover { background: #047857; transform: translateY(-1px); }
+    .btn-confirm:hover { background: #059669; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(16, 185, 129, 0.25); }
     .btn-reject  { background: #fee2e2; color: var(--danger); border: 1px solid #fecaca; }
-    .btn-reject:hover { background: var(--danger); color: white; }
+    .btn-reject:hover { background: var(--danger); color: white; border-color: var(--danger); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(239, 68, 110, 0.25); }
 
-    /* History table */
-    .table-container { background: var(--bg-card); border-radius: 16px; padding: 24px; box-shadow: var(--shadow); overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; min-width: 700px; }
-    th, td { padding: 13px 16px; text-align: left; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
-    th { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); font-weight: 600; background: #f9fafb; }
+    /* Reviewed History Table Styling */
+    .table-container { background: var(--bg-card); border-radius: var(--radius-lg); padding: 24px; box-shadow: var(--shadow); border: 1px solid var(--border-color); overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 900px; }
+    th, td { padding: 16px 20px; text-align: left; border-bottom: 1px solid #f1f5f9; font-size: 13px; vertical-align: middle; }
+    th { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); font-weight: 600; background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: #f9fafb; }
+    tr:hover td { background: #fafbfc; }
 
-    .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block; }
-    .badge.pending   { background: #fef3c7; color: #92400e; }
-    .badge.confirmed { background: #d1fae5; color: #065f46; }
-    .badge.rejected  { background: #fee2e2; color: #991b1b; }
-    .badge.partial   { background: #eff6ff; color: #1d4ed8; }
-    .badge.full      { background: #faf5ff; color: #6d28d9; }
+    .badge { padding: 6px 12px; border-radius: 30px; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+    .badge.pending   { background: #fef3c7; color: #d97706; border: 1px solid #fde68a; }
+    .badge.confirmed { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+    .badge.rejected  { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .badge.partial   { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .badge.full      { background: #faf5ff; color: #6d28d9; border: 1px solid #e9d5ff; }
 
-    .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
-    .empty-state svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: .4; }
+    .empty-state { text-align: center; padding: 48px 24px; color: var(--text-muted); }
+    .empty-state svg { width: 44px; height: 44px; margin-bottom: 16px; opacity: .5; color: var(--text-muted); }
 
+    @media (max-width: 992px) {
+        .repayment-card { padding: 20px; }
+        .rc-amounts { grid-template-columns: 1fr 1fr; }
+        .rc-amounts div:last-child { grid-column: span 2; }
+    }
     @media (max-width: 768px) {
         .sidebar { position: fixed; height: 100%; width: 0; padding: 0; overflow: hidden; }
         .sidebar.active { width: var(--sidebar-width); padding: 20px; }
-        .repayment-card { grid-template-columns: 1fr; }
-        .rc-amounts { grid-template-columns: 1fr 1fr; }
-        .stats-grid { grid-template-columns: 1fr 1fr; }
+        .rc-top { flex-direction: column; align-items: flex-start; }
+        .rc-amounts { grid-template-columns: 1fr; }
+        .rc-amounts div:last-child { grid-column: auto; }
+        .action-row { flex-direction: column; align-items: stretch; }
+        .actions-buttons-container { width: 100%; justify-content: flex-end; }
+        .stats-grid { grid-template-columns: 1fr; }
     }
 </style>
 </head>
@@ -377,6 +423,9 @@ $total_confirmed_amt = array_sum(array_map(
         </a>
     </nav>
     <form action="logout.php" method="POST">
+        <?php if (isset($_SESSION['csrf_token'])): ?>
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+        <?php endif; ?>
         <button class="logout-btn">
             <i data-feather="log-out"></i><span>Logout</span>
         </button>
@@ -440,7 +489,7 @@ $total_confirmed_amt = array_sum(array_map(
                 <div class="icon-box theme-blue"><i data-feather="trending-up"></i></div>
                 <div class="stat-info">
                     <h3>Total Collected</h3>
-                    <p style="font-size:16px;">GHc <?= number_format($total_confirmed_amt, 2) ?></p>
+                    <p style="font-size:18px;">GHc <?= number_format($total_confirmed_amt, 2) ?></p>
                 </div>
             </div>
         </div>
@@ -457,8 +506,8 @@ $total_confirmed_amt = array_sum(array_map(
         <div class="table-container" style="margin-bottom:36px;">
             <div class="empty-state">
                 <i data-feather="inbox"></i>
-                <p style="font-weight:600;">No pending repayments</p>
-                <p style="font-size:13px;">When farmers submit repayments for eligible loans (Stage 3 completed), they will appear here.</p>
+                <p style="font-weight:600; margin-top:8px;">No pending repayments</p>
+                <p style="font-size:13px; margin: 4px 0 0;">When farmers submit repayments for eligible loans (Stage 3 completed), they will appear here.</p>
             </div>
         </div>
         <?php else: ?>
@@ -475,17 +524,17 @@ $total_confirmed_amt = array_sum(array_map(
             <div class="repayment-card">
                 <div>
                     <div class="rc-top">
-                        <div>
+                        <div class="rc-farmer-details">
                             <div class="rc-farmer-name"><?= htmlspecialchars($r['farmer_name']) ?></div>
                             <div class="rc-farmer-email"><?= htmlspecialchars($r['farmer_email']) ?></div>
-                            <div class="rc-loan-title">📋 <?= htmlspecialchars($r['loan_title'] ?? 'Loan #' . $r['loan_id']) ?></div>
+                            <div class="rc-loan-title"><i data-feather="file-text" style="width:14px; height:14px;"></i> <?= htmlspecialchars($r['loan_title'] ?? 'Loan #' . $r['loan_id']) ?></div>
                         </div>
                         <span class="rc-type-badge <?= $r['repayment_type'] ?>">
                             <?= ucfirst($r['repayment_type']) ?> Repayment
                         </span>
                     </div>
 
-                    <div class="rc-amounts">
+                    <div class="rc-amounts" style="margin-top: 18px; margin-bottom: 18px;">
                         <div class="rc-amt-item">
                             <label>Amount Paid</label>
                             <div class="val paid">GHc <?= number_format($r['amount_paid'], 2) ?></div>
@@ -500,45 +549,54 @@ $total_confirmed_amt = array_sum(array_map(
                         </div>
                     </div>
 
-                    <div class="rc-meta">
-                        <span>🏦 Loan: GHc <?= number_format($principal, 2) ?></span>
-                        <span>📈 Interest: <?= $interestRate ?>%</span>
-                        <span>💰 Total Repayable: GHc <?= number_format($totalRepayable, 2) ?></span>
-                        <span>🕐 Submitted: <?= date('M d, Y H:i', strtotime($r['submitted_at'])) ?></span>
+                    <div class="rc-meta" style="margin-bottom: 20px;">
+                        <span><i data-feather="briefcase" style="width:14px; height:14px; color:var(--text-muted);"></i> Principal: GHc <?= number_format($principal, 2) ?></span>
+                        <span><i data-feather="percent" style="width:14px; height:14px; color:var(--text-muted);"></i> Interest: <?= $interestRate ?>%</span>
+                        <span><i data-feather="dollar-sign" style="width:14px; height:14px; color:var(--text-muted);"></i> Repayable: GHc <?= number_format($totalRepayable, 2) ?></span>
+                        <span><i data-feather="calendar" style="width:14px; height:14px; color:var(--text-muted);"></i> Submitted: <?= date('M d, Y H:i', strtotime($r['submitted_at'])) ?></span>
                     </div>
 
-                    <?php if (!empty($r['proof_filename'])): ?>
-                    <a href="<?= htmlspecialchars($proofPath) ?>" target="_blank" class="rc-proof-link">
-                        <i data-feather="eye"></i>
-                        View Payment Proof (<?= strtoupper(pathinfo($r['proof_filename'], PATHINFO_EXTENSION)) ?>)
-                    </a>
-                    <?php else: ?>
-                    <div style="font-size:12px;color:var(--warning);margin-bottom:16px;">⚠ No proof file uploaded.</div>
-                    <?php endif; ?>
+                    <div class="rc-proof-box" style="margin-bottom: 24px;">
+                        <?php if (!empty($r['proof_filename'])): ?>
+                        <a href="<?= htmlspecialchars($proofPath) ?>" target="_blank" class="rc-proof-link">
+                            <i data-feather="image"></i>
+                            View Payment Proof (<?= strtoupper(pathinfo($r['proof_filename'], PATHINFO_EXTENSION)) ?>)
+                        </a>
+                        <?php else: ?>
+                        <div style="font-size:13px;color:var(--warning);display:flex;align-items:center;gap:6px;">
+                            <i data-feather="alert-circle" style="width:16px; height:16px;"></i> No proof file uploaded.
+                        </div>
+                        <?php endif; ?>
+                    </div>
 
                     <div class="action-form">
                         <div class="action-row">
                             <div class="note-group">
                                 <label>Agent Note (optional)</label>
                                 <textarea form="form-<?= $r['id'] ?>" name="agent_note"
-                                          placeholder="Add a note for this farmer…"></textarea>
+                                          placeholder="Add an internal note or message for this farmer…"></textarea>
                             </div>
 
-                            <form method="POST" id="form-<?= $r['id'] ?>" style="display:flex;gap:10px;align-items:center;">
-                                <input type="hidden" name="repayment_id" value="<?= $r['id'] ?>">
+                            <div class="actions-buttons-container">
+                                <form method="POST" id="form-<?= $r['id'] ?>" style="display:flex;gap:12px;align-items:center;">
+                                    <?php if (isset($_SESSION['csrf_token'])): ?>
+                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                    <?php endif; ?>
+                                    <input type="hidden" name="repayment_id" value="<?= $r['id'] ?>">
 
-                                <button type="submit" name="action" value="confirmed"
-                                        class="btn-confirm"
-                                        onclick="return confirm('Confirm this repayment of GHc <?= number_format($r['amount_paid'], 2) ?>?\n\nThis will update the farmer\'s outstanding balance.')">
-                                    <i data-feather="check"></i> Confirm
-                                </button>
+                                    <button type="submit" name="action" value="confirmed"
+                                            class="btn-confirm"
+                                            onclick="return confirm('Confirm this repayment of GHc <?= number_format($r['amount_paid'], 2) ?>?\n\nThis will update the farmer\'s outstanding balance.')">
+                                        <i data-feather="check"></i> Confirm
+                                    </button>
 
-                                <button type="submit" name="action" value="rejected"
-                                        class="btn-reject"
-                                        onclick="return confirm('Reject this repayment?\n\nThe farmer\'s balance will NOT be updated.')">
-                                    <i data-feather="x"></i> Reject
-                                </button>
-                            </form>
+                                    <button type="submit" name="action" value="rejected"
+                                            class="btn-reject"
+                                            onclick="return confirm('Reject this repayment?\n\nThe farmer\'s balance will NOT be updated.')">
+                                        <i data-feather="x"></i> Reject
+                                    </button>
+                                </form>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -555,7 +613,7 @@ $total_confirmed_amt = array_sum(array_map(
             <?php if (empty($reviewed_repayments)): ?>
             <div class="empty-state">
                 <i data-feather="list"></i>
-                <p>No reviewed repayments yet.</p>
+                <p style="font-weight:600; margin-top:8px;">No reviewed repayments yet.</p>
             </div>
             <?php else: ?>
             <table>
@@ -575,21 +633,21 @@ $total_confirmed_amt = array_sum(array_map(
                 <tbody>
                 <?php foreach ($reviewed_repayments as $r): ?>
                 <tr>
-                    <td style="font-weight:600;"><?= htmlspecialchars($r['farmer_name']) ?></td>
+                    <td style="font-weight:600; color:var(--text-main);"><?= htmlspecialchars($r['farmer_name']) ?></td>
                     <td><?= htmlspecialchars($r['loan_title'] ?? 'Loan #' . $r['loan_id']) ?></td>
                     <td><span class="badge <?= $r['repayment_type'] ?>"><?= ucfirst($r['repayment_type']) ?></span></td>
                     <td style="font-weight:700;color:var(--success);">GHc <?= number_format($r['amount_paid'], 2) ?></td>
-                    <td>GHc <?= number_format($r['balance_after'], 2) ?></td>
+                    <td style="font-weight:600;">GHc <?= number_format($r['balance_after'], 2) ?></td>
                     <td><span class="badge <?= $r['status'] ?>"><?= ucfirst($r['status']) ?></span></td>
-                    <td><?= $r['reviewed_at'] ? date('M d, Y H:i', strtotime($r['reviewed_at'])) : '—' ?></td>
-                    <td style="font-size:12px;color:var(--text-muted);max-width:150px;">
+                    <td style="color:var(--text-muted); font-size:12px;"><?= $r['reviewed_at'] ? date('M d, Y H:i', strtotime($r['reviewed_at'])) : '—' ?></td>
+                    <td style="font-size:12px;color:var(--text-muted);max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="<?= htmlspecialchars($r['agent_note'] ?? '') ?>">
                         <?= htmlspecialchars($r['agent_note'] ?? '—') ?>
                     </td>
                     <td>
                         <?php if (!empty($r['proof_filename'])): ?>
                         <a href="../uploads/repayments/loan_<?= $r['loan_id'] ?>/<?= htmlspecialchars($r['proof_filename']) ?>"
                            target="_blank"
-                           style="color:var(--secondary);font-size:12px;font-weight:600;text-decoration:none;display:flex;align-items:center;gap:4px;">
+                           style="color:var(--secondary);font-size:12px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:4px;">
                             <i data-feather="eye" style="width:14px;height:14px;"></i> View
                         </a>
                         <?php else: ?>
@@ -603,7 +661,7 @@ $total_confirmed_amt = array_sum(array_map(
             <?php endif; ?>
         </div>
 
-    </div><!-- /content -->
+    </div>
 </main>
 
 <script>

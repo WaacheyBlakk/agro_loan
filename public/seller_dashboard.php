@@ -1,16 +1,32 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+//Seller_dashboard.php
 require_once __DIR__ . '/../src/db.php';
 
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
 if (!$user_id) { header('Location: login.php'); exit; }
 
 $pdo       = getPDO();
+
+// DATABASE UPGRADE: Ensure the 'status' column exists in 'produce_listings' for visibility toggling
+try {
+    $colCheck = $pdo->query("SHOW COLUMNS FROM `produce_listings` LIKE 'status'");
+    if ($colCheck && $colCheck->rowCount() === 0) {
+        $pdo->exec("ALTER TABLE `produce_listings` ADD COLUMN `status` VARCHAR(50) NOT NULL DEFAULT 'active'");
+    }
+} catch (Exception $e) {
+    // Fail silently if alterations are restricted or already completed
+}
+
 $user_role = $_SESSION['role'] ?? 'farmer';
 $is_logged = true;
 if ($user_role !== 'farmer') { header('Location: buyer_dashboard.php'); exit; }
 
-// Nav cart count (farmers won't have one, but needed for partial)
+// Nav cart count
 $cart_count = 0;
 
 // Farmer profile
@@ -18,62 +34,53 @@ $farmer = $pdo->prepare("SELECT id,name,email,phone,momo_phone,location,profile_
 $farmer->execute([$user_id]);
 $farmer = $farmer->fetch(PDO::FETCH_ASSOC);
 
+// Scoped stats to look directly at the farmer's packages and sub-items
 $statsStmt = $pdo->prepare("
     SELECT
-        COUNT(DISTINCT oi.order_id)                                                      AS total_orders,
+        COUNT(DISTINCT og.id)                                                            AS total_orders,
         COALESCE(SUM(oi.subtotal),0)                                                     AS gross_revenue,
         COALESCE(SUM(CASE WHEN e.status='held'     THEN e.amount END),0)                AS escrow_held,
         COALESCE(SUM(CASE WHEN e.status='released' THEN e.amount END),0)                AS paid_out,
-        SUM(o.order_status IN ('payment_confirmed','preparing','in_transit','ready_for_pickup')) AS active_orders,
-        SUM(o.order_status='delivered')                                                  AS completed_orders
+        SUM(og.status IN ('payment_confirmed','preparing','in_transit','ready_for_pickup')) AS active_orders,
+        SUM(og.status='delivered')                                                       AS completed_orders
     FROM order_items oi
-    JOIN orders o ON oi.order_id = o.id
+    JOIN order_groups og ON oi.order_group_id = og.id
     LEFT JOIN escrow e ON e.order_item_id = oi.id
     WHERE oi.farmer_id = ?
 ");
 $statsStmt->execute([$user_id]);
 $stats = $statsStmt->fetch(PDO::FETCH_ASSOC);
 
-// ─── Orders for this farmer
-$ordersStmt = $pdo->prepare("
-    SELECT
-        o.id AS order_id, o.order_status, o.payment_status, o.created_at AS order_date,
-        o.delivery_name, o.delivery_phone, o.delivery_address, o.buyer_notes,
-        b.name AS buyer_name, b.phone AS buyer_phone,
-        oi.id AS item_id, oi.produce_id, oi.quantity, oi.unit_price, oi.subtotal, oi.item_status,
-        p.produce_name, p.photo,
-        e.status AS escrow_status, e.amount AS escrow_amount
-    FROM order_items oi
-    JOIN orders o  ON oi.order_id  = o.id
-    JOIN buyers  b  ON o.buyer_id   = b.id
-    JOIN produce_listings p ON oi.produce_id = p.id
-    LEFT JOIN escrow e ON e.order_item_id = oi.id
-    WHERE oi.farmer_id = ?
-    ORDER BY o.created_at DESC
+// ─── Scoped order groups for this farmer
+$groupsStmt = $pdo->prepare("
+    SELECT og.*, o.buyer_id, o.delivery_name, o.delivery_phone, o.delivery_address,
+           o.buyer_notes, o.created_at AS order_date, b.name AS buyer_name, b.phone AS buyer_phone,
+           o.payment_status
+    FROM order_groups og
+    JOIN orders o ON o.id = og.order_id
+    JOIN buyers b ON b.id = o.buyer_id
+    WHERE og.farmer_id = ?
+    ORDER BY og.created_at DESC
 ");
-$ordersStmt->execute([$user_id]);
-$rawItems = $ordersStmt->fetchAll(PDO::FETCH_ASSOC);
+$groupsStmt->execute([$user_id]);
+$myGroups = $groupsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Group by order_id
-$orders = [];
-foreach ($rawItems as $row) {
-    $oid = $row['order_id'];
-    if (!isset($orders[$oid])) {
-        $orders[$oid] = [
-            'order_id'        => $oid,
-            'order_status'    => $row['order_status'],
-            'payment_status'  => $row['payment_status'],
-            'order_date'      => $row['order_date'],
-            'delivery_name'   => $row['delivery_name'],
-            'delivery_phone'  => $row['delivery_phone'],
-            'delivery_address'=> $row['delivery_address'],
-            'buyer_notes'     => $row['buyer_notes'],
-            'buyer_name'      => $row['buyer_name'],
-            'buyer_phone'     => $row['buyer_phone'],
-            'items'           => [],
-        ];
-    }
-    $orders[$oid]['items'][] = $row;
+// Fetch items helper scoped to the group
+$itemsStmt = $pdo->prepare("
+    SELECT oi.*, p.produce_name, p.photo,
+           e.status AS escrow_status, e.amount AS escrow_amount
+    FROM order_items oi
+    JOIN produce_listings p ON p.id = oi.produce_id
+    LEFT JOIN escrow e ON e.order_item_id = oi.id
+    WHERE oi.order_group_id = ?
+");
+
+// Build structured package details array
+$groups = [];
+foreach ($myGroups as $g) {
+    $itemsStmt->execute([$g['id']]);
+    $g['items'] = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
+    $groups[] = $g;
 }
 
 // ─── Produce listings 
@@ -88,9 +95,10 @@ $listingsStmt = $pdo->prepare("
 $listingsStmt->execute([$user_id]);
 $listings = $listingsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// ─── Handle profile update ────────────────────────────────────────────────────
+// Handle profile update
 $profileError = ''; $profileSuccess = '';
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['update_profile'])) {
+    csrf_verify();
     $name     = trim(filter_input(INPUT_POST,'name',FILTER_SANITIZE_SPECIAL_CHARS));
     $phone    = trim(filter_input(INPUT_POST,'phone',FILTER_SANITIZE_SPECIAL_CHARS));
     $momo     = preg_replace('/\D/','',($_POST['momo_phone']??''));
@@ -185,11 +193,11 @@ include 'nav.php';
         <div class="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             <?php
             $cards = [
-                ['icon'=>'ri-shopping-bag-3-line','color'=>'text-blue-600 bg-blue-50','label'=>'Total Orders','value'=>$stats['total_orders']],
+                ['icon'=>'ri-shopping-bag-3-line','color'=>'text-blue-600 bg-blue-50','label'=>'Total Packages','value'=>$stats['total_orders']],
                 ['icon'=>'ri-money-cedi-circle-line','color'=>'text-green-600 bg-green-50','label'=>'Gross Revenue','value'=>'₵ '.number_format($stats['gross_revenue'],2)],
                 ['icon'=>'ri-lock-line','color'=>'text-yellow-600 bg-yellow-50','label'=>'In Escrow','value'=>'₵ '.number_format($stats['escrow_held'],2)],
                 ['icon'=>'ri-bank-line','color'=>'text-emerald-600 bg-emerald-50','label'=>'Paid Out','value'=>'₵ '.number_format($stats['paid_out'],2)],
-                ['icon'=>'ri-time-line','color'=>'text-orange-600 bg-orange-50','label'=>'Active Orders','value'=>$stats['active_orders']],
+                ['icon'=>'ri-time-line','color'=>'text-orange-600 bg-orange-50','label'=>'Active Packages','value'=>$stats['active_orders']],
                 ['icon'=>'ri-checkbox-circle-line','color'=>'text-purple-600 bg-purple-50','label'=>'Completed','value'=>$stats['completed_orders']],
             ];
             foreach($cards as $c): ?>
@@ -227,7 +235,7 @@ include 'nav.php';
 
     <!-- ===== TAB: ORDERS ===== -->
     <div id="panel-orders" class="<?= $activeTab!=='orders'?'hidden':'' ?>">
-        <?php if(empty($orders)): ?>
+        <?php if(empty($groups)): ?>
         <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-12 text-center shadow-sm">
             <i class="ri-inbox-line text-6xl text-[var(--text-muted)] opacity-30 mb-4 block"></i>
             <h3 class="text-lg font-bold text-[var(--text-main)] mb-2">No orders yet</h3>
@@ -251,35 +259,35 @@ include 'nav.php';
         </div>
 
         <div class="space-y-4" id="ordersContainer">
-            <?php foreach ($orders as $o): ?>
-            <?php $sc = $statusConfig[$o['order_status']] ?? ['label'=>$o['order_status'],'color'=>'bg-gray-100 text-gray-700','icon'=>'ri-circle-line']; ?>
-            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-sm order-card" data-status="<?= $o['order_status'] ?>">
+            <?php foreach ($groups as $g): ?>
+            <?php $sc = $statusConfig[$g['status']] ?? ['label'=>$g['status'],'color'=>'bg-gray-100 text-gray-700','icon'=>'ri-circle-line']; ?>
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-sm order-card" data-status="<?= $g['status'] ?>">
 
                 <!-- Header -->
                 <div class="p-4 border-b border-[var(--border)] flex flex-wrap gap-3 justify-between items-start bg-[var(--bg-body)]">
                     <div>
                         <div class="flex items-center gap-2 flex-wrap">
-                            <span class="font-bold text-[var(--text-main)]">Order #<?= $o['order_id'] ?></span>
+                            <span class="font-bold text-[var(--text-main)]"><?= htmlspecialchars($g['group_code']) ?></span>
                             <span class="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-semibold <?= $sc['color'] ?>">
                                 <i class="<?= $sc['icon'] ?>"></i> <?= $sc['label'] ?>
                             </span>
                         </div>
                         <p class="text-xs text-[var(--text-muted)] mt-1">
-                            <i class="ri-user-line"></i> <?= htmlspecialchars($o['buyer_name']) ?>
-                            · <?= date('d M Y, H:i', strtotime($o['order_date'])) ?>
+                            <i class="ri-user-line"></i> <?= htmlspecialchars($g['buyer_name']) ?>
+                            · <?= date('d M Y, H:i', strtotime($g['order_date'])) ?>
                         </p>
                     </div>
                     <div class="text-right text-sm">
                         <div class="font-bold text-[var(--text-main)]">
-                            ₵ <?= number_format(array_sum(array_column($o['items'],'subtotal')),2) ?>
+                            ₵ <?= number_format(array_sum(array_column($g['items'],'subtotal')),2) ?>
                         </div>
-                        <div class="text-[var(--text-muted)] text-xs"><?= count($o['items']) ?> item<?= count($o['items'])!=1?'s':'' ?></div>
+                        <div class="text-[var(--text-muted)] text-xs"><?= count($g['items']) ?> item<?= count($g['items'])!=1?'s':'' ?></div>
                     </div>
                 </div>
 
                 <!-- Items -->
                 <div class="p-4 space-y-3">
-                    <?php foreach($o['items'] as $oi): ?>
+                    <?php foreach($g['items'] as $oi): ?>
                     <?php
                         $img = !empty($oi['photo']) ? "../uploads/produce/".htmlspecialchars($oi['photo']) : "https://via.placeholder.com/60?text=?";
                         $ec  = $escrowConfig[$oi['escrow_status']] ?? ['label'=>'N/A','color'=>'text-gray-500','icon'=>'ri-circle-line'];
@@ -309,49 +317,49 @@ include 'nav.php';
 
                 <!-- Delivery info -->
                 <div class="px-4 pb-3 border-t border-[var(--border)] pt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-[var(--text-muted)]">
-                    <div><i class="ri-map-pin-line mr-1"></i><span class="font-medium text-[var(--text-main)]">Deliver to:</span> <?= htmlspecialchars($o['delivery_name']) ?>, <?= htmlspecialchars($o['delivery_address']) ?></div>
-                    <div><i class="ri-phone-line mr-1"></i><?= htmlspecialchars($o['delivery_phone']) ?></div>
-                    <?php if($o['buyer_notes']): ?>
-                    <div class="sm:col-span-2 italic"><i class="ri-chat-3-line mr-1"></i>"<?= htmlspecialchars($o['buyer_notes']) ?>"</div>
+                    <div><i class="ri-map-pin-line mr-1"></i><span class="font-medium text-[var(--text-main)]">Deliver to:</span> <?= htmlspecialchars($g['delivery_name']) ?>, <?= htmlspecialchars($g['delivery_address']) ?></div>
+                    <div><i class="ri-phone-line mr-1"></i><?= htmlspecialchars($g['delivery_phone']) ?></div>
+                    <?php if($g['buyer_notes']): ?>
+                    <div class="sm:col-span-2 italic"><i class="ri-chat-3-line mr-1"></i>"<?= htmlspecialchars($g['buyer_notes']) ?>"</div>
                     <?php endif; ?>
                 </div>
 
                 <!-- Status Actions -->
-                <?php if($o['payment_status']==='confirmed' && $o['order_status'] !== 'delivered' && $o['order_status'] !== 'cancelled'): ?>
+                <?php if($g['payment_status']==='confirmed' && $g['status'] !== 'delivered' && $g['status'] !== 'cancelled'): ?>
                 <div class="px-4 pb-4 border-t border-[var(--border)] pt-3 flex flex-wrap gap-2 items-center">
                     <span class="text-xs text-[var(--text-muted)] font-medium mr-1">Update Status:</span>
 
-                    <?php if($o['order_status']==='payment_confirmed'): ?>
-                    <button onclick="updateStatus(<?= $o['order_id'] ?>,'preparing',this)"
+                    <?php if($g['status']==='payment_confirmed'): ?>
+                    <button onclick="updateStatus(<?= $g['id'] ?>,'preparing',this)"
                         class="bg-purple-600 text-white text-xs px-4 py-2 rounded-lg font-semibold hover:bg-purple-700 transition flex items-center gap-1.5">
                         <i class="ri-box-3-line"></i> Mark as Preparing
                     </button>
 
-                    <?php elseif($o['order_status']==='preparing'): ?>
-                    <button onclick="updateStatus(<?= $o['order_id'] ?>,'in_transit',this)"
+                    <?php elseif($g['status']==='preparing'): ?>
+                    <button onclick="updateStatus(<?= $g['id'] ?>,'in_transit',this)"
                         class="bg-orange-500 text-white text-xs px-4 py-2 rounded-lg font-semibold hover:bg-orange-600 transition flex items-center gap-1.5">
                         <i class="ri-truck-line"></i> Mark In Transit
                     </button>
-                    <button onclick="updateStatus(<?= $o['order_id'] ?>,'ready_for_pickup',this)"
+                    <button onclick="updateStatus(<?= $g['id'] ?>,'ready_for_pickup',this)"
                         class="bg-cyan-600 text-white text-xs px-4 py-2 rounded-lg font-semibold hover:bg-cyan-700 transition flex items-center gap-1.5">
                         <i class="ri-store-line"></i> Ready for Pickup
                     </button>
 
-                    <?php elseif(in_array($o['order_status'],['in_transit','ready_for_pickup'])): ?>
+                    <?php elseif(in_array($g['status'],['in_transit','ready_for_pickup'])): ?>
                     <span class="text-xs text-[var(--text-muted)] italic flex items-center gap-1">
                         <i class="ri-hourglass-line animate-spin"></i>
                         Awaiting buyer confirmation of delivery…
                     </span>
                     <?php endif; ?>
                 </div>
-                <?php elseif($o['order_status']==='delivered'): ?>
+                <?php elseif($g['status']==='delivered'): ?>
                 <div class="px-4 pb-3 border-t border-[var(--border)] pt-3">
                     <span class="text-xs text-green-600 font-semibold flex items-center gap-1">
                         <i class="ri-checkbox-circle-fill text-base"></i>
                         Delivered & Payment Released to Your MoMo Account
                     </span>
                 </div>
-                <?php elseif($o['payment_status']==='pending'): ?>
+                <?php elseif($g['payment_status']==='pending'): ?>
                 <div class="px-4 pb-3 border-t border-[var(--border)] pt-3">
                     <span class="text-xs text-yellow-600 font-semibold flex items-center gap-1">
                         <i class="ri-time-line"></i> Awaiting payment from buyer
@@ -390,16 +398,29 @@ include 'nav.php';
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <?php foreach($listings as $l): ?>
             <?php
-                $img     = !empty($l['photo']) ? "../uploads/produce/".htmlspecialchars($l['photo']) : "https://via.placeholder.com/200?text=No+Image";
-                $inStock = $l['bags_available'] > 0;
+                $img      = !empty($l['photo']) ? "../uploads/produce/".htmlspecialchars($l['photo']) : "https://via.placeholder.com/200?text=No+Image";
+                $inStock  = $l['bags_available'] > 0;
+                
+                // Determine visibility active state independently of stock metrics
+                $isActive = true;
+                if (isset($l['status']) && ($l['status'] === 'inactive' || $l['status'] === 'draft' || $l['status'] === 'hidden' || $l['status'] === 'deactivated')) {
+                    $isActive = false;
+                } elseif (isset($l['is_active']) && (int)$l['is_active'] === 0) {
+                    $isActive = false;
+                }
             ?>
             <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition">
                 <div class="relative aspect-video overflow-hidden bg-gray-50">
                     <img src="<?= $img ?>" alt="<?= htmlspecialchars($l['produce_name']) ?>" class="w-full h-full object-contain p-4">
-                    <div class="absolute top-2 left-2">
+                    <div class="absolute top-2 left-2 flex flex-col gap-1">
                         <span class="text-[10px] px-2 py-0.5 rounded-full font-bold <?= $inStock?'bg-green-100 text-green-700':'bg-red-100 text-red-600' ?>">
                             <?= $inStock ? $l['bags_available'].' bags left' : 'Out of Stock' ?>
                         </span>
+                        <?php if (!$isActive): ?>
+                        <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-gray-200 text-gray-700 border border-gray-300">
+                            Hidden / Inactive
+                        </span>
+                        <?php endif; ?>
                     </div>
                     <div class="absolute top-2 right-2 text-[10px] bg-white/80 backdrop-blur-sm px-2 py-0.5 rounded-full text-[var(--text-muted)] font-medium">
                         <?= htmlspecialchars($l['category_name']) ?>
@@ -429,9 +450,9 @@ include 'nav.php';
                             class="flex-1 text-center border border-[var(--primary)] text-[var(--primary)] text-xs font-bold py-2 rounded-lg hover:bg-[var(--primary)] hover:text-white transition">
                             <i class="ri-edit-line"></i> Edit
                         </a>
-                        <button onclick="toggleListing(<?= $l['id'] ?>, <?= $inStock?1:0 ?>, this)"
+                        <button onclick="toggleListing(<?= $l['id'] ?>, <?= $isActive?1:0 ?>, this)"
                             class="flex-1 text-center border border-[var(--border)] text-[var(--text-muted)] text-xs font-bold py-2 rounded-lg hover:bg-[var(--bg-body)] transition">
-                            <i class="ri-eye-<?= $inStock?'off':'line' ?>-line"></i> <?= $inStock?'Deactivate':'Activate' ?>
+                            <i class="ri-eye-<?= $isActive?'off':'line' ?>-line"></i> <?= $isActive?'Take Down':'Publish' ?>
                         </button>
                     </div>
                 </div>
@@ -561,6 +582,7 @@ include 'nav.php';
 </style>
 
 <script>
+    const CSRF_TOKEN = "<?= csrf_token() ?>";
 if (typeof showToast !== 'function') {
     window.showToast = function(message, type) {
         alert((type === 'error' ? ' ' : ' ') + message);
@@ -601,17 +623,18 @@ document.addEventListener('DOMContentLoaded', () => {
     setTab(currentTab);
 });
 
-async function updateStatus(orderId, newStatus, btn) {
+async function updateStatus(groupId, newStatus, btn) {
     const labels = { preparing:'Preparing',in_transit:'In Transit',ready_for_pickup:'Ready for Pickup' };
-    if (!confirm(`Mark Order #${orderId} as "${labels[newStatus]}"?`)) return;
+    if (!confirm(`Mark Package #${groupId} as "${labels[newStatus]}"?`)) return;
 
     btn.disabled = true;
     const orig = btn.innerHTML;
     btn.innerHTML = '<i class="ri-loader-4-line animate-spin"></i> Updating…';
 
     const form = new FormData();
-    form.append('order_id', orderId);
+    form.append('group_id', groupId);
     form.append('status', newStatus);
+    form.append('csrf_token', CSRF_TOKEN);
 
     try {
         const res  = await fetch('update_order_status.php', { method:'POST', body:form });
@@ -631,18 +654,19 @@ async function updateStatus(orderId, newStatus, btn) {
 
 async function toggleListing(listingId, currentlyActive, btn) {
     const action = currentlyActive ? 'deactivate' : 'activate';
-    if (!confirm(`${action.charAt(0).toUpperCase()+action.slice(1)} this listing?`)) return;
+    if (!confirm(`Are you sure you want to ${currentlyActive ? 'take down' : 'publish'} this listing?`)) return;
 
     btn.disabled = true;
     const form = new FormData();
     form.append('listing_id', listingId);
     form.append('action', action);
+    form.append('csrf_token', CSRF_TOKEN);
 
     try {
-        const res  = await fetch('api/toggle_listing.php', { method:'POST', body:form });
+        const res  = await fetch('toggle_listing.php', { method:'POST', body:form });
         const data = await res.json();
         if (data.success) {
-            showToast(`Listing ${action}d!`, 'success');
+            showToast(currentlyActive ? 'Listing taken down!' : 'Listing published!', 'success');
             setTimeout(() => location.reload(), 1200);
         } else {
             showToast(data.message || 'Action failed', 'error');

@@ -1,6 +1,10 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 // public/apply_loan.php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/auth.php';
 require_once __DIR__ . '/../src/users.php';
 require_once __DIR__ . '/../src/loan.php';
@@ -83,6 +87,7 @@ if ($reapply_id > 0) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
 
     $totalAmount = floatval($_POST['amount']);
     $stageSum = 0;

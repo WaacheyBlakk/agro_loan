@@ -1,11 +1,16 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 $pdo = getPDO();
 if (!isset($_SESSION['buyer_id'])) { header('Location: login.php'); exit; }
 $buyer_id = $_SESSION['buyer_id'];
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: checkout.php'); exit; }
+csrf_verify();
 $shipping = trim($_POST['shipping_address']);
 
 // fetch cart items again (with FOR UPDATE)

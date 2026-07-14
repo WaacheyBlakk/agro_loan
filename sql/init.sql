@@ -66,7 +66,7 @@ CREATE TABLE `buyers` (
   `city` varchar(100) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- --------------------------------------------------------
+-----------------------------------------------
 
 --
 -- Table structure for table `buyer_profiles`
@@ -186,10 +186,11 @@ CREATE TABLE `dispute_evidence` (
   `uploader_id` int(11) NOT NULL,
   `filename` varchar(255) NOT NULL,
   `file_type` varchar(50) NOT NULL,
-  `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `notes` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- --------------------------------------------------------
+-------------------------------------------------
 
 --
 -- Table structure for table `escrow`
@@ -199,6 +200,7 @@ CREATE TABLE `escrow` (
   `id` int(11) NOT NULL,
   `order_id` int(11) NOT NULL,
   `order_item_id` int(11) NOT NULL,
+  `order_group_id` int(11) DEFAULT NULL,
   `farmer_id` int(11) NOT NULL,
   `amount` decimal(10,2) NOT NULL,
   `platform_fee_portion` decimal(10,2) NOT NULL DEFAULT 0.00,
@@ -298,12 +300,26 @@ CREATE TABLE `loan_stages` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `login_attempts`
+--
+
+CREATE TABLE `login_attempts` (
+  `id` int(11) NOT NULL,
+  `identifier` varchar(255) NOT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `attempt_time` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `market_disputes`
 --
 
 CREATE TABLE `market_disputes` (
   `id` int(11) NOT NULL,
   `order_id` int(11) NOT NULL,
+  `order_group_id` int(11) DEFAULT NULL,
   `initiator_id` int(11) NOT NULL,
   `initiator_role` enum('buyer','farmer') NOT NULL,
   `defendant_id` int(11) NOT NULL,
@@ -360,6 +376,23 @@ CREATE TABLE `orders` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `order_groups`
+--
+
+CREATE TABLE `order_groups` (
+  `id` int(11) NOT NULL,
+  `order_id` int(11) NOT NULL,
+  `farmer_id` int(11) NOT NULL,
+  `group_code` varchar(30) NOT NULL,
+  `status` varchar(50) NOT NULL DEFAULT 'payment_confirmed',
+  `subtotal` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `order_items`
 --
 
@@ -368,6 +401,7 @@ CREATE TABLE `order_items` (
   `order_id` int(11) NOT NULL,
   `produce_id` int(11) NOT NULL,
   `farmer_id` int(11) NOT NULL,
+  `order_group_id` int(11) DEFAULT NULL,
   `quantity` int(11) NOT NULL,
   `unit_price` decimal(12,2) NOT NULL,
   `subtotal` decimal(12,2) NOT NULL,
@@ -383,6 +417,7 @@ CREATE TABLE `order_items` (
 CREATE TABLE `order_tracking` (
   `id` int(11) NOT NULL,
   `order_id` int(11) NOT NULL,
+  `order_group_id` int(11) DEFAULT NULL,
   `status` varchar(100) NOT NULL,
   `notes` text DEFAULT NULL,
   `updated_by` int(11) DEFAULT NULL,
@@ -404,7 +439,8 @@ CREATE TABLE `produce_listings` (
   `bags_available` int(11) NOT NULL,
   `description` text DEFAULT NULL,
   `photo` varchar(255) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `status` varchar(50) NOT NULL DEFAULT 'active'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -475,7 +511,6 @@ CREATE TABLE `users` (
   `profile_bio` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-
 -- --------------------------------------------------------
 
 --
@@ -488,5 +523,3 @@ CREATE TABLE `wishlist_items` (
   `product_id` int(11) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-

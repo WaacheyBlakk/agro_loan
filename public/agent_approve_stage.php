@@ -1,5 +1,9 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 $pdo = getPDO();
 
@@ -17,8 +21,9 @@ $message = $_SESSION['flash_msg'] ?? '';
 $msgType = $_SESSION['flash_type'] ?? '';
 unset($_SESSION['flash_msg'], $_SESSION['flash_type']);
 
-/* ✅ Handle Disbursement */
+/* Handle Disbursement */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['stage_id'])) {
+    csrf_verify();
     $stage_id = (int) $_POST['stage_id'];
     $action_input = $_POST['action'];
     
@@ -83,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['sta
     exit;
 }
 
-/* ✅ Fetch Data - Get Stages ONLY (No Joins on proofs to prevent duplicates) */
+/* Fetch Data - Get Stages ONLY (No Joins on proofs to prevent duplicates) */
 $query = "
     SELECT 
         ls.id AS stage_id,

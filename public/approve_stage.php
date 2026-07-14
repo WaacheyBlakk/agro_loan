@@ -1,8 +1,11 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 require_once __DIR__ . '/../src/auth.php';
 require_once __DIR__ . '/../src/loan.php';
 
 require_login();
+csrf_verify();
 $user = current_user();
 if ($user['role'] !== 'agent') { echo "Only agents."; exit; }
 

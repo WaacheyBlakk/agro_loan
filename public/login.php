@@ -1,6 +1,10 @@
 <?php 
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 // public/login.php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/functions.php'; 
 
 // Conditionally require database connection helper if it exists
@@ -35,10 +39,18 @@ if (!function_exists('verify_user')) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
+    require_once __DIR__ . '/../src/rate_limit.php';
     $email = trim($_POST['email'] ?? '');
     $password = trim($_POST['password'] ?? '');
 
     if ($email && $password) {
+        $rl_pdo = function_exists('getPDO') ? getPDO() : null;
+        $rl_key = login_rate_limit_key($email);
+
+        if ($rl_pdo && is_rate_limited($rl_pdo, $rl_key)) {
+            $error = "Too many login attempts. Please try again in 15 minutes.";
+        } else {
         // Step 1: Attempt to verify user against general accounts (Admin, Farmer, Agent)
         $user = verify_user($email, $password);
 
@@ -48,6 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Your account is pending admin verification.";
             } else {
                 // Set Session Data for general accounts
+                if ($rl_pdo) clear_rate_limit($rl_pdo, $rl_key);
+                session_regenerate_id(true);
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['id'] = $user['id']; // compatibility key
                 $_SESSION['role'] = $user['role'];
@@ -89,7 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $error = "Your account is unverified. Please check back later.";
                             }
                         } else {
-                            session_regenerate_id(true); 
+                            if ($rl_pdo) clear_rate_limit($rl_pdo, $rl_key);
+                            session_regenerate_id(true);
                             $_SESSION['user_id'] = $buyer['id'];
                             $_SESSION['id'] = $buyer['id']; // compatibility key
                             $_SESSION['name'] = $buyer['name']; 
@@ -100,6 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $redirect_url = 'shop.php';
                         }
                     } else {
+                        if ($rl_pdo) record_failed_attempt($rl_pdo, $rl_key);
                         $error = "Invalid email or password.";
                     }
                 } catch (Exception $e) {
@@ -109,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Invalid email or password.";
             }
         }
+        } // end rate-limit else block
     } else {
         $error = "Please enter both email and password.";
     }
@@ -260,6 +277,21 @@ nav a::after {
     transition: width 0.3s;
 }
 nav a:hover::after { width: 100%; }
+
+.btn-register {
+    padding: 8px 20px;
+    border: 2px solid var(--primary);
+    border-radius: 50px;
+    color: var(--primary);
+    font-weight: 600;
+    transition: 0.3s;
+}
+.btn-register:hover {
+    background: var(--primary);
+    color: white !important;
+    text-decoration: none;
+}
+.btn-register::after { display: none; } 
 
 .btn-login-nav {
     padding: 8px 20px;
@@ -521,10 +553,10 @@ footer {
             <a href="index.php">Home</a>
             <a href="about.php">About</a>
             <a href="services.php">Services</a>
-            <a href="shop.php">Shop</a>
-            <a href="register.php">Register</a>
             <a href="contact.php">Contact Us</a>
+            <a href="shop.php">Shop</a>
             <a href="login.php" class="btn-login-nav">Login</a>
+            <a href="register.php" class="btn-register">Register</a>
         </nav>
         
         <!-- Theme Toggle -->
@@ -548,10 +580,10 @@ footer {
     <a href="index.php">Home</a>
     <a href="about.php">About</a>
     <a href="services.php">Services</a>
-    <a href="shop.php">Shop</a>
-    <a href="register.php">Register</a>
     <a href="contact.php">Contact Us</a>
+    <a href="shop.php">Shop</a>
     <a href="login.php" style="color:var(--primary);">Login</a>
+    <a href="register.php">Register</a>
 </div>
 
 <main>
@@ -581,6 +613,9 @@ footer {
         <?php endif; ?>
 
         <form method="POST" action="" id="loginForm" onsubmit="document.getElementById('submitBtn').disabled = true;">
+            <!-- Hidden CSRF Token Field -->
+            <input type="hidden" name="csrf_token" value="<?= csrf_token(); ?>">
+
             <div class="form-group">
                 <div class="input-wrapper">
                     <i class="ri-mail-line field-icon"></i>

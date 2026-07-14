@@ -1,5 +1,8 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once '../src/db.php';
 
 $pdo = getPDO();
@@ -12,8 +15,7 @@ if (!$product_id) {
     exit;
 }
 
-// 2. Fetch Product Details (with Category Name)
-// Note: Adapting column names to match standard convention (price_per_bag, bags_available)
+// 2. Fetch Product Details
 $stmt = $pdo->prepare("
     SELECT p.*, u.name AS farmer_name, u.phone AS farmer_contact, c.name AS category_name, c.id as category_id
     FROM products p 
@@ -207,8 +209,6 @@ $is_logged = isset($_SESSION['id']);
         <?php endif; ?>
 
     </div>
-
-    <!-- JavaScript for Interactions -->
     <script>
         // Image Gallery Swap
         function changeImage(element, src) {

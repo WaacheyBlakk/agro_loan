@@ -1,6 +1,10 @@
 <?php
-// public/proof_verification.php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/loan.php';
 require_once __DIR__ . '/../src/upload.php';
@@ -14,7 +18,6 @@ if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'agent') {
 $agent_id = $_SESSION['user_id'];
 $username = $_SESSION['name'] ?? 'Agent';
 
-// Fetch single loan application details for display or export
 $selected_app_id = isset($_GET['app_id']) ? (int)$_GET['app_id'] : null;
 $selected_app = null;
 
@@ -33,14 +36,13 @@ if ($selected_app_id) {
    PDF EXPORT GENERATION ROUTE
    ========================================== */
 if (isset($_GET['export']) && $_GET['export'] === 'pdf' && $selected_app) {
-    // Fetch all stages and their corresponding proofs for the export view
     $s_sql = "SELECT * FROM loan_stages WHERE application_id = ? ORDER BY stage_number ASC";
     $st = $pdo->prepare($s_sql);
     $st->execute([$selected_app['id']]);
     $stages = $st->fetchAll(PDO::FETCH_ASSOC);
     ?>
-    <!DOCTYPE html>
-    <html lang="en">
+<!DOCTYPE html>
+<html lang="en">
     <head>
         <meta charset="UTF-8">
         <title>Loan Progress Report - #<?= $selected_app['id'] ?></title>
@@ -59,7 +61,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf' && $selected_app) {
             .proof-table th, .proof-table td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
             .proof-table th { background-color: #f1f5f9; font-weight: 600; }
             .badge { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; display: inline-block; }
-            .badge-approved { background-color: #d1fae5; color: #065f46; }
+            .badge-verified { background-color: #d1fae5; color: #065f46; }
             .badge-pending { background-color: #fef3c7; color: #92400e; }
             .badge-rejected { background-color: #fee2e2; color: #991b1b; }
             .no-print-btn { background-color: #1e40af; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; margin-bottom: 20px; }
@@ -102,7 +104,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf' && $selected_app) {
                 </tr>
                 <tr>
                     <td class="label">Status</td>
-                    <td><span class="badge badge-<?= ($selected_app['status'] === 'completed') ? 'approved' : 'pending' ?>"><?= htmlspecialchars($selected_app['status']) ?></span></td>
+                    <td><span class="badge badge-<?= ($selected_app['status'] === 'completed') ? 'verified' : 'pending' ?>"><?= htmlspecialchars($selected_app['status']) ?></span></td>
                     <td class="label">Total Disbursed</td>
                     <td>GHS <?= number_format($selected_app['disbursed_amount'], 2) ?></td>
                 </tr>
@@ -147,10 +149,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf' && $selected_app) {
                                             ?>
                                         </strong>
                                     </td>
-                                    <td><?= htmlspecialchars($proof['filename'] ?? $proof['file_path'] ?? 'N/A') ?></td>
+                                    <td><?= htmlspecialchars($proof['filename'] ?? 'N/A') ?></td>
                                     <td><?= htmlspecialchars($proof['file_type']) ?></td>
                                     <td>
-                                        <span class="badge badge-<?= (strtolower($proof['status']) === 'approved') ? 'approved' : ((strtolower($proof['status']) === 'pending') ? 'pending' : 'rejected') ?>">
+                                        <span class="badge badge-<?= (strtolower($proof['status']) === 'verified') ? 'verified' : ((strtolower($proof['status']) === 'pending') ? 'pending' : 'rejected') ?>">
                                             <?= htmlspecialchars($proof['status']) ?>
                                         </span>
                                     </td>
@@ -164,7 +166,6 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf' && $selected_app) {
 
         <script>
             window.addEventListener('load', function() {
-                // Pre-emptively trigger printer dialogue box
                 window.print();
             });
         </script>
@@ -176,15 +177,16 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf' && $selected_app) {
 
 // HANDLE PROOF VERIFICATION ACTIONS
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proof_id'], $_POST['action'])) {
+    csrf_verify();
     $proof_id = (int)$_POST['proof_id'];
     $action_input = $_POST['action']; 
 
-    $new_proof_status = ($action_input === 'approve') ? 'Approved' : 'Rejected';
+    // Match exactly ENUM ('pending','verified','rejected')
+    $new_proof_status = ($action_input === 'approve') ? 'verified' : 'rejected';
 
     try {
         $pdo->beginTransaction();
 
-        // 1. Fetch details about the target proof and stage
         $infoStmt = $pdo->prepare("
             SELECT sp.proof_type, sp.stage_id, ls.application_id, ls.required_amount, ls.disbursed, ls.stage_number
             FROM stage_proofs sp
@@ -198,16 +200,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proof_id'], $_POST['a
             throw new Exception("Proof record not found.");
         }
 
-        // 2. Update the Proof Status
         $stmt = $pdo->prepare("UPDATE stage_proofs SET status = ? WHERE id = ?");
         $stmt->execute([$new_proof_status, $proof_id]);
 
-        // 3. Perform Stage updates depending on Action & Phase Type
-        if ($new_proof_status === 'Approved') {
+        if ($new_proof_status === 'verified') {
             
             if ($info['proof_type'] === 'before') {
-                /* AUTOMATIC DISBURSEMENT ON PHASE 1 APPROVAL */
-                $updateStage = $pdo->prepare("UPDATE loan_stages SET status = 'disbursed', disbursed = 1 WHERE id = ?");
+                // Set loan stages to ENUM 'disbursed' and record disbursement amount
+                $updateStage = $pdo->prepare("UPDATE loan_stages SET status = 'disbursed', disbursed = 1, disbursed_amount = required_amount WHERE id = ?");
                 $updateStage->execute([$info['stage_id']]);
 
                 $updateApp = $pdo->prepare("
@@ -217,22 +217,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proof_id'], $_POST['a
                 ");
                 $updateApp->execute([$info['required_amount'], $info['application_id']]);
 
-                // Record audit log within disbursements table if it exists
+                // Insert into disbursements using exact ENUM value ('approved')
                 try {
                     $dstmt = $pdo->prepare("
                         INSERT INTO disbursements (stage_id, approved_by, status, date_approved) 
-                        VALUES (?, ?, 'disbursed', NOW())
+                        VALUES (?, ?, 'approved', NOW())
                     ");
                     $dstmt->execute([$info['stage_id'], $agent_id]);
                 } catch (Exception $dex) {
-                    // Fail gracefully if disbursements tracking module is not active
+                    // Safe fallback if structural check constraints fail
                 }
 
                 $_SESSION['flash_success'] = 'Phase 1 (Before Work) approved. Funds have been automatically disbursed.';
 
             } elseif ($info['proof_type'] === 'after' || $info['proof_type'] === 'payment') {
-                /* STAGE COMPLETION REQUIREMENT CHECK */
-                // Fetch all proofs for this stage to check if BOTH phase 2 (after) and phase 3 (payment) are approved
                 $checkProofs = $pdo->prepare("SELECT proof_type, status FROM stage_proofs WHERE stage_id = ?");
                 $checkProofs->execute([$info['stage_id']]);
                 $stageProofs = $checkProofs->fetchAll(PDO::FETCH_ASSOC);
@@ -241,21 +239,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proof_id'], $_POST['a
                 $paymentApproved = false;
 
                 foreach ($stageProofs as $sp) {
-                    $status_lower = strtolower($sp['status']);
-                    if ($sp['proof_type'] === 'after' && $status_lower === 'approved') {
+                    $status_lower = strtolower($sp['status'] ?? '');
+                    if ($sp['proof_type'] === 'after' && $status_lower === 'verified') {
                         $afterApproved = true;
                     }
-                    if ($sp['proof_type'] === 'payment' && $status_lower === 'approved') {
+                    if ($sp['proof_type'] === 'payment' && $status_lower === 'verified') {
                         $paymentApproved = true;
                     }
                 }
 
+                // If both required Phase 2 and Phase 3 proofs are verified
                 if ($afterApproved && $paymentApproved) {
-                    // Both required phases are approved -> Complete stage
-                    $updateStage = $pdo->prepare("UPDATE loan_stages SET status = 'completed' WHERE id = ?");
+                    $updateStage = $pdo->prepare("UPDATE loan_stages SET status = 'verified' WHERE id = ?");
                     $updateStage->execute([$info['stage_id']]);
 
-                    // Shift application to next stage index
                     $updateApp = $pdo->prepare("
                         UPDATE loan_applications 
                         SET current_stage = current_stage + 1 
@@ -263,11 +260,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proof_id'], $_POST['a
                     ");
                     $updateApp->execute([$info['application_id']]);
 
-                    // Verify if any remaining stages exist
+                    // Set next stage status to initial 'pending' state
+                    $updateStageNext = $pdo->prepare("
+                        UPDATE loan_stages 
+                        SET status = 'pending' 
+                        WHERE application_id = ? AND stage_number = ?
+                    ");
+                    $updateStageNext->execute([$info['application_id'], intval($info['stage_number']) + 1]);
+
                     $checkRemaining = $pdo->prepare("
                         SELECT COUNT(*) 
                         FROM loan_stages 
-                        WHERE application_id = ? AND status != 'completed'
+                        WHERE application_id = ? AND status != 'verified'
                     ");
                     $checkRemaining->execute([$info['application_id']]);
                     $remaining = $checkRemaining->fetchColumn();
@@ -280,13 +284,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proof_id'], $_POST['a
                         $_SESSION['flash_success'] = 'Phase 2 & Phase 3 are fully verified. Stage completed. Next stage unlocked.';
                     }
                 } else {
+                    $updateStage = $pdo->prepare("UPDATE loan_stages SET status = 'disbursed' WHERE id = ?");
+                    $updateStage->execute([$info['stage_id']]);
+
                     $pendingPhaseName = (!$afterApproved) ? 'Phase 2 (After Work)' : 'Phase 3 (Payment Proof)';
                     $_SESSION['flash_success'] = ucfirst($info['proof_type']) . ' proof verified. Awaiting verification of ' . $pendingPhaseName . ' before stage transition.';
                 }
             }
         } else {
-            // Rejection routing
-            $fallbackStatus = 'rejected_' . $info['proof_type'];
+            // Rejection fallback matched to allowed ENUM boundaries
+            if ($info['proof_type'] === 'before') {
+                $fallbackStatus = 'disbursement_rejected';
+            } else {
+                $fallbackStatus = 'rejected';
+            }
             $updateStage = $pdo->prepare("UPDATE loan_stages SET status = ? WHERE id = ?");
             $updateStage->execute([$fallbackStatus, $info['stage_id']]);
             $_SESSION['flash_success'] = 'Proof rejected. The applicant has been notified.';
@@ -306,18 +317,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['proof_id'], $_POST['a
     exit;
 }
 
-/* Flash messages loading */
 $successMessage = $_SESSION['flash_success'] ?? '';
 $errorMessage = $_SESSION['flash_error'] ?? '';
 unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
-// Fetch active portfolio allocations for this agent
 $stmtList = $pdo->prepare("
     SELECT la.*, u.name AS farmer_name, u.id AS farmer_user_id,
            (SELECT COUNT(*) 
             FROM stage_proofs sp 
             JOIN loan_stages ls ON sp.stage_id = ls.id 
-            WHERE ls.application_id = la.id AND sp.status = 'Pending'
+            WHERE ls.application_id = la.id AND sp.status = 'pending'
            ) AS pending_count
     FROM loan_applications la
     INNER JOIN users u ON la.farmer_id = u.id
@@ -327,7 +336,6 @@ $stmtList = $pdo->prepare("
 $stmtList->execute([$agent_id]);
 $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -342,7 +350,6 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         --primary: #1e40af;      
         --primary-dark: #172554; 
         --secondary: #3b82f6; 
-        
         --bg-body: #f3f4f6;
         --bg-card: #ffffff;
         --text-main: #1f2937;
@@ -350,14 +357,11 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         --danger: #ef4444;
         --warning: #f59e0b;
         --success: #10b981;
-        
         --sidebar-width: 260px;
         --sidebar-collapsed: 80px;
         --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
-
     * { box-sizing: border-box; }
-
     body {
         margin: 0;
         font-family: 'Poppins', sans-serif;
@@ -367,7 +371,6 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         height: 100vh;
         overflow: hidden;
     }
-
     .sidebar {
         width: var(--sidebar-width);
         background: var(--primary-dark);
@@ -380,9 +383,7 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         box-shadow: 4px 0 10px rgba(0,0,0,0.1);
         flex-shrink: 0;
     }
-
     .sidebar.collapsed { width: var(--sidebar-collapsed); padding: 20px 10px; }
-
     .brand {
         display: flex;
         align-items: center;
@@ -391,44 +392,35 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         padding-left: 5px;
         overflow: hidden;
     }
-
     .brand img {
         width: 40px; height: 40px; border-radius: 8px;
         object-fit: cover; border: 2px solid rgba(255,255,255,0.2);
     }
-
     .brand h2 {
         font-size: 20px; font-weight: 600; white-space: nowrap;
         opacity: 1; transition: opacity 0.2s; margin: 0;
     }
-
     .sidebar.collapsed .brand h2 { opacity: 0; width: 0; }
-    
     .nav { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-
     .nav-link {
         display: flex; align-items: center; gap: 14px;
         padding: 12px 15px; color: #dbeafe;
         text-decoration: none; border-radius: 10px;
         transition: all 0.2s ease; white-space: nowrap; font-weight: 500;
     }
-
     .nav-link:hover {
         background: rgba(255,255,255,0.1); color: #fff;
         transform: translateX(4px);
     }
-
     .nav-link.active {
         background: var(--secondary); color: #fff;
         box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
     }
-
     .nav-link svg { width: 20px; height: 20px; }
-
     .sidebar.collapsed .nav-link { justify-content: center; padding: 12px; }
+    .sidebar.collapsed .nav-link font-size { display: none; }
     .sidebar.collapsed .nav-link span { display: none; }
     .sidebar.collapsed .nav-link:hover { transform: none; }
-
     .logout-btn {
         background: rgba(239, 68, 68, 0.1); color: #fca5a5;
         border: 1px solid rgba(239, 68, 68, 0.2);
@@ -437,28 +429,24 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         gap: 10px; font-family: inherit; font-weight: 600;
         transition: 0.2s; width: 100%;
     }
-
     .logout-btn:hover { background: var(--danger); color: white; }
     .sidebar.collapsed .logout-btn span { display: none; }
-
     .main {
         flex: 1; display: flex; flex-direction: column;
         overflow-y: auto; position: relative;
         width: 100%;
+        min-width: 0; /* Ensures container behaves well with sidebar transitions */
     }
-
     .topbar {
         background: var(--bg-card); padding: 15px 30px;
         display: flex; justify-content: space-between; align-items: center;
         box-shadow: var(--shadow); position: sticky; top: 0; z-index: 50;
     }
-
     .toggle-btn {
         background: transparent; border: none; color: var(--text-muted);
         cursor: pointer; padding: 5px;
     }
     .toggle-btn:hover { color: var(--primary); }
-
     .user-profile { display: flex; align-items: center; gap: 10px; }
     .user-avatar {
         width: 35px; height: 35px; background: var(--primary);
@@ -466,9 +454,7 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         align-items: center; justify-content: center;
         font-weight: bold; font-size: 14px;
     }
-
     .content-container { padding: 30px; }
-    
     .proof-card {
         background: white;
         padding: 20px;
@@ -477,7 +463,6 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         box-shadow: var(--shadow);
         border: 1px solid #e5e7eb;
     }
-
     .stage-row {
         margin-top: 25px;
         padding: 15px;
@@ -485,14 +470,12 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         background: #f8fafc;
         border: 1px solid #e2e8f0;
     }
-
     .proof-grid {
         display: grid; 
         grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); 
         gap: 15px; 
         margin-top: 15px;
     }
-
     .proof-item {
         border: 1px solid #e5e7eb; 
         padding: 15px; 
@@ -506,23 +489,19 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         justify-content: space-between;
         min-height: 220px;
     }
-    
     .proof-item.pending {
         border-color: var(--secondary);
         box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1);
     }
-
     .proof-item.processed {
         background: #f9fafb;
         border-color: #f3f4f6;
         opacity: 0.9;
     }
-
     .proof-item:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
-
     .phase-badge {
         font-size: 11px;
         font-weight: 700;
@@ -535,7 +514,6 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
     .phase-before { background-color: #fef3c7; color: #92400e; }
     .phase-after { background-color: #d1fae5; color: #065f46; }
     .phase-payment { background-color: #e0f2fe; color: #0369a1; }
-
     .proof-preview {
         display: flex;
         align-items: center;
@@ -543,7 +521,6 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         padding: 10px 0;
         margin-bottom: 10px;
     }
-    
     .proof-preview a {
         display: flex; 
         align-items: center; 
@@ -558,7 +535,6 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         font-size: 13px;
     }
     .proof-preview a:hover { background: #dbeafe; }
-
     .proof-actions {
         display: flex;
         justify-content: center;
@@ -566,7 +542,6 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         margin-top: auto;
         padding-top: 10px;
     }
-
     .action-btn {
         border: none;
         padding: 8px 16px;
@@ -578,13 +553,10 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         transition: background 0.2s;
         flex: 1;
     }
-    
     .btn-verify { background: var(--success); }
     .btn-verify:hover { background: #059669; }
-    
     .btn-reject { background: var(--danger); }
     .btn-reject:hover { background: #dc2626; }
-
     .proof-badge {
         display: inline-block;
         padding: 6px 12px;
@@ -595,13 +567,11 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
     }
     .badge-verified { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
     .badge-rejected { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
-
     .history-section {
         margin-top: 25px;
         border-top: 1px solid #e5e7eb;
         padding-top: 15px;
     }
-
     details summary {
         cursor: pointer;
         font-weight: 600;
@@ -615,20 +585,15 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         border-radius: 8px;
         transition: background 0.2s;
     }
-    
     details summary:hover { background: #e2e8f0; color: var(--text-main); }
     details summary::after { content: '+'; margin-left: auto; font-weight: bold; font-size: 18px; }
     details[open] summary::after { content: '-'; }
-
     .history-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
     .history-table th, .history-table td { text-align: left; padding: 10px; border-bottom: 1px solid #f3f4f6; }
     .history-table th { color: var(--text-muted); font-weight: 500; }
-
     .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: capitalize; }
     .st-verified { background: #d1fae5; color: #065f46; }
     .st-rejected { background: #fee2e2; color: #991b1b; }
-
-    /* Custom Loan Management CSS */
     .loan-table-card {
         background: #ffffff;
         border-radius: 16px;
@@ -636,15 +601,13 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         box-shadow: var(--shadow);
         overflow: hidden;
     }
-    .loan-table {
+    .table-responsive {
         width: 100%;
-        border-collapse: collapse;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
     }
-    .loan-table th, .loan-table td {
-        padding: 16px 20px;
-        text-align: left;
-        border-bottom: 1px solid #f3f4f6;
-    }
+    .loan-table { width: 100%; border-collapse: collapse; }
+    .loan-table th, .loan-table td { padding: 16px 20px; text-align: left; border-bottom: 1px solid #f3f4f6; }
     .loan-table th {
         background: #f8fafc;
         font-weight: 600;
@@ -652,10 +615,12 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         text-transform: uppercase;
         color: var(--text-muted);
         letter-spacing: 0.5px;
+        white-space: nowrap;
     }
-    .loan-table tr:hover td {
-        background-color: #fafbfd;
+    .loan-table td {
+        white-space: nowrap;
     }
+    .loan-table tr:hover td { background-color: #fafbfd; }
     .badge-pending-count {
         background-color: var(--warning);
         color: #ffffff;
@@ -663,8 +628,9 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         padding: 4px 10px;
         border-radius: 12px;
         font-size: 12px;
+        white-space: nowrap;
+        display: inline-block;
     }
-
     .btn-export {
         background: #0f172a;
         color: #fff;
@@ -682,7 +648,6 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         transition: 0.2s;
     }
     .btn-export:hover { background: #1e293b; }
-
     .link { color: var(--primary); text-decoration: none; font-weight: 500; transition: 0.2s; }
     .link:hover { color: var(--primary-dark); text-decoration: underline; }
 
@@ -727,6 +692,9 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         </nav>
 
         <form action="logout.php" method="POST">
+            <?php if (isset($_SESSION['csrf_token'])): ?>
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+            <?php endif; ?>
             <button class="logout-btn">
                 <i data-feather="log-out"></i>
                 <span>Logout</span>
@@ -739,7 +707,6 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
             <button id="toggleBtn" class="toggle-btn">
                 <i data-feather="menu"></i>
             </button>
-            
             <div class="user-profile">
                 <div style="text-align:right; margin-right:8px;">
                     <div style="font-size:14px; font-weight:600;"><?= htmlspecialchars($username) ?></div>
@@ -752,8 +719,6 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
         </header>
 
         <div class="content-container">
-            
-            <!-- Dynamic header depending on drill-down status -->
             <?php if ($selected_app): ?>
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 20px;">
                     <div>
@@ -762,7 +727,6 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
                             Farmer: <strong><?= htmlspecialchars($selected_app['farmer_name']) ?></strong> | Application ID: #<?= $selected_app['id'] ?>
                         </p>
                     </div>
-                    
                     <div style="display: flex; align-items: center; gap: 15px;">
                         <a href="proof_verification.php?app_id=<?= $selected_app['id'] ?>&export=pdf" target="_blank" class="btn-export">
                             <i data-feather="printer"></i> Export PDF
@@ -774,22 +738,15 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
                 </div>
             <?php else: ?>
                 <h1 style="margin-top:0;">Affiliated Loan Applications</h1>
-                <p style="color:var(--text-muted);">View all loan accounts associated with your portfolio. Applications containing pending uploads are shown first.</p>
+                <p style="color:var(--text-muted);">View loan accounts in your portfolio. Applications with pending uploads are prioritized at the top.</p>
             <?php endif; ?>
 
             <hr style="border:0; border-top:1px solid #e5e7eb; margin: 20px 0;">
 
-            <!-- DRILL-DOWN VIEW (Single Loan Proof Detail) -->
             <?php if ($selected_app): ?>
-                
                 <div class="proof-card">
                     <?php
-                    $s_sql = "
-                        SELECT ls.* 
-                        FROM loan_stages ls 
-                        WHERE ls.application_id = ?
-                        ORDER BY ls.stage_number ASC
-                    ";
+                    $s_sql = "SELECT ls.* FROM loan_stages ls WHERE ls.application_id = ? ORDER BY ls.stage_number ASC";
                     $st = $pdo->prepare($s_sql);
                     $st->execute([$selected_app['id']]);
                     $stages = $st->fetchAll(PDO::FETCH_ASSOC);
@@ -816,7 +773,7 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
                             $p_stmt = $pdo->prepare("
                                 SELECT * FROM stage_proofs 
                                 WHERE stage_id = ? 
-                                ORDER BY (status = 'Pending') DESC, id DESC
+                                ORDER BY (status = 'pending') DESC, id DESC
                             ");
                             $p_stmt->execute([$stage['id']]);
                             $proofs = $p_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -828,19 +785,17 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
                                 <div class="proof-grid">
                                     <?php foreach ($proofs as $proof): ?>
                                         <?php 
-                                        $p_filename = !empty($proof['filename']) ? $proof['filename'] : (!empty($proof['file_path']) ? $proof['file_path'] : '');
+                                        $p_filename = !empty($proof['filename']) ? $proof['filename'] : '';
                                         $encodedFilename = rawurlencode($p_filename);
                                         $filePath = "../uploads/app_{$selected_app['id']}/stage_{$stage['id']}/{$encodedFilename}"; 
                                         $isImage = str_starts_with($proof['file_type'] ?? '', 'image');
                                         
-                                        $isPending = (strtolower($proof['status']) === 'pending');
+                                        $isPending = (strtolower($proof['status'] ?? 'pending') === 'pending');
                                         $cardClass = $isPending ? 'pending' : 'processed';
                                         $p_type = $proof['proof_type'] ?? 'after';
                                         ?>
-
                                         <div class="proof-item <?= $cardClass ?>">
                                             <div>
-                                                <!-- Phase Badge -->
                                                 <?php if ($p_type === 'before'): ?>
                                                     <span class="phase-badge phase-before">Phase 1: Before Work</span>
                                                 <?php elseif ($p_type === 'after'): ?>
@@ -849,7 +804,6 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
                                                     <span class="phase-badge phase-payment">Phase 3: Payment Proof</span>
                                                 <?php endif; ?>
 
-                                                <!-- File Preview -->
                                                 <div class="proof-preview">
                                                     <a href="<?= htmlspecialchars($filePath) ?>" target="_blank">
                                                         <i data-feather="<?= $isImage ? 'image' : 'file-text' ?>" style="width:16px;"></i>
@@ -860,24 +814,23 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
 
                                             <div>
                                                 <div style="font-size:12px; color:#6b7280; margin-bottom:10px;">
-                                                    Uploaded: <?= date('M d, Y H:i', strtotime($proof['created_at'] ?? $proof['uploaded_at'] ?? 'now')) ?>
+                                                    Uploaded: <?= date('M d, Y H:i', strtotime($proof['uploaded_at'] ?? 'now')) ?>
                                                 </div>
 
                                                 <?php if ($isPending): ?>
                                                     <form method="POST">
+                                                        <?php if (isset($_SESSION['csrf_token'])): ?>
+                                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                                        <?php endif; ?>
                                                         <input type="hidden" name="proof_id" value="<?= $proof['id'] ?>">
                                                         <div class="proof-actions">
-                                                            <button type="submit" name="action" value="approve" class="action-btn btn-verify">
-                                                                Verify
-                                                            </button>
-                                                            <button type="submit" name="action" value="reject" class="action-btn btn-reject">
-                                                                Reject
-                                                            </button>
+                                                            <button type="submit" name="action" value="approve" class="action-btn btn-verify">Verify</button>
+                                                            <button type="submit" name="action" value="reject" class="action-btn btn-reject">Reject</button>
                                                         </div>
                                                     </form>
                                                 <?php else: ?>
                                                     <div class="proof-actions">
-                                                        <?php if (strtolower($proof['status']) === 'approved'): ?>
+                                                        <?php if (strtolower($proof['status'] ?? '') === 'verified'): ?>
                                                             <span class="proof-badge badge-verified">
                                                                 <i data-feather="check" style="width:12px; height:12px;"></i> Verified & Approved
                                                             </span>
@@ -897,7 +850,6 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
                     <?php endforeach; ?>
 
                     <?php
-                    // Display Farmer's historical verification items
                     $h_sql = "
                         SELECT sp.*, ls.stage_number, ls.id as stage_id, la.title as loan_title, la.id as app_id
                         FROM stage_proofs sp
@@ -905,7 +857,7 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
                         JOIN loan_applications la ON ls.application_id = la.id
                         WHERE la.farmer_id = ? 
                         AND la.id != ? 
-                        AND sp.status != 'Pending' 
+                        AND sp.status != 'pending' 
                         ORDER BY la.id DESC, ls.stage_number DESC
                     ";
                     $hst = $pdo->prepare($h_sql);
@@ -934,10 +886,10 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
                                 <tbody>
                                     <?php foreach ($historyProofs as $hp): ?>
                                         <?php
-                                            $hpFilename = !empty($hp['filename']) ? $hp['filename'] : (!empty($hp['file_path']) ? $hp['file_path'] : '');
+                                            $hpFilename = !empty($hp['filename']) ? $hp['filename'] : '';
                                             $hpEncodedName = rawurlencode($hpFilename);
                                             $hpPath = "../uploads/app_{$hp['app_id']}/stage_{$hp['stage_id']}/{$hpEncodedName}";
-                                            $statusClass = (strtolower($hp['status']) === 'approved') ? 'st-verified' : 'st-rejected';
+                                            $statusClass = (strtolower($hp['status'] ?? '') === 'verified') ? 'st-verified' : 'st-rejected';
                                         ?>
                                         <tr>
                                             <td><?= htmlspecialchars($hp['loan_title']) ?> (#<?= $hp['app_id'] ?>)</td>
@@ -951,12 +903,9 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
                         </details>
                     </div>
                     <?php endif; ?>
-
                 </div>
 
-            <!-- SUMMARY LIST VIEW (All Affiliated Loans) -->
             <?php else: ?>
-                
                 <div class="loan-table-card">
                     <?php if (empty($all_applications)): ?>
                         <div style="text-align:center; padding: 40px; color: var(--text-muted);">
@@ -964,58 +913,57 @@ $all_applications = $stmtList->fetchAll(PDO::FETCH_ASSOC);
                             <p>No affiliated loans found under your profile.</p>
                         </div>
                     <?php else: ?>
-                        <table class="loan-table">
-                            <thead>
-                                <tr>
-                                    <th>Loan ID</th>
-                                    <th>Title</th>
-                                    <th>Farmer</th>
-                                    <th>Current Active Stage</th>
-                                    <th>Disbursed/Total</th>
-                                    <th>Pending Proofs</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($all_applications as $app_item): ?>
+                        <div class="table-responsive">
+                            <table class="loan-table">
+                                <thead>
                                     <tr>
-                                        <td>#<?= $app_item['id'] ?></td>
-                                        <td style="font-weight: 600; color: var(--text-main);"><?= htmlspecialchars($app_item['title']) ?></td>
-                                        <td><?= htmlspecialchars($app_item['farmer_name']) ?></td>
-                                        <td>Stage <?= htmlspecialchars($app_item['current_stage']) ?></td>
-                                        <td>
-                                            <strong>GHS <?= number_format($app_item['disbursed_amount'], 2) ?></strong> 
-                                            / GHS <?= number_format($app_item['amount'], 2) ?>
-                                        </td>
-                                        <td>
-                                            <?php if ($app_item['pending_count'] > 0): ?>
-                                                <span class="badge-pending-count"><?= $app_item['pending_count'] ?> action required</span>
-                                            <?php else: ?>
-                                                <span style="color: var(--success); font-size: 13px; font-weight: 500;">
-                                                    <i data-feather="check" style="width:14px; height:14px; vertical-align:middle;"></i> Up to date
-                                                </span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>
-                                            <a href="proof_verification.php?app_id=<?= $app_item['id'] ?>" class="link" style="font-size: 13px; font-weight: 600;">
-                                                View Proofs &rarr;
-                                            </a>
-                                        </td>
+                                        <th>Loan ID</th>
+                                        <th>Title</th>
+                                        <th>Farmer</th>
+                                        <th>Current Active Stage</th>
+                                        <th>Disbursed/Total</th>
+                                        <th>Pending Proofs</th>
+                                        <th>Action</th>
                                     </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($all_applications as $app_item): ?>
+                                        <tr>
+                                            <td>#<?= $app_item['id'] ?></td>
+                                            <td style="font-weight: 600; color: var(--text-main);"><?= htmlspecialchars($app_item['title']) ?></td>
+                                            <td><?= htmlspecialchars($app_item['farmer_name']) ?></td>
+                                            <td>Stage <?= htmlspecialchars($app_item['current_stage']) ?></td>
+                                            <td>
+                                                <strong>GHS <?= number_format($app_item['disbursed_amount'], 2) ?></strong> 
+                                                / GHS <?= number_format($app_item['amount'], 2) ?>
+                                            </td>
+                                            <td>
+                                                <?php if ($app_item['pending_count'] > 0): ?>
+                                                    <span class="badge-pending-count"><?= $app_item['pending_count'] ?> action required</span>
+                                                <?php else: ?>
+                                                    <span style="color: var(--success); font-size: 13px; font-weight: 500;">
+                                                        <i data-feather="check" style="width:14px; height:14px; vertical-align:middle;"></i> Up to date
+                                                    </span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <a href="proof_verification.php?app_id=<?= $app_item['id'] ?>" class="link" style="font-size: 13px; font-weight: 600;">
+                                                    View Proofs &rarr;
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
                     <?php endif; ?>
                 </div>
-
             <?php endif; ?>
-
         </div>
     </main>
 
     <script>
         feather.replace();
-
         const toggleBtn = document.getElementById("toggleBtn");
         const sidebar = document.getElementById("sidebar");
 

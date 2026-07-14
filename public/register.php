@@ -1,6 +1,23 @@
 <?php
 // public/register.php
-session_start();
+
+// Safely ensure the session is active before loading any configuration files
+if (session_status() === PHP_SESSION_NONE) {
+    // Detect if running over HTTPS to avoid dropping sessions on local HTTP development
+    $isSecureConn = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || 
+                    (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443) ||
+                    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+    
+    if (!headers_sent()) {
+        ini_set('session.cookie_httponly', '1');
+        ini_set('session.cookie_samesite', 'Lax');
+        ini_set('session.cookie_secure', $isSecureConn ? '1' : '0');
+    }
+    session_start();
+}
+
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/functions.php';
 require_once __DIR__ . '/../src/users.php';
@@ -15,31 +32,42 @@ $pdo = getPDO();
 $success = "";
 $error = "";
 
-// Upload directories
-$farmerDir = __DIR__ . '/../uploads/farmers/';
-$agentDir  = __DIR__ . '/../uploads/agents/';
-$buyerDir  = __DIR__ . '/../uploads/buyers/';
+// Upload directories inside the public root (ensures they are web-accessible)
+$farmerDir = __DIR__ . '/uploads/farmers/';
+$agentDir  = __DIR__ . '/uploads/agents/';
+$buyerDir  = __DIR__ . '/uploads/buyers/';
 
 if (!is_dir($farmerDir)) @mkdir($farmerDir, 0777, true);
 if (!is_dir($agentDir))  @mkdir($agentDir, 0777, true);
 if (!is_dir($buyerDir))  @mkdir($buyerDir, 0777, true);
 
-function uploadSingleFile(string $fieldName, string $targetDir): ?string {
-    if (empty($_FILES[$fieldName]) || $_FILES[$fieldName]['error'] !== UPLOAD_ERR_OK) {
+/**
+ * Validates, renames, and moves a single upload structure.
+ */
+function processAndMoveUploadedFile(array $file, string $targetDir): ?string {
+    if ($file['error'] !== UPLOAD_ERR_OK) {
         return null;
     }
 
-    $file = $_FILES[$fieldName];
     $maxSize = 5 * 1024 * 1024; // 5MB
     $allowed = ['png','jpg','jpeg','gif','pdf'];
 
     if ($file['size'] > $maxSize) {
-        throw new Exception("File {$fieldName} is too large (max 5MB).");
+        throw new Exception("File is too large (max 5MB).");
     }
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if (!in_array($ext, $allowed, true)) {
         throw new Exception("Unsupported file type. Allowed: " . implode(',', $allowed));
+    }
+
+    $allowedMime = [
+        'image/png', 'image/jpeg', 'image/gif', 'application/pdf',
+    ];
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($file['tmp_name']);
+    if (!in_array($mime, $allowedMime, true)) {
+        throw new Exception("File content does not match an allowed type (detected: {$mime}).");
     }
 
     $safeName = bin2hex(random_bytes(8)) . "_" . time() . "." . $ext;
@@ -50,6 +78,17 @@ function uploadSingleFile(string $fieldName, string $targetDir): ?string {
     }
 
     return 'uploads/' . basename($targetDir) . '/' . $safeName;
+}
+
+function uploadSingleFile(string $fieldName, string $targetDir): ?string {
+    if (empty($_FILES[$fieldName]) || $_FILES[$fieldName]['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+    try {
+        return processAndMoveUploadedFile($_FILES[$fieldName], $targetDir);
+    } catch (Exception $e) {
+        throw new Exception("File upload error in {$fieldName}: " . $e->getMessage());
+    }
 }
 
 function uploadMultipleFiles(string $fieldName, string $targetDir): array {
@@ -63,28 +102,36 @@ function uploadMultipleFiles(string $fieldName, string $targetDir): array {
     for ($i = 0; $i < $count; $i++) {
         if ($_FILES[$fieldName]['error'][$i] !== UPLOAD_ERR_OK) continue;
 
-        $tmp = [
-            'name' => $_FILES[$fieldName]['name'][$i],
-            'type' => $_FILES[$fieldName]['type'][$i],
+        $file = [
+            'name'     => $_FILES[$fieldName]['name'][$i],
+            'type'     => $_FILES[$fieldName]['type'][$i],
             'tmp_name' => $_FILES[$fieldName]['tmp_name'][$i],
-            'error' => $_FILES[$fieldName]['error'][$i],
-            'size' => $_FILES[$fieldName]['size'][$i],
+            'error'    => $_FILES[$fieldName]['error'][$i],
+            'size'     => $_FILES[$fieldName]['size'][$i],
         ];
 
-        $key = $fieldName . "_multi_" . $i;
-        $_FILES[$key] = $tmp;
-
-        $paths[] = uploadSingleFile($key, $targetDir);
-        unset($_FILES[$key]);
+        try {
+            $path = processAndMoveUploadedFile($file, $targetDir);
+            if ($path) {
+                $paths[] = $path;
+            }
+        } catch (Exception $e) {
+            throw new Exception("Error in multiple file upload '{$fieldName}' (item " . ($i + 1) . "): " . $e->getMessage());
+        }
     }
 
-    return array_values(array_filter($paths));
+    return $paths;
 }
 
 // Handle POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
     try {
         $role = $_POST['role'] ?? '';
+        $allowedRoles = ['farmer', 'agent', 'buyer'];
+        if (!in_array($role, $allowedRoles, true)) {
+            throw new Exception("Invalid role selected.");
+        }
         $name = trim($_POST['name'] ?? '');
         $phone = trim($_POST['phone'] ?? '');
         $email = trim($_POST['email'] ?? '');
@@ -457,6 +504,19 @@ nav a.active::after { width: 100%; }
 }
 .btn-login::after { display: none; } 
 
+.btn-register-nav {
+    padding: 8px 20px;
+    border: 2px solid var(--primary);
+    border-radius: 50px;
+    color: white;
+    background: var(--primary);
+    font-weight: 600;
+    transition: 0.3s;
+    text-decoration: none;
+}
+.btn-register-nav:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+.btn-register-nav::after { display: none; } 
+
 .theme-toggle {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -598,9 +658,49 @@ nav a.active::after { width: 100%; }
 .upload-content span { font-size: 0.9rem; font-weight: 600; color: var(--text-main); }
 .upload-content small { font-size: 0.8rem; color: var(--text-muted); }
 
-.preview-area { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-.preview-item { width: 60px; height: 60px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); }
-.preview-name { font-size: 0.8rem; color: var(--primary); background: var(--primary-light); padding: 4px 8px; border-radius: 4px; }
+/* --- POLISHED PREVIEW SYSTEM STYLES --- */
+.preview-area { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.preview-item-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 80px;
+    text-align: center;
+}
+.preview-item {
+    width: 70px;
+    height: 70px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 2px solid var(--border);
+    background: var(--bg-body);
+}
+.preview-pdf-icon {
+    width: 70px;
+    height: 70px;
+    border-radius: 8px;
+    border: 2px solid var(--border);
+    background: #fef2f2;
+    color: #ef4444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+}
+body.dark .preview-pdf-icon {
+    background: #7f1d1d;
+    color: #fca5a5;
+}
+.preview-name {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+}
 
 .btn-primary {
     background: var(--primary); color: white; border: none; padding: 16px;
@@ -618,6 +718,7 @@ nav a.active::after { width: 100%; }
 
 .alert { padding: 16px; border-radius: 12px; margin-bottom: 20px; font-size: 0.95rem; display: flex; gap: 10px; align-items: flex-start; }
 .alert-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+body.dark .alert-error { background: #7f1d1d; color: #fca5a5; border-color: #991b1b; }
 
 .dynamic-section { display: none; animation: fadeIn 0.4s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -716,10 +817,10 @@ footer {
             <a href="index.php">Home</a>
             <a href="about.php">About</a>
             <a href="services.php">Services</a>
-            <a href="shop.php">Shop</a>
-            <a href="register.php" class="active">Register</a>
             <a href="contact.php">Contact Us</a>
+            <a href="shop.php">Shop</a>
             <a href="login.php" class="btn-login">Login</a>
+            <a href="register.php" class="btn-register-nav">Register</a>
         </nav>
         
         <button class="theme-toggle" id="themeToggle" title="Toggle dark mode">
@@ -741,10 +842,10 @@ footer {
     <a href="index.php">Home</a>
     <a href="about.php">About</a>
     <a href="services.php">Services</a>
-    <a href="shop.php">Shop</a>
-    <a href="register.php" style="color:var(--primary);">Register</a>
     <a href="contact.php">Contact Us</a>
+    <a href="shop.php">Shop</a>
     <a href="login.php">Login</a>
+    <a href="register.php" style="color:var(--primary);">Register</a>
 </div>
 
 <main class="container">
@@ -755,6 +856,7 @@ footer {
             <h1 class="page-title">Create Account</h1>
             <p class="page-subtitle">Join us today to access agricultural products and financing.</p>
 
+            <!-- Error Alerts Container -->
             <?php if ($error): ?>
                 <div class="alert alert-error">
                     <i class="ri-error-warning-fill" style="margin-top:2px"></i>
@@ -764,6 +866,9 @@ footer {
 
             <form method="POST" enctype="multipart/form-data" id="regForm">
                 
+                <!-- Hidden CSRF security input field -->
+                <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+
                 <div class="form-section">
                     <!-- Expanded Role Selector with Buyer Option -->
                     <div class="input-group">
@@ -854,14 +959,14 @@ footer {
                                 <label>Digital Address (GhanaPost GPS)</label>
                                 <div class="input-wrapper">
                                     <i class="ri-map-pin-2-line"></i>
-                                    <input type="text" name="digital_address" placeholder="e.g. GA-123-4567" required>
+                                    <input type="text" name="digital_address" placeholder="e.g. GA-123-4567" value="<?= htmlspecialchars($_POST['digital_address'] ?? '') ?>" required>
                                 </div>
                             </div>
                             <div class="input-group">
                                 <label>City</label>
                                 <div class="input-wrapper">
                                     <i class="ri-building-line"></i>
-                                    <input type="text" name="city" placeholder="e.g. Accra" required>
+                                    <input type="text" name="city" placeholder="e.g. Accra" value="<?= htmlspecialchars($_POST['city'] ?? '') ?>" required>
                                 </div>
                             </div>
                         </div>
@@ -871,7 +976,7 @@ footer {
                                 <label>Ghana Card Number</label>
                                 <div class="input-wrapper">
                                     <i class="ri-id-card-line"></i>
-                                    <input type="text" name="id_card_number" class="gha-card-input" placeholder="e.g. GHA-123456789-0" minlength="15" maxlength="15" pattern="[Gg][Hh][Aa]-\d{9}-\d" required>
+                                    <input type="text" name="id_card_number" class="gha-card-input" placeholder="e.g. GHA-123456789-0" minlength="15" maxlength="15" pattern="[Gg][Hh][Aa]-\d{9}-\d" value="<?= htmlspecialchars($_POST['id_card_number'] ?? '') ?>" required>
                                 </div>
                             </div>
                             <div class="input-group">
@@ -912,8 +1017,8 @@ footer {
                                 <i class="ri-seedling-line"></i>
                                 <select name="farm_type" id="farm_type" onchange="toggleFarm()" required>
                                     <option value="">-- Select Type --</option>
-                                    <option value="crop">Crop Farming</option>
-                                    <option value="livestock">Livestock Rearing</option>
+                                    <option value="crop" <?= (isset($_POST['farm_type']) && $_POST['farm_type'] === 'crop') ? 'selected' : '' ?>>Crop Farming</option>
+                                    <option value="livestock" <?= (isset($_POST['farm_type']) && $_POST['farm_type'] === 'livestock') ? 'selected' : '' ?>>Livestock Rearing</option>
                                 </select>
                             </div>
                         </div>
@@ -925,14 +1030,14 @@ footer {
                                     <label>Crop Types</label>
                                     <div class="input-wrapper">
                                         <i class="ri-leaf-line"></i>
-                                        <input type="text" name="crop_type" placeholder="e.g. Maize, Cassava" required>
+                                        <input type="text" name="crop_type" placeholder="e.g. Maize, Cassava" value="<?= htmlspecialchars($_POST['crop_type'] ?? '') ?>" required>
                                     </div>
                                 </div>
                                 <div class="input-group">
                                     <label>Expected Duration (Days)</label>
                                     <div class="input-wrapper">
                                         <i class="ri-time-line"></i>
-                                        <input type="text" name="crop_expected_duration_days" placeholder="e.g. 90" required>
+                                        <input type="text" name="crop_expected_duration_days" placeholder="e.g. 90" value="<?= htmlspecialchars($_POST['crop_expected_duration_days'] ?? '') ?>" required>
                                     </div>
                                 </div>
                             </div>
@@ -944,14 +1049,14 @@ footer {
                                     <label>Livestock Type</label>
                                     <div class="input-wrapper">
                                         <i class="ri-goblet-line"></i>
-                                        <input type="text" name="livestock_type" placeholder="e.g. Poultry, Goats" required>
+                                        <input type="text" name="livestock_type" placeholder="e.g. Poultry, Goats" value="<?= htmlspecialchars($_POST['livestock_type'] ?? '') ?>" required>
                                     </div>
                                 </div>
                                 <div class="input-group">
                                     <label>Production Cycle (Days)</label>
                                     <div class="input-wrapper">
                                         <i class="ri-time-line"></i>
-                                        <input type="text" name="livestock_production_days" placeholder="e.g. 45" required>
+                                        <input type="text" name="livestock_production_days" placeholder="e.g. 45" value="<?= htmlspecialchars($_POST['livestock_production_days'] ?? '') ?>" required>
                                     </div>
                                 </div>
                             </div>
@@ -962,14 +1067,14 @@ footer {
                                 <label>House Address</label>
                                 <div class="input-wrapper">
                                     <i class="ri-home-4-line"></i>
-                                    <input type="text" name="house_address" placeholder="e.g. GH-000-0000" required>
+                                    <input type="text" name="house_address" placeholder="e.g. GH-000-0000" value="<?= htmlspecialchars($_POST['house_address'] ?? '') ?>" required>
                                 </div>
                             </div>
                             <div class="input-group">
                                 <label>GPS Coordinates</label>
                                 <div class="input-wrapper">
                                     <i class="ri-map-pin-line"></i>
-                                    <input type="text" name="gps_coordinates" placeholder="Lat, Long" required>
+                                    <input type="text" name="gps_coordinates" placeholder="Lat, Long" value="<?= htmlspecialchars($_POST['gps_coordinates'] ?? '') ?>" required>
                                 </div>
                             </div>
                         </div>
@@ -978,7 +1083,7 @@ footer {
                             <label>Total Acreage</label>
                             <div class="input-wrapper">
                                 <i class="ri-layout-grid-line"></i>
-                                <input type="text" name="acreage" placeholder="e.g. 5" required>
+                                <input type="text" name="acreage" placeholder="e.g. 5" value="<?= htmlspecialchars($_POST['acreage'] ?? '') ?>" required>
                             </div>
                         </div>
 
@@ -987,7 +1092,7 @@ footer {
                                 <label>Ghana Card Number</label>
                                 <div class="input-wrapper">
                                     <i class="ri-id-card-line"></i>
-                                    <input type="text" name="id_card_number" class="gha-card-input" placeholder="e.g. GHA-123456789-0" minlength="15" maxlength="15" pattern="[Gg][Hh][Aa]-\d{9}-\d" required>
+                                    <input type="text" name="id_card_number" class="gha-card-input" placeholder="e.g. GHA-123456789-0" minlength="15" maxlength="15" pattern="[Gg][Hh][Aa]-\d{9}-\d" value="<?= htmlspecialchars($_POST['id_card_number'] ?? '') ?>" required>
                                 </div>
                             </div>
                             <div class="input-group">
@@ -1018,7 +1123,8 @@ footer {
                         <div class="input-group">
                             <label>Farmland Photos (Multiple)</label>
                             <div class="file-upload-box">
-                                <input type="file" name="farmland_photos" multiple accept="image/*" onchange="previewFiles(this, 'farmPhotosPrev')" required>
+                                <!-- CORRECTED: Added [] brackets to support PHP multiple file array structure -->
+                                <input type="file" name="farmland_photos[]" id="farmland_photos" multiple accept="image/*" onchange="previewFiles(this, 'farmPhotosPrev')" required>
                                 <div class="upload-content">
                                     <i class="ri-image-add-line"></i>
                                     <span>Select Farm Photos</span>
@@ -1039,7 +1145,7 @@ footer {
                             <label>Qualifications</label>
                             <div class="input-wrapper">
                                 <i class="ri-graduation-cap-line"></i>
-                                <input type="text" name="qualifications" placeholder="Degrees or Certifications" required>
+                                <input type="text" name="qualifications" placeholder="Degrees or Certifications" value="<?= htmlspecialchars($_POST['qualifications'] ?? '') ?>" required>
                             </div>
                         </div>
 
@@ -1048,14 +1154,14 @@ footer {
                                 <label>TIN Number</label>
                                 <div class="input-wrapper">
                                     <i class="ri-hashtag"></i>
-                                    <input type="text" name="tin_number" placeholder="e.g. A00000000000" required>
+                                    <input type="text" name="tin_number" placeholder="e.g. A00000000000" value="<?= htmlspecialchars($_POST['tin_number'] ?? '') ?>" required>
                                 </div>
                             </div>
                             <div class="input-group">
                                 <label>Interest Rate</label>
                                 <div class="input-wrapper">
                                     <i class="ri-percent-line"></i>
-                                    <input type="text" name="interest_rate" placeholder="e.g. 15%" required>
+                                    <input type="text" name="interest_rate" placeholder="e.g. 15%" value="<?= htmlspecialchars($_POST['interest_rate'] ?? '') ?>" required>
                                 </div>
                             </div>
                         </div>
@@ -1064,7 +1170,7 @@ footer {
                             <label>Loan Terms</label>
                             <div class="input-wrapper">
                                 <i class="ri-file-list-3-line"></i>
-                                <input type="text" name="loan_terms" placeholder="Brief summary of terms" required>
+                                <input type="text" name="loan_terms" placeholder="Brief summary of terms" value="<?= htmlspecialchars($_POST['loan_terms'] ?? '') ?>" required>
                             </div>
                         </div>
                         
@@ -1072,7 +1178,7 @@ footer {
                             <label>GPS Address</label>
                             <div class="input-wrapper">
                                 <i class="ri-map-pin-2-line"></i>
-                                <input type="text" name="gps_address" placeholder="e.g. GA-123-4567" required>
+                                <input type="text" name="gps_address" placeholder="e.g. GA-123-4567" value="<?= htmlspecialchars($_POST['gps_address'] ?? '') ?>" required>
                             </div>
                         </div>
 
@@ -1081,7 +1187,7 @@ footer {
                                 <label>Ghana Card Number</label>
                                 <div class="input-wrapper">
                                     <i class="ri-id-card-line"></i>
-                                    <input type="text" name="id_card_number" class="gha-card-input" placeholder="e.g. GHA-123456789-0" minlength="15" maxlength="15" pattern="[Gg][Hh][Aa]-\d{9}-\d" required>
+                                    <input type="text" name="id_card_number" class="gha-card-input" placeholder="e.g. GHA-123456789-0" minlength="15" maxlength="15" pattern="[Gg][Hh][Aa]-\d{9}-\d" value="<?= htmlspecialchars($_POST['id_card_number'] ?? '') ?>" required>
                                 </div>
                             </div>
                             <div class="input-group">
@@ -1317,7 +1423,10 @@ footer {
     }
 
     function toggleFarm() {
-        const val = document.getElementById('farm_type').value;
+        const farmTypeSelect = document.getElementById('farm_type');
+        if (!farmTypeSelect || farmTypeSelect.disabled) return;
+
+        const val = farmTypeSelect.value;
         const cropFields = document.getElementById('crop_fields');
         const livestockFields = document.getElementById('livestock_fields');
         
@@ -1342,46 +1451,76 @@ footer {
         }
     }
 
-    // Run switcher once on initialization to handle any form state retention
+    // Run Switcher and Farm Subfield setup on initialization to handle any form state retention
     switchRole();
+    toggleFarm();
 
     // File Preview Logic
     function previewFile(input, targetId) {
         const wrap = document.getElementById(targetId);
         wrap.innerHTML = '';
-        if(input.files && input.files[0]) {
+        if (input.files && input.files[0]) {
             const f = input.files[0];
-            const div = document.createElement('div');
-            if(f.type.startsWith('image/')) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'preview-item-wrapper';
+
+            if (f.type.startsWith('image/')) {
                 const img = document.createElement('img');
                 img.className = 'preview-item';
                 img.src = URL.createObjectURL(f);
-                wrap.appendChild(img);
+                wrapper.appendChild(img);
+            } else if (f.type === 'application/pdf') {
+                const pdfDiv = document.createElement('div');
+                pdfDiv.className = 'preview-pdf-icon';
+                pdfDiv.innerHTML = '<i class="ri-file-pdf-2-fill"></i>';
+                wrapper.appendChild(pdfDiv);
             } else {
-                const span = document.createElement('span');
-                span.className = 'preview-name';
-                span.textContent = f.name;
-                wrap.appendChild(span);
+                const genericDiv = document.createElement('div');
+                genericDiv.className = 'preview-pdf-icon';
+                genericDiv.style.color = 'var(--primary)';
+                genericDiv.innerHTML = '<i class="ri-file-3-fill"></i>';
+                wrapper.appendChild(genericDiv);
             }
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'preview-name';
+            nameSpan.textContent = f.name;
+            wrapper.appendChild(nameSpan);
+            wrap.appendChild(wrapper);
         }
     }
 
     function previewFiles(input, targetId) {
         const wrap = document.getElementById(targetId);
         wrap.innerHTML = '';
-        if(input.files) {
+        if (input.files) {
             Array.from(input.files).forEach(f => {
-                if(f.type.startsWith('image/')) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'preview-item-wrapper';
+
+                if (f.type.startsWith('image/')) {
                     const img = document.createElement('img');
                     img.className = 'preview-item';
                     img.src = URL.createObjectURL(f);
-                    wrap.appendChild(img);
+                    wrapper.appendChild(img);
+                } else if (f.type === 'application/pdf') {
+                    const pdfDiv = document.createElement('div');
+                    pdfDiv.className = 'preview-pdf-icon';
+                    pdfDiv.innerHTML = '<i class="ri-file-pdf-2-fill"></i>';
+                    wrapper.appendChild(pdfDiv);
                 } else {
-                    const span = document.createElement('span');
-                    span.className = 'preview-name';
-                    span.textContent = f.name;
-                    wrap.appendChild(span);
+                    const genericDiv = document.createElement('div');
+                    genericDiv.className = 'preview-pdf-icon';
+                    genericDiv.style.color = 'var(--primary)';
+                    genericDiv.innerHTML = '<i class="ri-file-3-fill"></i>';
+                    wrapper.appendChild(genericDiv);
                 }
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'preview-name';
+                nameSpan.textContent = f.name;
+                wrapper.appendChild(nameSpan);
+                wrap.appendChild(wrapper);
             });
         }
     }

@@ -1,6 +1,10 @@
 <?php
-// public/farmer_repayment.php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+//farmer_repayment.php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/users.php';
 
@@ -29,27 +33,28 @@ function getOutstandingBalance(PDO $pdo, array $loan): float {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loan_id'])) {
+    csrf_verify();
 
     $loan_id        = (int) $_POST['loan_id'];
     $amount_paid    = (float) ($_POST['amount_paid'] ?? 0);
     $repayment_type = in_array($_POST['repayment_type'] ?? '', ['partial','full'])
                         ? $_POST['repayment_type'] : 'partial';
 
-    // Validate the loan belongs to this farmer, is approved, and is in Stage 3
+    // Validate the loan belongs to this farmer, is approved or completed, and has passed Stage 3 (current_stage > 3)
     $stmt = $pdo->prepare("
         SELECT la.*, ap.interest_rate
           FROM loan_applications la
           LEFT JOIN agent_profiles ap ON la.agent_id = ap.user_id
          WHERE la.id = ? 
            AND la.farmer_id = ? 
-           AND la.status = 'approved' 
-           AND la.stage = 3
+           AND (la.status = 'approved' OR la.status = 'completed') 
+           AND la.current_stage > 3
     ");
     $stmt->execute([$loan_id, $farmer_id]);
     $loan = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$loan) {
-        $message = "Invalid loan selected, loan is not approved, or Stage 3 is not yet completed.";
+        $message = "Invalid loan selected, or Stage 3 has not yet been fully completed.";
         $msgType = "error";
     } else {
         $outstanding = getOutstandingBalance($pdo, $loan);
@@ -131,15 +136,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loan_id'])) {
     }
 }
 
-// Fetch approved loans that are in Stage 3
+// Fetch approved or completed loans that have passed Stage 3 (current_stage > 3)
 $stmt = $pdo->prepare("
     SELECT la.*, u.name AS agent_name, ap.interest_rate, ap.loan_terms
       FROM loan_applications la
       LEFT JOIN users u         ON la.agent_id = u.id
       LEFT JOIN agent_profiles ap ON la.agent_id = ap.user_id
      WHERE la.farmer_id = ? 
-       AND la.status = 'approved' 
-       AND la.current_stage = 3
+       AND (la.status = 'approved' OR la.status = 'completed') 
+       AND la.current_stage > 3
      ORDER BY la.created_at DESC
 ");
 $stmt->execute([$farmer_id]);
@@ -457,6 +462,9 @@ $selected_loan_id = isset($_GET['loan_id']) ? (int)$_GET['loan_id'] : null;
         </a>
     </nav>
     <form action="logout.php" method="POST">
+        <?php if (isset($_SESSION['csrf_token'])): ?>
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+        <?php endif; ?>
         <button class="logout-btn">
             <i data-feather="log-out"></i><span>Logout</span>
         </button>
@@ -478,7 +486,7 @@ $selected_loan_id = isset($_GET['loan_id']) ? (int)$_GET['loan_id'] : null;
     <div class="content">
         <div class="page-header">
             <h1 class="page-title">Loan Repayments</h1>
-            <p class="page-subtitle">View your active loan balances, make partial or full repayments, and upload payment proofs for agent confirmation once Stage 3 is complete.</p>
+            <p class="page-subtitle">View your active loan balances, make partial or full repayments, and upload payment proofs for agent confirmation after Stage 3 is completed.</p>
         </div>
 
         <?php if (!empty($message)): ?>
@@ -493,7 +501,7 @@ $selected_loan_id = isset($_GET['loan_id']) ? (int)$_GET['loan_id'] : null;
             <div class="empty-state">
                 <i data-feather="inbox"></i>
                 <p style="font-weight:600;font-size:15px;">No eligible loans found</p>
-                <p style="font-size:13px;">Loans must be approved and Stage 3 completed before repayments can begin.</p>
+                <p style="font-size:13px;">Loans must have all Stage 3 verifications completed before repayment options are activated.</p>
                 <a href="apply_loan.php" style="color:var(--primary);font-weight:600;text-decoration:none;">Apply for a loan →</a>
             </div>
         </div>
@@ -649,6 +657,9 @@ $selected_loan_id = isset($_GET['loan_id']) ? (int)$_GET['loan_id'] : null;
         </div>
 
         <form method="POST" enctype="multipart/form-data" id="repayForm">
+            <?php if (isset($_SESSION['csrf_token'])): ?>
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+            <?php endif; ?>
             <input type="hidden" name="loan_id" id="formLoanId">
 
             <!-- Repayment Type -->

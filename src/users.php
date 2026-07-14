@@ -2,7 +2,7 @@
 // src/users.php
 require_once __DIR__ . '/db.php';
 
-// 🔹 Create a new user
+// Create a new user
 function create_user($email, $password, $role, $name, $phone = null) {
     $pdo = getPDO();
 
@@ -19,7 +19,7 @@ function create_user($email, $password, $role, $name, $phone = null) {
     return $pdo->lastInsertId();
 }
 
-// 🔹 Fetch a user by ID (for profile display)
+// Fetch a user by ID (for profile display)
 function get_user($id) {
     $pdo = getPDO();
     $stmt = $pdo->prepare("SELECT id, email, role, name, phone FROM users WHERE id = ?");
@@ -27,7 +27,7 @@ function get_user($id) {
     return $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
-/* 🔹 Fetch a user by email (for login)
+/* Fetch a user by email (for login)
 function find_user_by_email($email) {
     $pdo = getPDO();
     $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
@@ -35,7 +35,7 @@ function find_user_by_email($email) {
     return $stmt->fetch(PDO::FETCH_ASSOC);
 } 
 
-// 🔹 Verify login credentials
+// Verify login credentials
 function verify_user($email, $password) {
     $user = find_user_by_email($email);
     if ($user && password_verify($password, $user['password_hash'])) {
@@ -44,7 +44,7 @@ function verify_user($email, $password) {
     return false; // Invalid credentials
 } */
 
-// 🔹 Get loan agent profile details
+// Get loan agent profile details
 function get_agent_profile($agent_id) {
     $pdo = getPDO();
     $stmt = $pdo->prepare("SELECT * FROM agent_profiles WHERE user_id = ?");
@@ -52,7 +52,7 @@ function get_agent_profile($agent_id) {
     return $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
-// 🔹 Get farmer profile details
+// Get farmer profile details
 function get_farmer_profile($farmer_id) {
     $pdo = getPDO();
     $stmt = $pdo->prepare("SELECT * FROM farmer_profiles WHERE user_id = ?");

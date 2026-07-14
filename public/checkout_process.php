@@ -1,24 +1,29 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 /**
  * checkout_process.php
- * Accepts POST from checkout.php, creates order, initiates MoMo payment.
+ * Accepts POST from checkout.php, creates the order PLUS one order_group
+ * per farmer represented in the cart, initiates MoMo payment.
  * Returns JSON for AJAX handling.
  */
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
-require_once __DIR__ . '/../src/momo.php'; 
+require_once __DIR__ . '/../src/momo.php';
+require_once __DIR__ . '/../src/order_helpers.php';
 
 header('Content-Type: application/json');
 
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
-if (!$user_id) { 
-    echo json_encode(['success'=>false,'message'=>'Session expired. Please log in again.']); 
-    exit; 
+if (!$user_id) {
+    echo json_encode(['success'=>false,'message'=>'Session expired. Please log in again.']);
+    exit;
 }
 
-// CSRF check
 if (empty($_POST['csrf_token']) || $_POST['csrf_token'] !== ($_SESSION['csrf_token']??'')) {
-    echo json_encode(['success'=>false,'message'=>'Invalid request token.']); 
+    echo json_encode(['success'=>false,'message'=>'Invalid request token.']);
     exit;
 }
 
@@ -31,23 +36,21 @@ $buyer_notes      = trim(filter_input(INPUT_POST,'buyer_notes',FILTER_SANITIZE_S
 $momo_number      = preg_replace('/\D/','',$_POST['momo_number']??'');
 $momo_network     = in_array($_POST['momo_network']??'',['MTN','Telecel','AirtelTigo']) ? $_POST['momo_network'] : 'MTN';
 
-// Basic validation
 if (!$delivery_name || !$delivery_phone || !$delivery_address) {
-    echo json_encode(['success'=>false,'message'=>'Please fill in all delivery details.']); 
+    echo json_encode(['success'=>false,'message'=>'Please fill in all delivery details.']);
     exit;
 }
 if (strlen($momo_number) < 9) {
-    echo json_encode(['success'=>false,'message'=>'Please enter a valid MoMo number.']); 
+    echo json_encode(['success'=>false,'message'=>'Please enter a valid MoMo number.']);
     exit;
 }
 
 $pdo = getPDO();
 
-// Fetch cart items - Aliasing product_id as produce_id to maintain standard downstream array keys
 $cartStmt = $pdo->prepare("
     SELECT c.product_id AS produce_id, c.quantity,
            p.produce_name, p.price_per_bag, p.bags_available, p.farmer_id
-    FROM cart c 
+    FROM cart c
     JOIN produce_listings p ON c.product_id = p.id
     WHERE c.user_id = ?
 ");
@@ -55,11 +58,10 @@ $cartStmt->execute([$user_id]);
 $cartItems = $cartStmt->fetchAll(PDO::FETCH_ASSOC);
 
 if (empty($cartItems)) {
-    echo json_encode(['success'=>false,'message'=>'Your cart is empty.']); 
+    echo json_encode(['success'=>false,'message'=>'Your cart is empty.']);
     exit;
 }
 
-// Validate stock
 foreach ($cartItems as $item) {
     if ($item['quantity'] > $item['bags_available']) {
         echo json_encode(['success'=>false,'message'=>"'{$item['produce_name']}' only has {$item['bags_available']} bags available. Please update your cart."]);
@@ -67,18 +69,16 @@ foreach ($cartItems as $item) {
     }
 }
 
-// Compute totals
 $subtotal     = array_sum(array_map(fn($i) => $i['price_per_bag'] * $i['quantity'], $cartItems));
 $platform_fee = round($subtotal * (PLATFORM_FEE_PERCENT / 100), 2);
 $total        = $subtotal + $platform_fee;
 
-// Format MoMo number for API
 $momoFormatted = '233' . ltrim($momo_number, '0');
 
 try {
     $pdo->beginTransaction();
 
-    // 1. Create order (pending_payment)
+    // 1. Create the parent order (a checkout basket, may span farmers)
     $orderStmt = $pdo->prepare("
         INSERT INTO orders
             (buyer_id, total_amount, platform_fee, payment_method, payment_status, order_status,
@@ -91,21 +91,42 @@ try {
     ]);
     $orderId = (int)$pdo->lastInsertId();
 
-    // 2. Create order items
-    $itemStmt = $pdo->prepare("
-        INSERT INTO order_items (order_id, produce_id, farmer_id, quantity, unit_price, subtotal)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ");
+    // 2. Split the cart by farmer -> one order_group per farmer, each
+    //    with its own human-readable code and its own status lifecycle.
+    $byFarmer = [];
     foreach ($cartItems as $item) {
-        $lineTotal = $item['price_per_bag'] * $item['quantity'];
-        $itemStmt->execute([$orderId, $item['produce_id'], $item['farmer_id'], $item['quantity'], $item['price_per_bag'], $lineTotal]);
+        $byFarmer[$item['farmer_id']][] = $item;
     }
 
-    // 3. Add initial tracking entry
-    $trackStmt = $pdo->prepare("INSERT INTO order_tracking (order_id, status, notes, updated_by) VALUES (?,?,?,?)");
-    $trackStmt->execute([$orderId, 'pending_payment', 'Order placed, awaiting payment.', $user_id]);
+    $groupStmt = $pdo->prepare("
+        INSERT INTO order_groups (order_id, farmer_id, group_code, status, subtotal)
+        VALUES (?, ?, ?, 'pending_payment', ?)
+    ");
+    $itemStmt = $pdo->prepare("
+        INSERT INTO order_items (order_id, produce_id, farmer_id, order_group_id, quantity, unit_price, subtotal)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ");
 
-    // 4. Initiate MoMo payment
+    $sequence = 0;
+    foreach ($byFarmer as $farmerId => $farmerItems) {
+        $farmerSubtotal = array_sum(array_map(fn($i) => $i['price_per_bag'] * $i['quantity'], $farmerItems));
+        $groupCode = generateGroupCode($orderId, $sequence++);
+
+        $groupStmt->execute([$orderId, $farmerId, $groupCode, $farmerSubtotal]);
+        $groupId = (int)$pdo->lastInsertId();
+
+        foreach ($farmerItems as $item) {
+            $lineTotal = $item['price_per_bag'] * $item['quantity'];
+            $itemStmt->execute([$orderId, $item['produce_id'], $farmerId, $groupId, $item['quantity'], $item['price_per_bag'], $lineTotal]);
+        }
+    }
+
+    // 3. Initial tracking entry (order-level; per-group entries are added
+    //    once payment clears and each group starts moving independently)
+    $pdo->prepare("INSERT INTO order_tracking (order_id, status, notes, updated_by) VALUES (?,?,?,?)")
+        ->execute([$orderId, 'pending_payment', 'Order placed, awaiting payment.', $user_id]);
+
+    // 4. Initiate MoMo payment for the whole basket total
     $momoResult = initiateMoMoCollection([
         'amount'       => $total,
         'currency'     => 'GHS',
@@ -123,10 +144,7 @@ try {
 
     $reference = $momoResult['reference'];
 
-    // 5. Store MoMo reference
     $pdo->prepare("UPDATE orders SET momo_reference=? WHERE id=?")->execute([$reference, $orderId]);
-
-    // 6. Clear cart
     $pdo->prepare("DELETE FROM cart WHERE user_id=?")->execute([$user_id]);
 
     $pdo->commit();

@@ -1,6 +1,10 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 // public/upload_proof.php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/users.php';
 
@@ -20,6 +24,7 @@ $msgType = ""; // 'success' or 'error'
 
 // Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['proof'])) {
+    csrf_verify();
     $stage_id = $_POST['stage_id'] ?? null;
     $file = $_FILES['proof'];
 

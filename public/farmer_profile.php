@@ -1,6 +1,10 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
 // public/farmer_profile.php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php';
 
 // Ensure user is logged in
@@ -31,58 +35,141 @@ $stmt = $pdo->prepare("
 $stmt->execute([$user_id]);
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// FILE UPLOAD FUNCTION
-function uploadFile($fieldName, $prevFile) {
-    if (!isset($_FILES[$fieldName]) || $_FILES[$fieldName]['error'] !== UPLOAD_ERR_OK) {
+// Physical upload directory in the root directory (one level up from public)
+$farmerDir = __DIR__ . '/../uploads/farmers/';
+if (!is_dir($farmerDir)) {
+    @mkdir($farmerDir, 0777, true);
+}
+
+/**
+ * Normalizes file paths so they reference the parallel uploads directory in the root relative to public/
+ */
+function getFarmerFileUrl(?string $dbPath): string {
+    if (!$dbPath) {
+        return '';
+    }
+    // If it starts with 'uploads/', prepend '../' to look in the root parallel to 'public/'
+    if (strpos($dbPath, 'uploads/') === 0) {
+        return '../' . $dbPath; 
+    }
+    // Fallback for legacy database records that only stored the raw filename
+    return '../uploads/farmers/' . $dbPath;
+}
+
+/**
+ * Validates and moves a single upload to the root directory
+ */
+function uploadSingleProfileFile(string $fieldName, ?string $prevFile, string $targetDir): ?string {
+    if (empty($_FILES[$fieldName]) || $_FILES[$fieldName]['error'] !== UPLOAD_ERR_OK) {
         return $prevFile;
     }
 
-    $dir = "../uploads/farmers/";
-    if (!is_dir($dir)) mkdir($dir, 0777, true);
+    $file = $_FILES[$fieldName];
+    $maxSize = 5 * 1024 * 1024; // 5MB
+    $allowed = ['png','jpg','jpeg','gif','pdf'];
 
-    $ext = pathinfo($_FILES[$fieldName]['name'], PATHINFO_EXTENSION);
-    $fileName = $fieldName . "_" . time() . "." . $ext;
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowed, true)) {
+        return $prevFile;
+    }
 
-    move_uploaded_file($_FILES[$fieldName]['tmp_name'], $dir . $fileName);
+    $safeName = bin2hex(random_bytes(8)) . "_" . time() . "." . $ext;
+    $targetPath = rtrim($targetDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $safeName;
 
-    return $fileName;
+    if (move_uploaded_file($file['tmp_name'], $targetPath)) {
+        return 'uploads/farmers/' . $safeName;
+    }
+
+    return $prevFile;
+}
+
+/**
+ * Validates and moves multiple farmland photos to the root directory
+ * Keeps selected existing files and appends newly uploaded photos
+ */
+function uploadMultipleProfileFiles(string $fieldName, ?string $prevJson, string $targetDir): ?string {
+    $paths = [];
+
+    // Collect any existing photos that the user decided to retain
+    if (isset($_POST['existing_farmland_photos']) && is_array($_POST['existing_farmland_photos'])) {
+        foreach ($_POST['existing_farmland_photos'] as $existingPath) {
+            $cleanPath = trim($existingPath);
+            if (strpos($cleanPath, 'uploads/farmers/') === 0) {
+                $paths[] = $cleanPath;
+            }
+        }
+    }
+
+    // Process newly uploaded files if any are selected
+    if (!empty($_FILES[$fieldName]) && is_array($_FILES[$fieldName]['name']) && !empty($_FILES[$fieldName]['name'][0])) {
+        $count = count($_FILES[$fieldName]['name']);
+        $allowed = ['png','jpg','jpeg','gif'];
+
+        for ($i = 0; $i < $count; $i++) {
+            if ($_FILES[$fieldName]['error'][$i] !== UPLOAD_ERR_OK) continue;
+
+            $ext = strtolower(pathinfo($_FILES[$fieldName]['name'][$i], PATHINFO_EXTENSION));
+            if (!in_array($ext, $allowed, true)) continue;
+
+            $safeName = bin2hex(random_bytes(8)) . "_" . time() . "_" . $i . "." . $ext;
+            $targetPath = rtrim($targetDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $safeName;
+
+            if (move_uploaded_file($_FILES[$fieldName]['tmp_name'][$i], $targetPath)) {
+                $paths[] = 'uploads/farmers/' . $safeName;
+            }
+        }
+    }
+
+    if (!empty($paths)) {
+        return json_encode($paths);
+    }
+
+    return null;
 }
 
 // HANDLE UPDATE (Edit Mode)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mode']) && $_POST['mode'] === "edit") {
-
-    $phone = trim($_POST['phone']);
-    $acreage = trim($_POST['acreage']);
-    $crop_type = trim($_POST['crop_type']);
-    $livestock_type = trim($_POST['livestock_type']);
-    $gps_coordinates = trim($_POST['gps_coordinates']);
-    $farm_type = trim($_POST['farm_type']);
-    $id_card_number = trim($_POST['id_card_number']);
-    $house_address = trim($_POST['house_address']);
-    $password = trim($_POST['password']);
+    csrf_verify();
+    
+    $phone = trim($_POST['phone'] ?? '');
+    $momo_phone = trim($_POST['momo_phone'] ?? '');
+    $acreage = trim($_POST['acreage'] ?? '');
+    $crop_type = trim($_POST['crop_type'] ?? '');
+    $livestock_type = trim($_POST['livestock_type'] ?? '');
+    $gps_coordinates = trim($_POST['gps_coordinates'] ?? '');
+    $farm_type = trim($_POST['farm_type'] ?? '');
+    $id_card_number = trim($_POST['id_card_number'] ?? '');
+    $house_address = trim($_POST['house_address'] ?? '');
+    $password = trim($_POST['password'] ?? '');
     $crop_expected_duration_days = trim($_POST['crop_expected_duration_days'] ?? '');
     $livestock_production_days = trim($_POST['livestock_production_days'] ?? '');
 
-    if (!preg_match('/^\d{10}$/', $phone)) {
-        throw new Exception("Phone number must be exactly 10 digits.");
-    }
-
-    /* Upload files */
-    $id_card = uploadFile("id_card", $user['id_card']);
-    $passport_photo = uploadFile("passport_photo", $user['passport_photo']);
-    $farmland_photos = uploadFile("farmland_photos", $user['farmland_photos']);
-
     try {
+        if (!preg_match('/^\d{10}$/', $phone)) {
+            throw new Exception("Phone number must be exactly 10 digits.");
+        }
+        if (!empty($momo_phone) && !preg_match('/^\d{10}$/', $momo_phone)) {
+            throw new Exception("Mobile Money number must be exactly 10 digits.");
+        }
+
+        /* Upload files parallel to public root uploads path structure */
+        $id_card = uploadSingleProfileFile("id_card", $user['id_card'], $farmerDir);
+        $passport_photo = uploadSingleProfileFile("passport_photo", $user['passport_photo'], $farmerDir);
+        $farmland_photos = uploadMultipleProfileFiles("farmland_photos", $user['farmland_photos'], $farmerDir);
+
         $pdo->beginTransaction();
 
-        // Update USERS table
+        // Update USERS table including phone and momo_phone
         if (!empty($password)) {
-            $hashed = password_hash($password, PASSWORD_BCRYPT);
-            $query = "UPDATE users SET phone=?, password=? WHERE id=? AND role='farmer'";
-            $params = [$phone, $hashed, $user_id];
+            if (strlen($password) < 6) {
+                throw new Exception("Password must be at least 6 characters long.");
+            }
+            $hashed = password_hash($password, PASSWORD_DEFAULT);
+            $query = "UPDATE users SET phone=?, momo_phone=?, password_hash=? WHERE id=? AND role='farmer'";
+            $params = [$phone, $momo_phone, $hashed, $user_id];
         } else {
-            $query = "UPDATE users SET phone=? WHERE id=? AND role='farmer'";
-            $params = [$phone, $user_id];
+            $query = "UPDATE users SET phone=?, momo_phone=? WHERE id=? AND role='farmer'";
+            $params = [$phone, $momo_phone, $user_id];
         }
 
         $updateUser = $pdo->prepare($query);
@@ -107,8 +194,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mode']) && $_POST['mo
             $insertProfile = $pdo->prepare("
                 INSERT INTO farmer_profiles 
                     (user_id, gps_coordinates, farm_type, crop_type, livestock_type, acreage, id_card, id_card_number, 
-                    passport_photo, farmland_photos, house_address, crop_expected_duration_days, livestock_production_days)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    passport_photo, farmland_photos, house_address, crop_expected_duration_days, livestock_production_days, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
             ");
             $insertProfile->execute([
                 $user_id, $gps_coordinates, $farm_type, $crop_type, $livestock_type, $acreage, $id_card,
@@ -120,14 +207,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mode']) && $_POST['mo
         $message = "Profile updated successfully!";
         $msgType = "success";
 
-        // Refresh data
+        // Refresh database record locally
         $stmt->execute([$user_id]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         $mode = "view";
 
-    } catch (PDOException $e) {
-        $pdo->rollBack();
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         $message = "Error: " . $e->getMessage();
         $msgType = "error";
     }
@@ -485,7 +574,8 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
                 <div class="profile-banner">
                     <div class="profile-img-container">
                         <?php 
-                            $ppSrc = $user['passport_photo'] ? "../uploads/farmers/".$user['passport_photo'] : "https://ui-avatars.com/api/?name=".urlencode($user['name'])."&background=059669&color=fff"; 
+                            $ppUrl = getFarmerFileUrl($user['passport_photo']);
+                            $ppSrc = $ppUrl ? $ppUrl : "https://ui-avatars.com/api/?name=".urlencode($user['name'])."&background=059669&color=fff"; 
                         ?>
                         <img src="<?= $ppSrc ?>" alt="Profile Photo">
                     </div>
@@ -525,7 +615,7 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
                         <div class="info-item">
                             <label>ID Document</label>
                             <?php if ($user['id_card']): ?>
-                                <a href="../uploads/farmers/<?= $user['id_card'] ?>" target="_blank" class="doc-preview">
+                                <a href="<?= htmlspecialchars(getFarmerFileUrl($user['id_card'])) ?>" target="_blank" class="doc-preview">
                                     <i data-feather="file-text"></i> View Document
                                 </a>
                             <?php else: ?>
@@ -564,44 +654,77 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
                             <label>Acreage</label>
                             <div class="value"><?= htmlspecialchars($user['acreage'] ?: 'Not set') ?></div>
                         </div>
-                        <div class="info-item">
-                            <label>Farmland Photo</label>
-                            <?php if ($user['farmland_photos']): ?>
-                                <a href="../uploads/farmers/<?= $user['farmland_photos'] ?>" target="_blank" class="doc-preview">
-                                    <i data-feather="image"></i> View Photo
-                                </a>
-                            <?php else: ?>
-                                <div class="value" style="color:var(--text-muted); font-size:14px;">Not uploaded</div>
-                            <?php endif; ?>
+                        <div class="info-item" style="grid-column: 1 / -1;">
+                            <label>Farmland Photo Gallery</label>
+                            <?php
+                            if (!empty($user['farmland_photos'])) {
+                                // Try to decode the database field from JSON
+                                $photosArray = json_decode($user['farmland_photos'], true);
+
+                                // Safely output the images if decode succeeded and returned valid entries
+                                if (is_array($photosArray) && !empty($photosArray)) {
+                                    echo '<div class="farmland-gallery" style="display: flex; gap: 15px; flex-wrap: wrap; margin-top: 10px;">';
+                                    foreach ($photosArray as $relativePath) {
+                                        $resolvedUrl = getFarmerFileUrl($relativePath);
+                                        echo '
+                                        <div class="gallery-item" style="border: 1px solid #e5e7eb; padding: 6px; border-radius: 12px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                                            <a href="' . htmlspecialchars($resolvedUrl) . '" target="_blank">
+                                                <img src="' . htmlspecialchars($resolvedUrl) . '" 
+                                                     alt="Farmland photo" 
+                                                     style="width: 150px; height: 150px; object-fit: cover; border-radius: 8px; display: block;" />
+                                            </a>
+                                        </div>';
+                                    }
+                                    echo '</div>';
+                                } else {
+                                    // Fallback if the database value was stored as a single raw string instead of a JSON array
+                                    $resolvedUrl = getFarmerFileUrl($user['farmland_photos']);
+                                    echo '
+                                    <div class="farmland-gallery" style="display: flex; gap: 15px; flex-wrap: wrap; margin-top: 10px;">
+                                        <div class="gallery-item" style="border: 1px solid #e5e7eb; padding: 6px; border-radius: 12px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                                            <a href="' . htmlspecialchars($resolvedUrl) . '" target="_blank">
+                                                <img src="' . htmlspecialchars($resolvedUrl) . '" 
+                                                     alt="Farmland photo" 
+                                                     style="width: 150px; height: 150px; object-fit: cover; border-radius: 8px; display: block;" />
+                                            </a>
+                                        </div>
+                                    </div>';
+                                }
+                            } else {
+                                echo '<div class="value" style="color:var(--text-muted); font-size:14px; margin-top: 5px;">No farmland photos uploaded.</div>';
+                            }
+                            ?>
                         </div>
                     </div>
                 </div>
 
             <?php else: ?>
                 <!-- EDIT MODE -->
-                <form method="POST" enctype="multipart/form-data">
+                <form method="POST" enctype="multipart/form-data" id="editForm">
                     <input type="hidden" name="mode" value="edit">
+                    <!-- CSRF Protection Field -->
+                    <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
 
                     <div class="card">
                         <h3>Edit Personal Details</h3>
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Phone Number</label>
-                                <input type="text" name="phone" maxlength="10" pattern="\d{10}" value="<?= htmlspecialchars($user['phone']) ?>">
+                                <input type="text" name="phone" maxlength="10" pattern="\d{10}" value="<?= htmlspecialchars($user['phone'] ?? '') ?>" required>
                             </div>
                             <div class="form-group">
                                 <label>Momo Number</label>
-                                <input type="text" name="momo_phone" maxlength="10" pattern="\d{10}" value="<?= htmlspecialchars($user['momo_phone']) ?>">
+                                <input type="text" name="momo_phone" maxlength="10" pattern="\d{10}" value="<?= htmlspecialchars($user['momo_phone'] ?? '') ?>">
                             </div>
                             <div class="form-group">
                                 <label>House Address</label>
-                                <input type="text" name="house_address" value="<?= htmlspecialchars($user['house_address']) ?>">
+                                <input type="text" name="house_address" value="<?= htmlspecialchars($user['house_address'] ?? '') ?>" required>
                             </div>
                         </div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label>ID Card Number</label>
-                                <input type="text" name="id_card_number" value="<?= htmlspecialchars($user['id_card_number']) ?>">
+                                <input type="text" name="id_card_number" value="<?= htmlspecialchars($user['id_card_number'] ?? '') ?>" required>
                             </div>
                             <div class="form-group">
                                 <label>New Password (Optional)</label>
@@ -625,7 +748,7 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Farm Type</label>
-                                <select id="farm_type" name="farm_type" onchange="toggleFarm()">
+                                <select id="farm_type" name="farm_type" onchange="toggleFarm()" required>
                                     <option value="">-- Select Type --</option>
                                     <option value="crop" <?= $user['farm_type'] === 'crop' ? 'selected' : '' ?>>Crop</option>
                                     <option value="livestock" <?= $user['farm_type'] === 'livestock' ? 'selected' : '' ?>>Livestock</option>
@@ -633,7 +756,7 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
                             </div>
                             <div class="form-group">
                                 <label>Acreage</label>
-                                <input type="text" name="acreage" value="<?= htmlspecialchars($user['acreage']) ?>" placeholder="e.g. 10 acres">
+                                <input type="text" name="acreage" value="<?= htmlspecialchars($user['acreage'] ?? '') ?>" placeholder="e.g. 10" required>
                             </div>
                         </div>
 
@@ -642,7 +765,7 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Crop Types (e.g. Maize, Cassava)</label>
-                                    <input type="text" name="crop_type" value="<?= htmlspecialchars($user['crop_type']) ?>">
+                                    <input type="text" name="crop_type" value="<?= htmlspecialchars($user['crop_type'] ?? '') ?>">
                                 </div>
                                 <div class="form-group">
                                     <label>Expected Duration (Days)</label>
@@ -655,7 +778,7 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Livestock Types (e.g. Poultry, Goats)</label>
-                                    <input type="text" name="livestock_type" value="<?= htmlspecialchars($user['livestock_type']) ?>">
+                                    <input type="text" name="livestock_type" value="<?= htmlspecialchars($user['livestock_type'] ?? '') ?>">
                                 </div>
                                 <div class="form-group">
                                     <label>Production Cycle (Days)</label>
@@ -668,17 +791,55 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
                             <div class="form-group">
                                 <label>GPS Coordinates</label>
                                 <div class="gps-wrap">
-                                    <input type="text" name="gps_coordinates" id="gpsInput" oninput="validateGPS()" value="<?= htmlspecialchars($user['gps_coordinates']) ?>" placeholder="Lat, Long">
+                                    <input type="text" name="gps_coordinates" id="gpsInput" oninput="validateGPS()" value="<?= htmlspecialchars($user['gps_coordinates'] ?? '') ?>" placeholder="Lat, Long" required>
                                     <button type="button" onclick="getGPS()" class="btn btn-info">
                                         <i data-feather="map-pin"></i> Locate Me
                                     </button>
                                 </div>
                                 <div id="gpsError" style="color:var(--danger); font-size:12px; display:none; margin-top:4px;">Invalid coordinate format.</div>
                             </div>
-                            <div class="form-group">
-                                <label>Update Farmland Photo</label>
-                                <input type="file" name="farmland_photos" accept=".jpg,.jpeg,.png,.pdf">
+                        </div>
+
+                        <!-- FARMLAND PHOTOS & LIVE PREVIEWS -->
+                        <div class="form-group" style="margin-top: 15px;">
+                            <label>Farmland Photos</label>
+
+                            <!-- Existing Saved Photos Preview -->
+                            <div style="margin-bottom: 15px;">
+                                <label style="font-size: 13px; color: var(--text-muted); margin-bottom: 5px;">Currently Saved Photos:</label>
+                                <div id="existing-photos-container" style="display: flex; gap: 15px; flex-wrap: wrap;">
+                                    <?php
+                                    $photosArray = [];
+                                    if (!empty($user['farmland_photos'])) {
+                                        $photosArray = json_decode($user['farmland_photos'], true);
+                                        if (!is_array($photosArray)) {
+                                            $photosArray = [$user['farmland_photos']];
+                                        }
+                                    }
+                                    if (!empty($photosArray)):
+                                        foreach ($photosArray as $index => $relativePath):
+                                            $resolvedUrl = getFarmerFileUrl($relativePath);
+                                    ?>
+                                            <div class="gallery-item" style="position: relative; border: 1px solid #e5e7eb; padding: 6px; border-radius: 12px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                                                <img src="<?= htmlspecialchars($resolvedUrl) ?>" alt="Farmland photo" style="width: 100px; height: 100px; object-fit: cover; border-radius: 8px; display: block;" />
+                                                <input type="hidden" name="existing_farmland_photos[]" value="<?= htmlspecialchars($relativePath) ?>">
+                                                <button type="button" onclick="this.parentElement.remove()" style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border: none; border-radius: 50%; width: 22px; height: 22px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">&times;</button>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <span style="font-size: 13px; color: var(--text-muted);">No farmland photos currently saved.</span>
+                                    <?php endif; ?>
+                                </div>
                             </div>
+
+                            <!-- Input to Add New Photos -->
+                            <div style="margin-top: 15px;">
+                                <label style="font-size: 13px; color: var(--text-muted); margin-bottom: 5px;">Upload More Photos (Select one or multiple):</label>
+                                <input type="file" id="farmland-photos-input" name="farmland_photos[]" multiple accept=".jpg,.jpeg,.png" onchange="previewNewPhotos(this)">
+                            </div>
+
+                            <!-- Live Previews of Newly Selected Photos -->
+                            <div id="new-photos-preview" style="display: flex; gap: 15px; flex-wrap: wrap; margin-top: 15px;"></div>
                         </div>
 
                         <div style="margin-top:20px; text-align:right; border-top:1px solid #f0f0f0; padding-top:20px;">
@@ -712,7 +873,8 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
 
         // Farm Type Toggle Logic
         function toggleFarm(){
-            const farm = document.getElementById('farm_type') ? document.getElementById('farm_type').value : '';
+            const farmSelect = document.getElementById('farm_type');
+            const farm = farmSelect ? farmSelect.value : '';
             const cropDiv = document.getElementById('crop_fields');
             const livestockDiv = document.getElementById('livestock_fields');
             
@@ -727,8 +889,11 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
 
         // GPS Logic
         function validateGPS(){
-            const val = document.getElementById('gpsInput').value;
+            const gpsInput = document.getElementById('gpsInput');
+            if (!gpsInput) return;
+            const val = gpsInput.value;
             const errorDiv = document.getElementById('gpsError');
+            
             // Simple regex for Coordinate pair
             const regex = /^-?\d{1,3}\.\d+,\s*-?\d{1,3}\.\d+$/;
             if(val && !regex.test(val)){
@@ -738,15 +903,50 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
             }
         }
 
+        // Fetch user location
         function getGPS(){
             if(navigator.geolocation){
                 navigator.geolocation.getCurrentPosition(pos => {
                     const lat = pos.coords.latitude.toFixed(6);
                     const long = pos.coords.longitude.toFixed(6);
-                    document.getElementById('gpsInput').value = lat + ', ' + long;
-                    validateGPS();
+                    const gpsInput = document.getElementById('gpsInput');
+                    if(gpsInput) {
+                        gpsInput.value = lat + ', ' + long;
+                        validateGPS();
+                    }
                 }, err => alert("Could not get location. Permission denied or unavailable."));
             } else alert("Geolocation not supported by this browser.");
+        }
+
+        // Handle live previews of newly selected files
+        function previewNewPhotos(input) {
+            const previewContainer = document.getElementById('new-photos-preview');
+            previewContainer.innerHTML = ''; // Clear previous selections
+            
+            if (input.files && input.files.length > 0) {
+                Array.from(input.files).forEach((file) => {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const previewItem = document.createElement('div');
+                        previewItem.className = 'gallery-item';
+                        previewItem.style.cssText = 'position: relative; border: 1px solid #e5e7eb; padding: 6px; border-radius: 12px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.02);';
+                        
+                        const img = document.createElement('img');
+                        img.src = e.target.result;
+                        img.alt = 'New file preview';
+                        img.style.cssText = 'width: 100px; height: 100px; object-fit: cover; border-radius: 8px; display: block;';
+                        
+                        const label = document.createElement('span');
+                        label.innerText = 'New';
+                        label.style.cssText = 'position: absolute; bottom: 5px; right: 5px; background: var(--primary); color: white; padding: 2px 6px; font-size: 10px; border-radius: 4px; font-weight: 600;';
+                        
+                        previewItem.appendChild(img);
+                        previewItem.appendChild(label);
+                        previewContainer.appendChild(previewItem);
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
         }
     </script>
 </body>

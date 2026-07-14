@@ -135,7 +135,7 @@ function checkMoMoPaymentStatus(string $reference) {
         return ['status' => 'successful'];
     }
 
-    // Real API implementation (unchanged)
+    // Real API implementation
     $token = getMoMoAccessToken('collection');
     if (!$token) {
         return ['status' => 'failed'];

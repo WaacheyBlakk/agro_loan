@@ -1,6 +1,11 @@
 <?php
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+
 // public/contact.php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../src/db.php'; 
 
 $success = false;
@@ -20,6 +25,7 @@ $subject = '';
 $message = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
     $name = trim($_POST['name'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $subject = trim($_POST['subject'] ?? '');
@@ -409,7 +415,7 @@ nav a.active::after { width: 100%; }
 .show-chat .chatbot-toggler span:last-child { opacity: 1; transform: rotate(0); }
 
 .chatbot-window {
-    position: fixed; bottom: 95px; right: 35px; width: 350px;
+    position: fixed; bottom: 95px; right: 35px; width: 360px;
     background: var(--bg-card); border-radius: 16px;
     box-shadow: var(--shadow-lg); overflow: hidden;
     transform: scale(0.5); opacity: 0; pointer-events: none;
@@ -440,14 +446,41 @@ nav a.active::after { width: 100%; }
     align-self: flex-end; margin-right: 10px; flex-shrink: 0;
 }
 .chat-bubble {
-    max-width: 75%; padding: 10px 14px; font-size: 0.9rem;
-    line-height: 1.4; border-radius: 12px 12px 12px 0; word-wrap: break-word;
+    max-width: 78%; padding: 10px 14px; font-size: 0.9rem;
+    line-height: 1.45; border-radius: 12px 12px 12px 0; word-wrap: break-word;
 }
 .chat-entry.outgoing .chat-bubble {
     background: var(--chat-bg-user); color: var(--chat-text-user); border-radius: 12px 12px 0 12px;
 }
 .chat-entry.incoming .chat-bubble {
     background: var(--chat-bg-bot); color: var(--chat-text-bot); border: 1px solid var(--border);
+}
+
+/* Interactive Quick Reply Suggestion Chips */
+.chat-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+    width: 100%;
+}
+.chat-chip {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--primary);
+    padding: 6px 12px;
+    border-radius: 50px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.chat-chip:hover {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+    transform: translateY(-1px);
 }
 
 .chat-input {
@@ -526,10 +559,10 @@ footer {
             <a href="index.php">Home</a>
             <a href="about.php">About</a>
             <a href="services.php">Services</a>
-            <a href="shop.php">Shop</a>
-            <a href="register.php">Register</a>
             <a href="contact.php" class="active">Contact Us</a>
+            <a href="shop.php">Shop</a>
             <a href="login.php" class="btn-login">Login</a>
+            <a href="register.php" class="btn-login">Register</a>
         </nav>
         
         <!-- Theme Toggle -->
@@ -553,10 +586,10 @@ footer {
     <a href="index.php">Home</a>
     <a href="about.php">About</a>
     <a href="services.php">Services</a>
-    <a href="shop.php">Shop</a>
-    <a href="register.php">Register</a>
     <a href="contact.php" style="color:var(--primary);">Contact Us</a>
+    <a href="shop.php">Shop</a>
     <a href="login.php">Login</a>
+    <a href="register.php">Register</a>
 </div>
 
 <main class="container">
@@ -575,6 +608,9 @@ footer {
             <?php endif; ?>
 
             <form method="POST">
+                <!-- CSRF Token field integration -->
+                <?php if (function_exists('csrf_token_tag')) { csrf_token_tag(); } ?>
+                
                 <div class="form-section">
                     <div class="input-group">
                         <label>Full Name</label>
@@ -668,10 +704,17 @@ footer {
         <h2><i class="ri-robot-line"></i> Agro Assistant</h2>
         <span class="chat-close-btn" onclick="document.body.classList.remove('show-chat')">×</span>
     </div>
-    <ul class="chatbox">
+    <ul class="chatbox" id="chatbox">
         <li class="chat-entry incoming">
             <span class="ri-customer-service-2-fill"></span>
-            <div class="chat-bubble">Hi! I'm your Agro Assistant. Ask me about loan interest rates, requirements, or how to register!</div>
+            <div class="chat-bubble">
+                Hi! I'm your Agro Assistant. How can I assist you today?
+                <div class="chat-chips">
+                    <button class="chat-chip" onclick="handleQuickReply('What loans do you offer?')">Loan Types</button>
+                    <button class="chat-chip" onclick="handleQuickReply('What are the loan requirements?')">Requirements</button>
+                    <button class="chat-chip" onclick="handleQuickReply('How do I register?')">Register</button>
+                </div>
+            </div>
         </li>
     </ul>
     <div class="chat-input">
@@ -778,67 +821,174 @@ footer {
     });
     <?php endif; ?>
 
-    // --- CHATBOT LOGIC ---
     const chatInput = document.querySelector(".chat-input textarea");
     const sendChatBtn = document.querySelector(".chat-input span");
-    const chatbox = document.querySelector(".chatbox");
-    const chatbotToggler = document.querySelector(".chatbot-toggler");
+    const chatbox = document.getElementById("chatbox");
+    const chatbotToggler = document.getElementById("chatbotToggler");
 
     let userMessage;
 
-    // Smart Response Database
-    const knowledgeBase = {
-        "hello": "Hello! Welcome to AgroLoan. How can I assist you with your farming finances today?",
-        "hi": "Hi there! Looking for a loan or have questions about registration?",
-        "loan": "We offer Equipment Loans, Seed Funding, and Harvest Loans. Interest rates start at 5%. Do you need requirements?",
-        "interest": "Our interest rates are very low for farmers, ranging from 5% to 12% depending on the season duration.",
-        "apply": "To apply, please Register an account first using the button in the menu, then visit your dashboard.",
-        "register": "Registration is free! Click 'Register' in the menu, enter your details, and verify your phone number.",
-        "requirements": "You need a valid Ghana Card, a registered Mobile Money number, and proof of farmland ownership.",
-        "location": "We are located at 123 Farmers Avenue, Agro City, Greater Accra.",
-        "contact": "You are on the contact page! Fill out the form here or email support@agroloan.com.",
-        "money": "Loans are disbursed directly to your Mobile Money wallet (MTN/Vodafone/AirtelTigo).",
-        "bye": "Goodbye! Happy farming!",
-        "thank": "You're very welcome!",
-        "default": "I'm not sure about that specific detail. Please contact our support team using the form on this page or call +233 20 123 4567."
+    const intents = [
+        {
+            id: "greeting",
+            keywords: ["hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening", "howdy"],
+            response: "Hello! Welcome to AgroLoan. I am here to help you navigate our services. What can I do for you today?",
+            chips: ["Loan Types", "How do I register?", "Interest Rates"]
+        },
+        {
+            id: "farewell",
+            keywords: ["bye", "goodbye", "see you", "exit", "quit", "leave"],
+            response: "Goodbye! Thank you for chatting with AgroLoan. Have a productive day in the field!",
+            chips: []
+        },
+        {
+            id: "thanks",
+            keywords: ["thank", "thanks", "appreciate", "helpful", "perfect"],
+            response: "You are welcome! Let me know if you need anything else.",
+            chips: ["Loan Types", "Contact Office"]
+        },
+        {
+            id: "loans",
+            keywords: ["loan", "loans", "borrow", "funding", "credit", "finance", "equipment", "seed", "harvest"],
+            response: "We offer tailored loan options for farmers:<br><br>• <strong>Equipment Loans</strong>: For tractors, irrigation, and machinery.<br>• <strong>Seed & Fertilizer Funding</strong>: Input financing at planting.<br>• <strong>Harvest Loans</strong>: Cash-flow support during harvest periods.",
+            chips: ["What are the requirements?", "Interest Rates"]
+        },
+        {
+            id: "interest",
+            keywords: ["interest", "rate", "rates", "percent", "percentage", "cost", "charge", "fee"],
+            response: "Our interest rates are highly subsidized for agricultural support, ranging from <strong>5% to 12% annually</strong> depending on the loan duration and your history with us.",
+            chips: ["Loan Types", "How do I register?"]
+        },
+        {
+            id: "requirements",
+            keywords: ["requirement", "requirements", "eligibility", "eligible", "qualify", "need", "document", "documents", "id", "card"],
+            response: "To qualify, you will need:<br>1. A valid <strong>Ghana Card</strong> (or national ID).<br>2. A registered <strong>Mobile Money number</strong> (MTN, Telecel, or AT).<br>3. Proof of farmland access/ownership or an endorsement from a community chief/agent.",
+            chips: ["How to apply?", "Where is the office?"]
+        },
+        {
+            id: "apply",
+            keywords: ["apply", "application", "request", "process", "get loan"],
+            response: "Applying is simple!<br>1. <strong>Register</strong> a free account online.<br>2. Complete your <strong>Farmer Profile</strong> in the dashboard.<br>3. Submit a new loan request. Our local representative will verify and approve your request shortly.",
+            chips: ["How do I register?", "Requirements"]
+        },
+        {
+            id: "register",
+            keywords: ["register", "registration", "sign up", "signup", "create account", "join"],
+            response: "Registration is completely free. Click the <strong>'Register'</strong> link in the menu or go to our registration page. Enter your full name, phone number, and area to get started.",
+            chips: ["What are the requirements?", "Loan Types"]
+        },
+        {
+            id: "momo",
+            keywords: ["momo", "mobile money", "mtn", "telecel", "vodafone", "airteltigo", "at", "payment", "payout", "receive"],
+            response: "Yes! All loans are disbursed directly to your <strong>Mobile Money wallet</strong> (MTN, Telecel, or AT). You can also repay your installments seamlessly using your wallet.",
+            chips: ["Interest Rates", "How to apply?"]
+        },
+        {
+            id: "repayment",
+            keywords: ["repay", "repayment", "pay back", "duration", "term", "terms", "period", "installments"],
+            response: "Repayment terms are flexible and designed around your crop cycle. We offer crop-matched maturities spanning from <strong>3 to 12 months</strong>, with options for monthly or post-harvest lump-sum repayments.",
+            chips: ["Interest Rates", "Contact Office"]
+        },
+        {
+            id: "contact",
+            keywords: ["contact", "call", "phone", "email", "support", "number", "agent", "human", "address", "location", "office", "where"],
+            response: "Our Head Office is located at <strong>123 Farmers Avenue, Agro City, Greater Accra, Ghana</strong>.<br><br>• <strong>Phone:</strong> +233 20 123 4567<br>• <strong>Email:</strong> support@agroloan.com<br>• <strong>Hours:</strong> Mon - Fri, 8:00 AM - 5:00 PM.",
+            chips: ["Loan Types", "How do I register?"]
+        },
+        {
+            id: "security",
+            keywords: ["safe", "secure", "scam", "legit", "legal", "trust", "private", "licence", "registered"],
+            response: "AgroLoan is fully registered and compliant. We protect your data with 256-bit SSL encryption. We will never ask for your MoMo PIN.",
+            chips: ["Where is the office?", "Loan Types"]
+        }
+    ];
+
+    const fallbackIntent = {
+        response: "I'm not quite sure about that query. Let me guide you to our main topics, or feel free to leave a message using the form on this page!",
+        chips: ["Loan Types", "What are the requirements?", "Contact Office"]
     };
 
-    const createChatLi = (message, className) => {
+    // Helper to format string with chips
+    const createChatLi = (message, className, chips = []) => {
         const chatLi = document.createElement("li");
         chatLi.classList.add("chat-entry", className);
-        let chatContent = className === "outgoing" ? 
-            `<div class="chat-bubble"></div>` : 
-            `<span class="ri-customer-service-2-fill"></span><div class="chat-bubble"></div>`;
+        
+        let chatContent = "";
+        if (className === "outgoing") {
+            chatContent = `<div class="chat-bubble"></div>`;
+        } else {
+            chatContent = `<span class="ri-customer-service-2-fill"></span><div class="chat-bubble"></div>`;
+        }
+        
         chatLi.innerHTML = chatContent;
-        chatLi.querySelector(".chat-bubble").textContent = message;
+        const bubble = chatLi.querySelector(".chat-bubble");
+        
+        if (className === "outgoing") {
+            bubble.textContent = message;
+        } else {
+            bubble.innerHTML = message;
+            if (chips && chips.length > 0) {
+                const chipsContainer = document.createElement("div");
+                chipsContainer.classList.add("chat-chips");
+                chips.forEach(chipText => {
+                    const btn = document.createElement("button");
+                    btn.classList.add("chat-chip");
+                    btn.textContent = chipText;
+                    btn.addEventListener("click", () => handleQuickReply(chipText));
+                    chipsContainer.appendChild(btn);
+                });
+                bubble.appendChild(chipsContainer);
+            }
+        }
         return chatLi;
     }
 
     const generateResponse = (incomingChatLi) => {
         const messageElement = incomingChatLi.querySelector(".chat-bubble");
         
-        // Convert to lowercase and remove punctuation
-        const cleanInput = userMessage.toLowerCase().replace(/[^\w\s]/gi, '');
-        let responseText = knowledgeBase["default"];
+        // Convert to lowercase and strip special characters
+        const cleanInput = userMessage.toLowerCase().replace(/[^\w\s]/gi, ' ');
+        const inputWords = cleanInput.split(/\s+/).filter(w => w.length > 1);
 
-        // Keyword matching logic
-        const words = cleanInput.split(' ');
-        for (let word of words) {
-            if (knowledgeBase[cleanInput]) {
-                responseText = knowledgeBase[cleanInput];
-                break;
-            }
-            for (let key in knowledgeBase) {
-                if (cleanInput.includes(key)) {
-                    responseText = knowledgeBase[key];
-                    break;
+        let bestIntent = null;
+        let highestScore = 0;
+
+        intents.forEach(intent => {
+            let score = 0;
+
+            // 1. Phrase / exact substring match (highest weight)
+            intent.keywords.forEach(keyword => {
+                if (cleanInput.includes(keyword)) {
+                    score += 5;
                 }
-            }
-        }
+            });
 
-        // Set response after slight delay
+            // 2. Individual word token matching
+            inputWords.forEach(word => {
+                if (intent.keywords.includes(word)) {
+                    score += 2;
+                }
+                // Handle basic singular/plural variants
+                if (word.endsWith('s') && intent.keywords.includes(word.slice(0, -1))) {
+                    score += 1.5;
+                }
+            });
+
+            if (score > highestScore) {
+                highestScore = score;
+                bestIntent = intent;
+            }
+        });
+
+        // Set response context after simulated typing latency
         setTimeout(() => {
-            messageElement.textContent = responseText;
+            if (highestScore > 0 && bestIntent) {
+                const updatedLi = createChatLi(bestIntent.response, "incoming", bestIntent.chips);
+                incomingChatLi.replaceWith(updatedLi);
+            } else {
+                const updatedLi = createChatLi(fallbackIntent.response, "incoming", fallbackIntent.chips);
+                incomingChatLi.replaceWith(updatedLi);
+            }
             chatbox.scrollTo(0, chatbox.scrollHeight);
         }, 600); 
     }
@@ -847,14 +997,14 @@ footer {
         userMessage = chatInput.value.trim();
         if(!userMessage) return;
 
-        // Reset height and value
+        // Clear input field
         chatInput.value = "";
         
-        // Add User Message
+        // Render Outgoing Message
         chatbox.appendChild(createChatLi(userMessage, "outgoing"));
         chatbox.scrollTo(0, chatbox.scrollHeight);
 
-        // Add Bot Thinking Placeholder
+        // Render Bot Thinking Indicator
         setTimeout(() => {
             const incomingChatLi = createChatLi("Thinking...", "incoming");
             chatbox.appendChild(incomingChatLi);
@@ -863,7 +1013,21 @@ footer {
         }, 400);
     }
 
-    // Event Listeners
+    // Exposed to chip click listeners
+    const handleQuickReply = (text) => {
+        userMessage = text;
+        chatbox.appendChild(createChatLi(userMessage, "outgoing"));
+        chatbox.scrollTo(0, chatbox.scrollHeight);
+
+        setTimeout(() => {
+            const incomingChatLi = createChatLi("Thinking...", "incoming");
+            chatbox.appendChild(incomingChatLi);
+            chatbox.scrollTo(0, chatbox.scrollHeight);
+            generateResponse(incomingChatLi);
+        }, 300);
+    };
+
+    // Chat Interface Action Triggers
     chatbotToggler.addEventListener("click", () => document.body.classList.toggle("show-chat"));
     sendChatBtn.addEventListener("click", handleChat);
     chatInput.addEventListener("keyup", (e) => {

@@ -1,21 +1,14 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/security_headers.php';
+require_once __DIR__ . '/../src/csrf.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once '../src/db.php';
 
-// 1. Security Headers
-header("X-Frame-Options: DENY");
-header("X-XSS-Protection: 1; mode=block");
-header("X-Content-Type-Options: nosniff");
-
-// 2. Auth Check
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     header("Location: login.php");
     exit;
-}
-
-// 3. CSRF Token Generation
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
 $pdo = getPDO();
@@ -23,13 +16,10 @@ $admin_id = $_SESSION['user_id'];
 $success = "";
 $error = "";
 
-// 4. Handle Form Submission
+// Handle Form Submission
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
-    // CSRF Check
-    if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'] ?? '')) {
-        die("Invalid CSRF token.");
-    }
+    csrf_verify();
 
     $current = $_POST["current_password"];
     $new     = $_POST["new_password"];
