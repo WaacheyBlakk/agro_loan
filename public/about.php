@@ -681,12 +681,12 @@ footer {
             
             <div class="team-card">
                 <div class="team-img-wrapper">
-                    <img src="../assets/images/team1.jpg" alt="CEO">
+                    <img src="../assets/images/member1.jpg" alt="TEAM MEMBER 1">
                 </div>
                 <div class="team-info">
                     <h4>Abdul-Rahaman Salifu</h4>
-                    <span class="team-role">Founder & CEO</span>
-                    <p>Visionary leader leveraging tech to solve financial exclusion in rural agriculture.</p>
+                    <span class="team-role">Team Member</span>
+                    <p></p>
                     <div class="social-links">
                         <a href="#"><i class="ri-linkedin-fill"></i></a>
                         <a href="#"><i class="ri-twitter-x-fill"></i></a>
@@ -697,12 +697,12 @@ footer {
 
             <div class="team-card">
                 <div class="team-img-wrapper">
-                    <img src="../assets/images/team2.jpg" alt="COO">
+                    <img src="../assets/images/member2.jpg" alt="TEAM MEMBER 2">
                 </div>
                 <div class="team-info">
-                    <h4>Grace Mensah</h4>
-                    <span class="team-role">Co-Founder & COO</span>
-                    <p>Drives operational excellence, ensuring seamless collaboration between stakeholders.</p>
+                    <h4>Peter B. Ninkpel</h4>
+                    <span class="team-role">Team Member</span>
+                    <p></p>
                     <div class="social-links">
                         <a href="#"><i class="ri-linkedin-fill"></i></a>
                         <a href="#"><i class="ri-mail-fill"></i></a>
@@ -712,28 +712,14 @@ footer {
 
             <div class="team-card">
                 <div class="team-img-wrapper">
-                    <img src="../assets/images/team3.jpg" alt="CTO">
+                    <img src="../assets/images/member3.jpg" alt="TEAM MEMBER 3">
                 </div>
                 <div class="team-info">
-                    <h4>Michael Owusu</h4>
-                    <span class="team-role">Technical Director</span>
-                    <p>Architect behind our secure platform, ensuring data integrity and UX.</p>
+                    <h4>Salim M. Sayibu</h4>
+                    <span class="team-role">Team Member</span>
+                    <p></p>
                     <div class="social-links">
                         <a href="#"><i class="ri-github-fill"></i></a>
-                        <a href="#"><i class="ri-linkedin-fill"></i></a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="team-card">
-                <div class="team-img-wrapper">
-                    <img src="../assets/images/team4.jpg" alt="Analyst">
-                </div>
-                <div class="team-info">
-                    <h4>Linda Addo</h4>
-                    <span class="team-role">Financial Analyst</span>
-                    <p>Expert in agri-finance, designing flexible loan products for harvest cycles.</p>
-                    <div class="social-links">
                         <a href="#"><i class="ri-linkedin-fill"></i></a>
                     </div>
                 </div>
@@ -753,7 +739,7 @@ footer {
 
 </div>
 
-<!-- Footer (Exact Structure from Index.php) -->
+<!-- Footer -->
 <footer>
     <div class="footer-content">
         <div class="footer-col">

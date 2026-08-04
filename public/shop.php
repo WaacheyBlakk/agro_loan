@@ -66,12 +66,12 @@ $valid_sorts = [
     'price_asc'  => "ORDER BY p.price_per_bag ASC",
     'price_desc' => "ORDER BY p.price_per_bag DESC",
     'newest'     => "ORDER BY p.id DESC",
-    'popularity' => "ORDER BY p.bags_available ASC"
+    'popularity' => "ORDER BY p.bags_available DESC"
 ];
 
 $orderSQL = $valid_sorts[$sort_by] ?? $valid_sorts['newest'];
 
-// 4. PAGINATION
+// 4. PAGINATION & ACCURATE PRODUCE LISTING COUNT
 $items_per_page = 20; 
 $offset = ($page - 1) * $items_per_page;
 
@@ -84,10 +84,10 @@ $countSql = "
 ";
 $countStmt = $pdo->prepare($countSql);
 $countStmt->execute($params);
-$total_items = $countStmt->fetchColumn();
+$total_items = (int) $countStmt->fetchColumn();
 $total_pages = ceil($total_items / $items_per_page);
 
-// 5. FETCH DATA (Added p.farmer_id to SELECT fields)
+// 5. FETCH DATA (Retrieves real-time bags_available directly from DB)
 $sql = "
     SELECT 
         p.id, 
@@ -477,10 +477,13 @@ function getStarRating($id) {
     <!-- PRODUCT LISTING AREA -->
     <main class="flex-grow w-full">
         
-        <!-- Sorting & Count Bar -->
-        <div class="bg-[var(--bg-card)] p-3 rounded-md shadow-sm border border-[var(--border)] mb-4 flex justify-between items-center">
-            <h2 class="font-bold text-[var(--text-main)] text-sm sm:text-base" id="searchTitle">
-                <?= $keyword ? 'Search: "'.htmlspecialchars($keyword).'"' : 'All Products' ?>
+        <!-- Sorting & Produce Counter Bar -->
+        <div class="bg-[var(--bg-card)] p-3 rounded-md shadow-sm border border-[var(--border)] mb-4 flex justify-between items-center flex-wrap gap-2">
+            <h2 class="font-bold text-[var(--text-main)] text-sm sm:text-base flex items-center gap-2" id="searchTitle">
+                <span><?= $keyword ? 'Search: "'.htmlspecialchars($keyword).'"' : 'All Products' ?></span>
+                <span class="text-xs bg-[var(--primary-light)] text-[var(--primary)] px-2 py-0.5 rounded-full font-bold">
+                    <?= $total_items ?> <?= $total_items === 1 ? 'produce listed' : 'produces listed' ?>
+                </span>
             </h2>
 
             <div class="flex items-center gap-2">
@@ -493,7 +496,7 @@ function getStarRating($id) {
                     
                     <select name="sort" onchange="this.form.submit()" class="border-[var(--border)] text-sm rounded cursor-pointer focus:ring-[var(--primary)] py-1 pl-2 pr-8 bg-[var(--bg-body)] text-[var(--text-main)]">
                         <option value="newest" <?= $sort_by == 'newest' ? 'selected' : '' ?>>Newest In</option>
-                        <option value="popularity" <?= $sort_by == 'popularity' ? 'selected' : '' ?>>Popularity</option>
+                        <option value="popularity" <?= $sort_by == 'popularity' ? 'selected' : '' ?>>Stock Available</option>
                         <option value="price_asc" <?= $sort_by == 'price_asc' ? 'selected' : '' ?>>Lowest Price</option>
                         <option value="price_desc" <?= $sort_by == 'price_desc' ? 'selected' : '' ?>>Highest Price</option>
                     </select>
@@ -512,7 +515,9 @@ function getStarRating($id) {
                     <?php foreach ($products as $p): ?>
                         <?php 
                             $imgSrc = !empty($p['image']) ? "../uploads/produce/" . htmlspecialchars($p['image']) : "https://via.placeholder.com/300?text=No+Image";
-                            $inStock = $p['bags_available'] > 0;
+                            // Precise stock calculation
+                            $bagsAvailable = max(0, (int)($p['bags_available'] ?? 0));
+                            $inStock = $bagsAvailable > 0;
                             $ratingData = getStarRating($p['id']);
                         ?>
                         
@@ -522,12 +527,12 @@ function getStarRating($id) {
                                 <i class="ri-heart-line"></i>
                             </button>
 
-                            <!-- Container is set to "bg-white" instead of a dynamic theme color to keep the product photo bright and unaffected by dark mode -->
+                            <!-- Image Container -->
                             <a href="product_details.php?id=<?= $p['id'] ?>" class="block relative aspect-square overflow-hidden bg-white">
                                 <img src="<?= $imgSrc ?>" alt="<?= htmlspecialchars($p['name']) ?>" class="w-full h-full object-contain mix-blend-multiply p-4 hover:scale-105 transition duration-500">
                                 <?php if(!$inStock): ?>
-                                    <div class="absolute inset-0 bg-white/60 flex items-center justify-center">
-                                        <span class="bg-gray-800 text-white text-xs px-2 py-1 rounded">Out of Stock</span>
+                                    <div class="absolute inset-0 bg-white/75 flex items-center justify-center">
+                                        <span class="bg-red-600 text-white text-xs font-bold px-2.5 py-1 rounded shadow">Sold Out</span>
                                     </div>
                                 <?php endif; ?>
                                 <div class="absolute bottom-0 left-0 bg-[var(--primary)] text-white text-[10px] px-2 py-0.5 uppercase font-bold tracking-wider">
@@ -548,6 +553,19 @@ function getStarRating($id) {
                                     </div>
                                 </div>
 
+                                <!-- Real-Time Produce Quantity Counter -->
+                                <div class="mt-2 text-xs">
+                                    <?php if ($inStock): ?>
+                                        <span class="inline-flex items-center gap-1 font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-400 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                                            <i class="ri-checkbox-circle-fill"></i> <?= $bagsAvailable ?> <?= $bagsAvailable === 1 ? 'bag' : 'bags' ?> available
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="inline-flex items-center gap-1 font-semibold text-red-600 bg-red-50 dark:bg-red-950/40 dark:text-red-400 px-2 py-0.5 rounded-md border border-red-200 dark:border-red-800">
+                                            <i class="ri-close-circle-fill"></i> 0 bags available
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+
                                 <div class="flex items-center mt-2 mb-2">
                                     <div class="flex text-jumia-orange text-xs">
                                         <?php for($r=0; $r<5; $r++): ?>
@@ -562,18 +580,18 @@ function getStarRating($id) {
                                         <!-- Farmer can only edit their own listing -->
                                         <a href="edit_produce.php?id=<?= (int)$p['id'] ?>" 
                                            class="block text-center w-full border border-[var(--border)] text-[var(--text-muted)] text-sm font-bold py-2 rounded hover:bg-[var(--bg-body)]">
-                                            Edit
+                                            Edit Listing
                                         </a>
                                     <?php else: ?>
                                         <!-- Standard purchase block shown to non-owners and other roles -->
                                         <?php if ($inStock): ?>
                                             <button onclick="addToCartDirect(<?= (int)$p['id'] ?>, this)" 
-                                                    class="w-full bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold py-2 rounded shadow-md uppercase tracking-wide transition transform active:scale-95">
-                                                Add To Cart
+                                                    class="w-full bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold py-2 rounded shadow-md uppercase tracking-wide transition transform active:scale-95 flex items-center justify-center gap-1">
+                                                <i class="ri-shopping-cart-2-line"></i> Add To Cart
                                             </button>
                                         <?php else: ?>
-                                            <button disabled class="w-full bg-gray-200 text-gray-400 text-sm font-bold py-2 rounded cursor-not-allowed">
-                                                Sold Out
+                                            <button disabled class="w-full bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 text-sm font-bold py-2 rounded cursor-not-allowed uppercase">
+                                                Out of Stock
                                             </button>
                                         <?php endif; ?>
                                     <?php endif; ?>
@@ -613,7 +631,7 @@ function getStarRating($id) {
                     <div class="w-20 h-20 bg-[var(--bg-body)] rounded-full flex items-center justify-center mb-4">
                         <i class="ri-search-eye-line text-4xl text-[var(--text-muted)]"></i>
                     </div>
-                    <h3 class="text-lg font-bold text-[var(--text-main)]">No products found</h3>
+                    <h3 class="text-lg font-bold text-[var(--text-main)]">No produce found</h3>
                     <p class="text-[var(--text-muted)] mb-6">Try refining your filter preferences or search query.</p>
                     <a href="shop.php" class="bg-[var(--primary)] text-white px-6 py-2 rounded font-bold hover:bg-[var(--primary-dark)] transition">Reset All Filters</a>
                 </div>
@@ -777,7 +795,7 @@ function getStarRating($id) {
                     originalContainer.innerHTML = fetchedContainer.innerHTML;
                 }
 
-                // Update search heading
+                // Update search heading & count
                 const originalTitle = document.getElementById('searchTitle');
                 const fetchedTitle = doc.getElementById('searchTitle');
                 if (originalTitle && fetchedTitle) {
@@ -789,11 +807,11 @@ function getStarRating($id) {
             .catch(err => console.error('Error fetching live search results:', err));
     }
 
-    // --- Direct actions ---
+    // --- Direct Cart Addition ---
     function addToCartDirect(productId, btn) {
         const originalText = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<i class="ri-loader-4-line animate-spin"></i>';
+        btn.innerHTML = '<i class="ri-loader-4-line animate-spin"></i> Processing...';
 
         const formData = new FormData();
         formData.append('product_id', productId);

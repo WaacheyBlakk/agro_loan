@@ -4,8 +4,8 @@ require_once __DIR__ . '/../src/csrf.php';
 /**
  * checkout_process.php
  * Accepts POST from checkout.php, creates the order PLUS one order_group
- * per farmer represented in the cart, initiates MoMo payment.
- * Returns JSON for AJAX handling.
+ * per farmer represented in the cart, reduces produce DB stock accurately, 
+ * and initiates MoMo payment.
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -16,7 +16,7 @@ require_once __DIR__ . '/../src/order_helpers.php';
 
 header('Content-Type: application/json');
 
-$user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
+$user_id = $_SESSION['user_id'] ?? $_SESSION['buyer_id'] ?? $_SESSION['id'] ?? null;
 if (!$user_id) {
     echo json_encode(['success'=>false,'message'=>'Session expired. Please log in again.']);
     exit;
@@ -47,38 +47,66 @@ if (strlen($momo_number) < 9) {
 
 $pdo = getPDO();
 
-$cartStmt = $pdo->prepare("
-    SELECT c.product_id AS produce_id, c.quantity,
-           p.produce_name, p.price_per_bag, p.bags_available, p.farmer_id
-    FROM cart c
-    JOIN produce_listings p ON c.product_id = p.id
-    WHERE c.user_id = ?
-");
-$cartStmt->execute([$user_id]);
-$cartItems = $cartStmt->fetchAll(PDO::FETCH_ASSOC);
-
-if (empty($cartItems)) {
-    echo json_encode(['success'=>false,'message'=>'Your cart is empty.']);
-    exit;
-}
-
-foreach ($cartItems as $item) {
-    if ($item['quantity'] > $item['bags_available']) {
-        echo json_encode(['success'=>false,'message'=>"'{$item['produce_name']}' only has {$item['bags_available']} bags available. Please update your cart."]);
-        exit;
-    }
-}
-
-$subtotal     = array_sum(array_map(fn($i) => $i['price_per_bag'] * $i['quantity'], $cartItems));
-$platform_fee = round($subtotal * (PLATFORM_FEE_PERCENT / 100), 2);
-$total        = $subtotal + $platform_fee;
-
-$momoFormatted = '233' . ltrim($momo_number, '0');
-
 try {
     $pdo->beginTransaction();
 
-    // 1. Create the parent order (a checkout basket, may span farmers)
+    // 1. Fetch cart items with row-level database locking (FOR UPDATE)
+    $cartStmt = $pdo->prepare("
+        SELECT c.product_id AS produce_id, c.quantity,
+               p.produce_name, p.price_per_bag, p.bags_available, p.farmer_id
+        FROM cart c
+        JOIN produce_listings p ON c.product_id = p.id
+        WHERE c.user_id = ?
+        FOR UPDATE
+    ");
+    $cartStmt->execute([$user_id]);
+        $cartItems = $cartStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($cartItems)) {
+            $pdo->rollBack();
+            echo json_encode(['success'=>false,'message'=>'Your cart is empty.']);
+            exit;
+        }
+
+        // Aggregate duplicate cart rows for the same produce (defense in depth —
+        // the cart table should have a unique (user_id, product_id) key, but this
+        // guards against any insertion path that bypasses it).
+        $aggregated = [];
+        foreach ($cartItems as $item) {
+            $pid = $item['produce_id'];
+            if (!isset($aggregated[$pid])) {
+                $aggregated[$pid] = $item;
+            } else {
+                $aggregated[$pid]['quantity'] += $item['quantity'];
+            }
+        }
+        $cartItems = array_values($aggregated);
+
+    // 2. Validate real-time stock availability in DB — collect ALL problems
+    $stockErrors = [];
+    foreach ($cartItems as $item) {
+        if ($item['quantity'] > $item['bags_available']) {
+            $avail = max(0, (int)$item['bags_available']);
+            $stockErrors[] = "'{$item['produce_name']}': you requested {$item['quantity']}, only {$avail} bag(s) available";
+        }
+    }
+    if ($stockErrors) {
+        $pdo->rollBack();
+        echo json_encode([
+            'success' => false,
+            'message' => "Please adjust your cart:\n" . implode("\n", $stockErrors),
+            'stock_errors' => $stockErrors
+        ]);
+        exit;
+    }
+
+    $subtotal     = array_sum(array_map(fn($i) => $i['price_per_bag'] * $i['quantity'], $cartItems));
+    $platform_fee = round($subtotal * (PLATFORM_FEE_PERCENT / 100), 2);
+    $total        = $subtotal + $platform_fee;
+
+    $momoFormatted = '233' . ltrim($momo_number, '0');
+
+    // 3. Create the parent order
     $orderStmt = $pdo->prepare("
         INSERT INTO orders
             (buyer_id, total_amount, platform_fee, payment_method, payment_status, order_status,
@@ -91,8 +119,7 @@ try {
     ]);
     $orderId = (int)$pdo->lastInsertId();
 
-    // 2. Split the cart by farmer -> one order_group per farmer, each
-    //    with its own human-readable code and its own status lifecycle.
+    // 4. Group cart items by farmer
     $byFarmer = [];
     foreach ($cartItems as $item) {
         $byFarmer[$item['farmer_id']][] = $item;
@@ -107,6 +134,13 @@ try {
         VALUES (?, ?, ?, ?, ?, ?, ?)
     ");
 
+    // Prepared SQL statement to reduce bags_available directly in DB by exact quantity purchased
+    $updStockStmt = $pdo->prepare("
+        UPDATE produce_listings 
+        SET bags_available = bags_available - ? 
+        WHERE id = ? AND bags_available >= ?
+    ");
+
     $sequence = 0;
     foreach ($byFarmer as $farmerId => $farmerItems) {
         $farmerSubtotal = array_sum(array_map(fn($i) => $i['price_per_bag'] * $i['quantity'], $farmerItems));
@@ -118,15 +152,22 @@ try {
         foreach ($farmerItems as $item) {
             $lineTotal = $item['price_per_bag'] * $item['quantity'];
             $itemStmt->execute([$orderId, $item['produce_id'], $farmerId, $groupId, $item['quantity'], $item['price_per_bag'], $lineTotal]);
+            
+            // REDUCE STOCK IN DB BY ACTUAL PURCHASED QUANTITY
+            $updStockStmt->execute([$item['quantity'], $item['produce_id'], $item['quantity']]);
+            if ($updStockStmt->rowCount() === 0) {
+                $pdo->rollBack();
+                echo json_encode(['success'=>false,'message'=>"Stock issue: Insufficient bags available for '{$item['produce_name']}'."]);
+                exit;
+            }
         }
     }
 
-    // 3. Initial tracking entry (order-level; per-group entries are added
-    //    once payment clears and each group starts moving independently)
+    // 5. Create initial tracking entry
     $pdo->prepare("INSERT INTO order_tracking (order_id, status, notes, updated_by) VALUES (?,?,?,?)")
         ->execute([$orderId, 'pending_payment', 'Order placed, awaiting payment.', $user_id]);
 
-    // 4. Initiate MoMo payment for the whole basket total
+    // 6. Initiate MoMo payment
     $momoResult = initiateMoMoCollection([
         'amount'       => $total,
         'currency'     => 'GHS',
@@ -157,7 +198,9 @@ try {
     ]);
 
 } catch (Exception $e) {
-    $pdo->rollBack();
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     error_log("Checkout error: " . $e->getMessage());
-    echo json_encode(['success'=>false,'message'=>'A server error occurred. Please try again.']);
+    echo json_encode(['success'=>false,'message'=>'A server error occurred: ' . $e->getMessage()]);
 }

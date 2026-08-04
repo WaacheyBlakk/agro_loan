@@ -3,6 +3,7 @@ require_once __DIR__ . '/../src/security_headers.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+//payment_verify.php
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/momo.php';
 require_once __DIR__ . '/../src/order_helpers.php';
@@ -29,6 +30,8 @@ if (!$order) {
     exit;
 }
 
+// Idempotency guards — these prevent re-running escrow creation or stock
+// restoration on repeated polls once a terminal state has been reached.
 if ($order['payment_status'] === 'confirmed') {
     echo json_encode(['status'=>'confirmed','order_id'=>$order_id]);
     exit;
@@ -51,8 +54,6 @@ if ($apiStatus === 'successful' || $apiStatus === 'approved') {
             WHERE id=?
         ")->execute([$order_id]);
 
-        // Every farmer package for this order starts moving independently
-        // from here — each gets its own escrow row and tracking entry.
         $pdo->prepare("UPDATE order_groups SET status='payment_confirmed', updated_at=NOW() WHERE order_id=?")
             ->execute([$order_id]);
 
@@ -63,9 +64,10 @@ if ($apiStatus === 'successful' || $apiStatus === 'approved') {
         $feePercent = 1.0;
 
         foreach ($items as $item) {
-            $pdo->prepare("
-                UPDATE produce_listings SET bags_available = GREATEST(0, bags_available - ?) WHERE id=?
-            ")->execute([$item['quantity'], $item['produce_id']]);
+            // NOTE: stock was already decremented in checkout_process.php when
+            // the order was created. Do NOT decrement it again here — that was
+            // the cause of the double-subtraction bug. Payment confirmation only
+            // needs to move funds into escrow, not touch stock a second time.
 
             $feeAmount    = round($item['subtotal'] * ($feePercent / 100), 2);
             $farmerAmount = $item['subtotal'];
@@ -92,12 +94,26 @@ if ($apiStatus === 'successful' || $apiStatus === 'approved') {
 
 } elseif (in_array($apiStatus, ['failed','rejected','cancelled','timeout'])) {
 
-    $pdo->prepare("UPDATE orders SET payment_status='failed' WHERE id=?")->execute([$order_id]);
-    $pdo->prepare("UPDATE order_groups SET status='cancelled', updated_at=NOW() WHERE order_id=?")->execute([$order_id]);
-    $pdo->prepare("INSERT INTO order_tracking (order_id, status, notes, updated_by) VALUES (?,?,?,?)")
-        ->execute([$order_id, 'payment_failed', 'Payment ' . $apiStatus . '. Order cancelled.', $user_id]);
+    try {
+        $pdo->beginTransaction();
+        restoreOrderStock($pdo, $order_id);
 
-    echo json_encode(['status'=>'failed']);
+        $pdo->prepare("UPDATE orders SET payment_status='failed', order_status='payment_failed' WHERE id=?")
+            ->execute([$order_id]);
+        $pdo->prepare("UPDATE order_groups SET status='cancelled', updated_at=NOW() WHERE order_id=?")
+            ->execute([$order_id]);
+        $pdo->prepare("INSERT INTO order_tracking (order_id, status, notes, updated_by) VALUES (?,?,?,?)")
+            ->execute([$order_id, 'payment_failed', 'Payment ' . $apiStatus . '. Order cancelled and stock released.', $user_id]);
+
+        $pdo->commit();
+
+        echo json_encode(['status'=>'failed']);
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        error_log("Payment verify failure-handling error: " . $e->getMessage());
+        echo json_encode(['status'=>'pending']);
+    }
 
 } else {
     echo json_encode(['status'=>'pending']);

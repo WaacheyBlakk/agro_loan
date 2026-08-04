@@ -4,6 +4,7 @@ require_once __DIR__ . '/../src/csrf.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+//cart.php
 require_once __DIR__ . '/../src/db.php';
 
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;

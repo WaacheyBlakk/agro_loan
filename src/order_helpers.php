@@ -87,3 +87,15 @@ if (!function_exists('assertGroupBelongsToBuyerOrder')) {
         return $group;
     }
 }
+
+
+function restoreOrderStock(PDO $pdo, int $orderId): void {
+    $stmt = $pdo->prepare("SELECT produce_id, quantity FROM order_items WHERE order_id = ?");
+    $stmt->execute([$orderId]);
+    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $upd = $pdo->prepare("UPDATE produce_listings SET bags_available = bags_available + ? WHERE id = ?");
+    foreach ($items as $it) {
+        $upd->execute([$it['quantity'], $it['produce_id']]);
+    }
+}

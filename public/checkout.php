@@ -4,9 +4,10 @@ require_once __DIR__ . '/../src/csrf.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+//checkout.php
 require_once __DIR__ . '/../src/db.php';
 
-$user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
+$user_id = $_SESSION['user_id'] ?? $_SESSION['buyer_id'] ?? $_SESSION['id'] ?? null;
 if (!$user_id) { header('Location: login.php'); exit; }
 
 $pdo       = getPDO();
@@ -153,21 +154,18 @@ include 'nav.php';
                         <label class="flex-1 relative cursor-pointer">
                             <input type="radio" name="momo_network" value="MTN" checked class="sr-only peer">
                             <div class="border-2 border-[var(--border)] peer-checked:border-yellow-400 peer-checked:bg-yellow-50 rounded-xl p-3 text-center transition">
-                                <div class="text-2xl mb-1"></div>
                                 <div class="text-xs font-bold text-[var(--text-main)]">MTN MoMo</div>
                             </div>
                         </label>
                         <label class="flex-1 relative cursor-pointer">
                             <input type="radio" name="momo_network" value="Telecel" class="sr-only peer">
                             <div class="border-2 border-[var(--border)] peer-checked:border-red-400 peer-checked:bg-red-50 rounded-xl p-3 text-center transition">
-                                <div class="text-2xl mb-1"></div>
                                 <div class="text-xs font-bold text-[var(--text-main)]">Telecel Cash</div>
                             </div>
                         </label>
                         <label class="flex-1 relative cursor-pointer">
                             <input type="radio" name="momo_network" value="AirtelTigo" class="sr-only peer">
                             <div class="border-2 border-[var(--border)] peer-checked:border-blue-400 peer-checked:bg-blue-50 rounded-xl p-3 text-center transition">
-                                <div class="text-2xl mb-1"></div>
                                 <div class="text-xs font-bold text-[var(--text-main)]">AT Money</div>
                             </div>
                         </label>
@@ -258,11 +256,11 @@ include 'nav.php';
     <div class="bg-[var(--bg-card)] rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl">
         <!-- Spinner -->
         <div id="paySpinner" class="w-16 h-16 border-4 border-[var(--primary-light)] border-t-[var(--primary)] rounded-full animate-spin mx-auto mb-5"></div>
-        <!-- Success icon (hidden by default) -->
+        <!-- Success icon -->
         <div id="paySuccess" class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5 hidden">
             <i class="ri-check-fill text-green-600 text-4xl"></i>
         </div>
-        <!-- Fail icon (hidden by default) -->
+        <!-- Fail icon -->
         <div id="payFail" class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-5 hidden">
             <i class="ri-close-fill text-red-600 text-4xl"></i>
         </div>
@@ -292,7 +290,7 @@ document.getElementById('checkoutForm').addEventListener('submit', async functio
     const btn  = document.getElementById('payBtn');
     const overlay = document.getElementById('paymentOverlay');
 
-    // 1. Reset overlay states completely
+    // Reset overlay states
     document.getElementById('paySpinner').classList.remove('hidden');
     document.getElementById('paySuccess').classList.add('hidden');
     document.getElementById('payFail').classList.add('hidden');
@@ -313,10 +311,11 @@ document.getElementById('checkoutForm').addEventListener('submit', async functio
         const data = await res.json();
 
         if (data.success && data.order_id && data.reference) {
-            // Start polling for payment confirmation
-            pollPayment(data.order_id, data.reference);
+        pollPayment(data.order_id, data.reference);
         } else {
-            showPayFail(data.message || 'Could not initiate payment. Please try again.');
+            // If stock_errors present, show each on its own line
+            const msg = data.stock_errors ? data.stock_errors.join('\n') : (data.message || 'Could not initiate payment. Please try again.');
+            showPayFail(msg);
         }
     } catch (err) {
         showPayFail('Connection error. Please try again.');
@@ -325,7 +324,7 @@ document.getElementById('checkoutForm').addEventListener('submit', async functio
 
 function pollPayment(orderId, reference) {
     let attempts = 0;
-    const maxAttempts = 24; // 2 min at 5s intervals
+    const maxAttempts = 24;
 
     const interval = setInterval(async () => {
         attempts++;
@@ -354,7 +353,7 @@ function showPaySuccess(orderId) {
     document.getElementById('tryAgainBtnContainer').classList.add('hidden');
     document.getElementById('payTitle').textContent = 'Payment Successful!';
     document.getElementById('payMsg').textContent   = 'Your order has been placed and is now being prepared.';
-    setTimeout(() => { window.location.href = `buyer_dashboard.php?tab=orders&order_id=${orderId}`; }, 2500);
+    setTimeout(() => { window.location.href = `orders_success.php?order_id=${orderId}`; }, 2000);
 }
 
 function showPayFail(msg) {
@@ -365,11 +364,9 @@ function showPayFail(msg) {
     document.getElementById('payTitle').textContent = 'Payment Failed';
     document.getElementById('payMsg').textContent   = msg;
 
-    // Show pre-built try again button safely without multiple elements appending
     document.getElementById('tryAgainBtnContainer').classList.remove('hidden');
 }
 
-// Reset button handler to let user close overlay and try again cleanly
 document.getElementById('tryAgainBtn').onclick = () => {
     const overlay = document.getElementById('paymentOverlay');
     overlay.classList.add('hidden');
