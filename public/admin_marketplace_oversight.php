@@ -33,7 +33,7 @@ $errorMessage = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type'])) {
     $intervention = $_POST['intervention_type'];
     $order_id = isset($_POST['order_id']) ? intval($_POST['order_id']) : 0;
-
+    csrf_verify();
     try {
         $pdo->beginTransaction();
 
@@ -692,6 +692,9 @@ $escrowConfig = [
             </a>
         </nav>
         <form action="logout.php" method="POST">
+            <?php if (isset($_SESSION['csrf_token'])): ?>
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+            <?php endif; ?>
             <button class="logout-btn">
                 <i data-feather="log-out"></i>
                 <span>Logout</span>
@@ -934,6 +937,9 @@ $escrowConfig = [
 
                                                 <?php if ($disp['status'] === 'open'): ?>
                                                 <form method="POST" style="margin-top:6px; display:inline-block;">
+                                                    <?php if (isset($_SESSION['csrf_token'])): ?>
+                                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                                    <?php endif; ?>
                                                     <input type="hidden" name="intervention_type" value="review_dispute">
                                                     <input type="hidden" name="order_id" value="<?= $selected_order['id'] ?>">
                                                     <input type="hidden" name="dispute_id" value="<?= $disp['id'] ?>">
@@ -943,6 +949,9 @@ $escrowConfig = [
 
                                                 <?php if (in_array($disp['status'], ['open', 'under_review'])): ?>
                                                     <form method="POST" style="margin-top:8px; border-top:1px dashed #e2e8f0; padding-top:8px;">
+                                                        <?php if (isset($_SESSION['csrf_token'])): ?>
+                                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                                        <?php endif; ?>
                                                         <input type="hidden" name="intervention_type" value="resolve_dispute">
                                                         <input type="hidden" name="order_id" value="<?= $selected_order['id'] ?>">
                                                         <input type="hidden" name="dispute_id" value="<?= $disp['id'] ?>">
@@ -968,6 +977,9 @@ $escrowConfig = [
                                                 <i data-feather="sliders" style="width: 13px; height: 13px;"></i> Escrow Group Override
                                             </h4>
                                             <form method="POST">
+                                                <?php if (isset($_SESSION['csrf_token'])): ?>
+                                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                                <?php endif; ?>
                                                 <input type="hidden" name="intervention_type" value="execute_intervention">
                                                 <input type="hidden" name="group_id" value="<?= $group_id ?>">
 

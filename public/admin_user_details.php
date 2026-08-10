@@ -58,6 +58,7 @@ $fullData = array_merge($user, $profileData);
 
 // Handle Form Action
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_verify();
     // Determine status change based on table type
     if ($user['role'] === 'buyer') {
         $status = ($_POST['action'] === 'approve') ? 'approved' : 'rejected';
@@ -539,6 +540,9 @@ function getStatusColor($status) {
             </div>
 
             <form method="POST" class="action-bar">
+                 <?php if (isset($_SESSION['csrf_token'])): ?>
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                <?php endif; ?>
                 <button name="action" value="approve" class="btn btn-approve" onclick="return confirm('Verify this user?');">
                     <i class="fas fa-check-circle"></i> Approve
                 </button>
