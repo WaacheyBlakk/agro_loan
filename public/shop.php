@@ -157,11 +157,12 @@ function getStarRating($id) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Merriweather:ital,wght@0,300;0,700;1,300&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
@@ -177,6 +178,7 @@ function getStarRating($id) {
     </script>
     <style>
     :root {
+        /* Variables directly synchronized from index.php */
         --primary: #15803d;       
         --primary-dark: #14532d;  
         --accent: #22c55e;        
@@ -187,10 +189,14 @@ function getStarRating($id) {
         --text-muted: #64748b;    
         --border: #e2e8f0;
         --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-        --glass: rgba(255, 255, 255, 0.95); 
+        --glass: rgba(255, 255, 255, 0.85);
+        
         --primary-light: #dcfce7;
+        --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
     }
+
     body.dark {
+        /* Dark Variables directly synchronized from index.php */
         --primary: #22c55e;
         --primary-dark: #4ade80;
         --accent: #15803d;
@@ -200,15 +206,24 @@ function getStarRating($id) {
         --text-muted: #94a3b8;
         --border: #334155;
         --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-        --glass: rgba(15, 23, 42, 0.95);
+        --glass: rgba(15, 23, 42, 0.85);
+        
         --primary-light: #14532d;
     }
+
+    * { box-sizing: border-box; }
+
     body {
         font-family: 'Plus Jakarta Sans', sans-serif;
         background: var(--bg-body);
         color: var(--text-main);
         transition: background 0.3s ease, color 0.3s ease;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
     }
+
     header {
         position: fixed;
         top: 0;
@@ -216,7 +231,7 @@ function getStarRating($id) {
         background: var(--glass);
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
-        padding: 15px 20px; 
+        padding: 15px 5%; 
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -224,10 +239,12 @@ function getStarRating($id) {
         border-bottom: 1px solid var(--border);
         transition: all 0.3s ease;
     }
+
     header.scrolled {
-        padding: 10px 20px;
+        padding: 10px 5%;
         box-shadow: var(--shadow);
     }
+
     .logo-container {
         display: flex;
         align-items: center;
@@ -237,12 +254,14 @@ function getStarRating($id) {
         flex-shrink: 0;
     }
     body.dark .logo-container { color: var(--text-main); }
+
     .logo-container img {
         height: 40px;
         width: 40px;
         border-radius: 8px;
         object-fit: cover;
     }
+
     .logo-container h1 {
         font-size: 1.5rem;
         font-weight: 800;
@@ -252,34 +271,55 @@ function getStarRating($id) {
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
     }
+
     .header-search-container {
         flex-grow: 1;
-        max-w: 600px;
-        margin: 0 30px;
+        max-width: 500px;
+        margin: 0 20px;
         display: none; 
     }
     @media (min-width: 768px) {
         .header-search-container { display: block; }
     }
+
     .header-right {
         display: flex; 
         align-items: center; 
         gap: 15px;
         flex-shrink: 0;
     }
+
     nav {
         display: flex;
         align-items: center;
         gap: 20px;
     }
+
     nav a {
         color: var(--text-main);
         text-decoration: none;
         font-weight: 600;
         font-size: 0.95rem;
         transition: color 0.3s;
+        position: relative;
     }
-    nav a:hover, nav a.active { color: var(--primary); }
+
+    nav a:hover { color: var(--primary); }
+
+    nav a::after {
+        content: '';
+        position: absolute;
+        width: 0;
+        height: 2px;
+        bottom: -4px;
+        left: 0;
+        background-color: var(--primary);
+        transition: width 0.3s;
+    }
+    nav a:hover::after { width: 100%; }
+    nav a.active { color: var(--primary); }
+    nav a.active::after { width: 100%; }
+
     .btn-login {
         padding: 8px 20px;
         border: 2px solid var(--primary);
@@ -291,7 +331,10 @@ function getStarRating($id) {
     .btn-login:hover {
         background: var(--primary);
         color: white !important;
+        text-decoration: none;
     }
+    .btn-login::after { display: none; }
+
     .theme-toggle {
         background: var(--bg-card);
         border: 1px solid var(--border);
@@ -305,11 +348,13 @@ function getStarRating($id) {
         justify-content: center;
         align-items: center;
         transition: 0.3s;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
     .theme-toggle:hover {
         transform: rotate(15deg) scale(1.1);
         border-color: var(--primary);
     }
+
     .mobile-toggle-btn {
         display: none;
         font-size: 1.5rem;
@@ -317,7 +362,9 @@ function getStarRating($id) {
         border: none;
         color: var(--text-main);
         cursor: pointer;
+        margin-left: 10px;
     }
+
     .mobile-menu {
         position: fixed;
         top: 0;
@@ -335,6 +382,15 @@ function getStarRating($id) {
         gap: 20px;
     }
     .mobile-menu.open { right: 0; }
+    .mobile-menu a {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--text-main);
+        text-decoration: none;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
+    }
+
     .overlay {
         position: fixed;
         top: 0;
@@ -348,13 +404,26 @@ function getStarRating($id) {
         transition: 0.3s;
     }
     .overlay.active { opacity: 1; visibility: visible; }
+
     @media (max-width: 992px) {
         nav { display: none; }
         .mobile-toggle-btn { display: block; }
         .header-search-container { margin: 0 10px; }
     }
-    .product-card { transition: all 0.2s ease; background: var(--bg-card); color: var(--text-main); }
-    .product-card:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
+
+    .product-card { 
+        transition: all 0.3s ease; 
+        background: var(--bg-card); 
+        color: var(--text-main); 
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
+    }
+    .product-card:hover { 
+        box-shadow: var(--shadow-lg); 
+        transform: translateY(-3px); 
+        border-color: var(--primary);
+    }
+
     .custom-scrollbar::-webkit-scrollbar { width: 6px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background-color: var(--border); border-radius: 20px; }
@@ -373,7 +442,7 @@ function getStarRating($id) {
     <div class="header-search-container">
         <div class="relative flex w-full">
             <input type="text" id="desktopSearchInput" name="search" value="<?= htmlspecialchars($keyword) ?>" 
-                   class="block w-full pl-4 pr-12 py-2.5 rounded-full border border-[var(--border)] leading-5 bg-[var(--bg-body)] text-[var(--text-main)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition-shadow sm:text-sm" 
+                   class="block w-full pl-4 pr-12 py-2.5 rounded-full border border-[var(--border)] leading-5 bg-[var(--bg-card)] text-[var(--text-main)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition-all sm:text-sm" 
                    placeholder="Search produce instantly...">
             <button type="button" class="absolute right-0 top-0 h-full px-4 text-[var(--primary)]">
                 <i class="ri-search-line text-lg"></i>
@@ -424,14 +493,15 @@ function getStarRating($id) {
         <a href="buyer_dashboard.php">Dashboard</a>
         <a href="logout.php" class="text-red-500">Logout</a>
     <?php else: ?>
-        <a href="buyers_login.php">Login</a>
+        <a href="login.php">Login</a>
+        <a href="register.php">Register</a>
     <?php endif; ?>
 </div>
 
-<div class="w-full px-4 sm:px-6 pt-24 sm:pt-32 pb-8 flex items-start gap-6">
+<div class="w-full px-4 sm:px-6 pt-24 sm:pt-28 pb-8 flex items-start gap-6">
 
     <!-- SIDEBAR FILTERS -->
-    <aside class="hidden md:block w-64 flex-shrink-0 bg-[var(--bg-card)] rounded-md shadow-sm border border-[var(--border)] p-4 sticky top-28 h-[calc(100vh-8rem)] overflow-y-auto custom-scrollbar">
+    <aside class="hidden md:block w-64 flex-shrink-0 bg-[var(--bg-card)] rounded-xl shadow-sm border border-[var(--border)] p-4 sticky top-28 h-[calc(100vh-8rem)] overflow-y-auto custom-scrollbar transition-colors duration-300">
         <div class="flex justify-between items-center mb-4 border-b border-[var(--border)] pb-2">
             <h3 class="font-bold text-[var(--text-main)] uppercase text-xs tracking-wider">Filters</h3>
             <a href="shop.php" class="text-xs text-[var(--primary)] hover:underline">Reset</a>
@@ -442,12 +512,12 @@ function getStarRating($id) {
             <h4 class="font-bold text-sm text-[var(--text-main)] mb-2">Category</h4>
             <div class="space-y-1">
                 <a href="<?= buildUrl(['category' => '']) ?>" 
-                   class="block text-sm px-2 py-1 rounded hover:bg-[var(--primary-light)] transition <?= !$category_id ? 'text-[var(--primary)] font-bold bg-[var(--primary-light)]' : 'text-[var(--text-muted)]' ?>">
+                   class="block text-sm px-2.5 py-1.5 rounded-lg hover:bg-[var(--primary-light)] transition <?= !$category_id ? 'text-[var(--primary)] font-bold bg-[var(--primary-light)]' : 'text-[var(--text-muted)]' ?>">
                     All Products
                 </a>
                 <?php foreach($categories as $c): ?>
                     <a href="<?= buildUrl(['category' => $c['id']]) ?>" 
-                       class="block text-sm px-2 py-1 rounded hover:bg-[var(--primary-light)] transition <?= $category_id == $c['id'] ? 'text-[var(--primary)] font-bold bg-[var(--primary-light)]' : 'text-[var(--text-muted)]' ?>">
+                       class="block text-sm px-2.5 py-1.5 rounded-lg hover:bg-[var(--primary-light)] transition <?= $category_id == $c['id'] ? 'text-[var(--primary)] font-bold bg-[var(--primary-light)]' : 'text-[var(--text-muted)]' ?>">
                         <?= htmlspecialchars($c['name']) ?>
                     </a>
                 <?php endforeach; ?>
@@ -463,11 +533,11 @@ function getStarRating($id) {
                 <?php if($sort_by): ?><input type="hidden" name="sort" value="<?= htmlspecialchars($sort_by) ?>"><?php endif; ?>
                 
                 <div class="flex gap-2 items-center">
-                    <input type="number" name="min_price" placeholder="Min" value="<?= $min_price ?>" class="w-full px-2 py-1 text-sm border border-[var(--border)] rounded bg-[var(--bg-body)] text-[var(--text-main)]">
+                    <input type="number" name="min_price" placeholder="Min" value="<?= $min_price ?>" class="w-full px-2.5 py-1.5 text-sm border border-[var(--border)] rounded-lg bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]">
                     <span class="text-[var(--text-muted)]">-</span>
-                    <input type="number" name="max_price" placeholder="Max" value="<?= $max_price ?>" class="w-full px-2 py-1 text-sm border border-[var(--border)] rounded bg-[var(--bg-body)] text-[var(--text-main)]">
+                    <input type="number" name="max_price" placeholder="Max" value="<?= $max_price ?>" class="w-full px-2.5 py-1.5 text-sm border border-[var(--border)] rounded-lg bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]">
                 </div>
-                <button type="submit" class="w-full bg-[var(--bg-card)] border border-[var(--primary)] text-[var(--primary)] text-xs font-bold py-1.5 rounded uppercase hover:bg-[var(--primary-light)] transition">
+                <button type="submit" class="w-full bg-[var(--bg-card)] border border-[var(--primary)] text-[var(--primary)] text-xs font-bold py-2 rounded-lg uppercase hover:bg-[var(--primary-light)] transition">
                     Apply
                 </button>
             </form>
@@ -478,10 +548,10 @@ function getStarRating($id) {
     <main class="flex-grow w-full">
         
         <!-- Sorting & Produce Counter Bar -->
-        <div class="bg-[var(--bg-card)] p-3 rounded-md shadow-sm border border-[var(--border)] mb-4 flex justify-between items-center flex-wrap gap-2">
+        <div class="bg-[var(--bg-card)] p-3.5 rounded-xl shadow-sm border border-[var(--border)] mb-4 flex justify-between items-center flex-wrap gap-2 transition-colors duration-300">
             <h2 class="font-bold text-[var(--text-main)] text-sm sm:text-base flex items-center gap-2" id="searchTitle">
                 <span><?= $keyword ? 'Search: "'.htmlspecialchars($keyword).'"' : 'All Products' ?></span>
-                <span class="text-xs bg-[var(--primary-light)] text-[var(--primary)] px-2 py-0.5 rounded-full font-bold">
+                <span class="text-xs bg-[var(--primary-light)] text-[var(--primary)] px-2.5 py-0.5 rounded-full font-bold">
                     <?= $total_items ?> <?= $total_items === 1 ? 'produce listed' : 'produces listed' ?>
                 </span>
             </h2>
@@ -494,7 +564,7 @@ function getStarRating($id) {
                     <?php if($min_price): ?><input type="hidden" name="min_price" value="<?= $min_price ?>"><?php endif; ?>
                     <?php if($max_price): ?><input type="hidden" name="max_price" value="<?= $max_price ?>"><?php endif; ?>
                     
-                    <select name="sort" onchange="this.form.submit()" class="border-[var(--border)] text-sm rounded cursor-pointer focus:ring-[var(--primary)] py-1 pl-2 pr-8 bg-[var(--bg-body)] text-[var(--text-main)]">
+                    <select name="sort" onchange="this.form.submit()" class="border border-[var(--border)] text-sm rounded-lg cursor-pointer focus:ring-[var(--primary)] py-1.5 pl-3 pr-8 bg-[var(--bg-body)] text-[var(--text-main)]">
                         <option value="newest" <?= $sort_by == 'newest' ? 'selected' : '' ?>>Newest In</option>
                         <option value="popularity" <?= $sort_by == 'popularity' ? 'selected' : '' ?>>Stock Available</option>
                         <option value="price_asc" <?= $sort_by == 'price_asc' ? 'selected' : '' ?>>Lowest Price</option>
@@ -502,7 +572,7 @@ function getStarRating($id) {
                     </select>
                 </form>
                 
-                <button onclick="toggleFilterDrawer()" class="md:hidden ml-2 p-2 text-[var(--text-main)] bg-[var(--bg-body)] border border-[var(--border)] rounded">
+                <button onclick="toggleFilterDrawer()" class="md:hidden ml-2 p-2 text-[var(--text-main)] bg-[var(--bg-body)] border border-[var(--border)] rounded-lg">
                     <i class="ri-filter-3-line"></i>
                 </button>
             </div>
@@ -521,26 +591,26 @@ function getStarRating($id) {
                             $ratingData = getStarRating($p['id']);
                         ?>
                         
-                        <div class="product-card rounded hover:shadow-lg border border-[var(--border)] relative group flex flex-col h-full">
+                        <div class="product-card rounded-2xl relative group flex flex-col h-full overflow-hidden">
                             
-                            <button onclick="addToWishlistDirect(<?= (int)$p['id'] ?>)" class="absolute top-2 right-2 z-10 w-8 h-8 bg-white/80 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-white shadow-sm transition">
+                            <button onclick="addToWishlistDirect(<?= (int)$p['id'] ?>)" class="absolute top-2 right-2 z-10 w-8 h-8 bg-white/80 dark:bg-slate-800/80 rounded-full flex items-center justify-center text-gray-400 dark:text-gray-300 hover:text-red-500 hover:bg-white dark:hover:bg-slate-700 shadow-sm transition">
                                 <i class="ri-heart-line"></i>
                             </button>
 
                             <!-- Image Container -->
-                            <a href="product_details.php?id=<?= $p['id'] ?>" class="block relative aspect-square overflow-hidden bg-white">
-                                <img src="<?= $imgSrc ?>" alt="<?= htmlspecialchars($p['name']) ?>" class="w-full h-full object-contain mix-blend-multiply p-4 hover:scale-105 transition duration-500">
+                            <a href="product_details.php?id=<?= $p['id'] ?>" class="block relative aspect-square overflow-hidden bg-white dark:bg-slate-800/50">
+                                <img src="<?= $imgSrc ?>" alt="<?= htmlspecialchars($p['name']) ?>" class="w-full h-full object-contain mix-blend-multiply dark:mix-blend-normal p-4 hover:scale-105 transition duration-500">
                                 <?php if(!$inStock): ?>
-                                    <div class="absolute inset-0 bg-white/75 flex items-center justify-center">
-                                        <span class="bg-red-600 text-white text-xs font-bold px-2.5 py-1 rounded shadow">Sold Out</span>
+                                    <div class="absolute inset-0 bg-white/75 dark:bg-slate-900/80 flex items-center justify-center">
+                                        <span class="bg-red-600 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow">Sold Out</span>
                                     </div>
                                 <?php endif; ?>
-                                <div class="absolute bottom-0 left-0 bg-[var(--primary)] text-white text-[10px] px-2 py-0.5 uppercase font-bold tracking-wider">
+                                <div class="absolute bottom-0 left-0 bg-[var(--primary)] text-white text-[10px] px-2 py-0.5 uppercase font-bold tracking-wider rounded-tr-md">
                                     Official Store
                                 </div>
                             </a>
 
-                            <div class="p-3 flex flex-col flex-grow bg-[var(--bg-card)]">
+                            <div class="p-3.5 flex flex-col flex-grow bg-[var(--bg-card)]">
                                 <a href="product_details.php?id=<?= $p['id'] ?>" class="text-sm text-[var(--text-main)] font-medium line-clamp-2 mb-1 hover:underline">
                                     <?= htmlspecialchars($p['name']) ?>
                                 </a>
@@ -549,7 +619,7 @@ function getStarRating($id) {
                                     <div class="font-bold text-lg text-[var(--text-main)]">₵ <?= number_format($p['price_per_bag'], 2) ?></div>
                                     <div class="flex items-center gap-2 text-xs">
                                         <span class="text-[var(--text-muted)] line-through">₵ <?= number_format($p['price_per_bag'] * 1.2, 2) ?></span>
-                                        <span class="text-jumia-orange bg-orange-50 px-1 rounded font-bold">-20%</span>
+                                        <span class="text-jumia-orange bg-orange-50 dark:bg-orange-950/40 dark:text-orange-400 px-1 rounded font-bold">-20%</span>
                                     </div>
                                 </div>
 
@@ -579,18 +649,18 @@ function getStarRating($id) {
                                     <?php if ($user_role === 'farmer' && $current_user_id !== null && (int)$p['farmer_id'] === (int)$current_user_id): ?>
                                         <!-- Farmer can only edit their own listing -->
                                         <a href="edit_produce.php?id=<?= (int)$p['id'] ?>" 
-                                           class="block text-center w-full border border-[var(--border)] text-[var(--text-muted)] text-sm font-bold py-2 rounded hover:bg-[var(--bg-body)]">
+                                           class="block text-center w-full border border-[var(--border)] text-[var(--text-muted)] text-sm font-bold py-2 rounded-xl hover:bg-[var(--bg-body)] transition">
                                             Edit Listing
                                         </a>
                                     <?php else: ?>
                                         <!-- Standard purchase block shown to non-owners and other roles -->
                                         <?php if ($inStock): ?>
                                             <button onclick="addToCartDirect(<?= (int)$p['id'] ?>, this)" 
-                                                    class="w-full bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold py-2 rounded shadow-md uppercase tracking-wide transition transform active:scale-95 flex items-center justify-center gap-1">
+                                                    class="w-full bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold py-2 rounded-xl shadow-md uppercase tracking-wide transition transform active:scale-95 flex items-center justify-center gap-1">
                                                 <i class="ri-shopping-cart-2-line"></i> Add To Cart
                                             </button>
                                         <?php else: ?>
-                                            <button disabled class="w-full bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 text-sm font-bold py-2 rounded cursor-not-allowed uppercase">
+                                            <button disabled class="w-full bg-gray-200 dark:bg-slate-700 text-gray-400 dark:text-gray-500 text-sm font-bold py-2 rounded-xl cursor-not-allowed uppercase">
                                                 Out of Stock
                                             </button>
                                         <?php endif; ?>
@@ -604,9 +674,9 @@ function getStarRating($id) {
                 <!-- Pagination inside the dynamic container -->
                 <?php if ($total_pages > 1): ?>
                 <div class="mt-8 flex justify-center" id="paginationWrapper">
-                    <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                    <nav class="isolate inline-flex -space-x-px rounded-lg shadow-sm" aria-label="Pagination">
                         <?php if ($page > 1): ?>
-                            <a href="<?= buildUrl(['page' => $page - 1]) ?>" class="relative inline-flex items-center rounded-l-md px-2 py-2 text-[var(--text-muted)] ring-1 ring-inset ring-[var(--border)] hover:bg-[var(--bg-body)]">
+                            <a href="<?= buildUrl(['page' => $page - 1]) ?>" class="relative inline-flex items-center rounded-l-lg px-2.5 py-2 text-[var(--text-muted)] ring-1 ring-inset ring-[var(--border)] hover:bg-[var(--bg-body)]">
                                 <i class="ri-arrow-left-s-line"></i>
                             </a>
                         <?php endif; ?>
@@ -618,7 +688,7 @@ function getStarRating($id) {
                         <?php endfor; ?>
 
                         <?php if ($page < $total_pages): ?>
-                            <a href="<?= buildUrl(['page' => $page + 1]) ?>" class="relative inline-flex items-center rounded-r-md px-2 py-2 text-[var(--text-muted)] ring-1 ring-inset ring-[var(--border)] hover:bg-[var(--bg-body)]">
+                            <a href="<?= buildUrl(['page' => $page + 1]) ?>" class="relative inline-flex items-center rounded-r-lg px-2.5 py-2 text-[var(--text-muted)] ring-1 ring-inset ring-[var(--border)] hover:bg-[var(--bg-body)]">
                                 <i class="ri-arrow-right-s-line"></i>
                             </a>
                         <?php endif; ?>
@@ -627,13 +697,13 @@ function getStarRating($id) {
                 <?php endif; ?>
 
             <?php else: ?>
-                <div class="flex flex-col items-center justify-center bg-[var(--bg-card)] rounded-lg py-16 px-4 shadow-sm text-center border border-[var(--border)]">
+                <div class="flex flex-col items-center justify-center bg-[var(--bg-card)] rounded-2xl py-16 px-4 shadow-sm text-center border border-[var(--border)]">
                     <div class="w-20 h-20 bg-[var(--bg-body)] rounded-full flex items-center justify-center mb-4">
                         <i class="ri-search-eye-line text-4xl text-[var(--text-muted)]"></i>
                     </div>
                     <h3 class="text-lg font-bold text-[var(--text-main)]">No produce found</h3>
                     <p class="text-[var(--text-muted)] mb-6">Try refining your filter preferences or search query.</p>
-                    <a href="shop.php" class="bg-[var(--primary)] text-white px-6 py-2 rounded font-bold hover:bg-[var(--primary-dark)] transition">Reset All Filters</a>
+                    <a href="shop.php" class="bg-[var(--primary)] text-white px-6 py-2.5 rounded-full font-bold hover:bg-[var(--primary-dark)] transition">Reset All Filters</a>
                 </div>
             <?php endif; ?>
         </div>
@@ -655,7 +725,7 @@ function getStarRating($id) {
         Cart
     </a>
     <?php endif; ?>
-    <a href="<?= $is_logged ? 'logout.php' : 'buyers_login.php' ?>" class="flex flex-col items-center gap-1 hover:text-[var(--primary)]">
+    <a href="<?= $is_logged ? 'logout.php' : 'login.php' ?>" class="flex flex-col items-center gap-1 hover:text-[var(--primary)]">
         <i class="ri-user-line text-xl"></i> <?= $is_logged ? 'Logout' : 'Account' ?>
     </a>
 </nav>
@@ -690,12 +760,12 @@ function getStarRating($id) {
             <div>
                 <h4 class="font-bold mb-2">Price Range</h4>
                 <div class="flex gap-2">
-                    <input type="number" name="min_price" placeholder="Min" value="<?= $min_price ?>" class="w-full border border-[var(--border)] rounded p-2 bg-[var(--bg-body)]">
-                    <input type="number" name="max_price" placeholder="Max" value="<?= $max_price ?>" class="w-full border border-[var(--border)] rounded p-2 bg-[var(--bg-body)]">
+                    <input type="number" name="min_price" placeholder="Min" value="<?= $min_price ?>" class="w-full border border-[var(--border)] rounded-lg p-2 bg-[var(--bg-body)]">
+                    <input type="number" name="max_price" placeholder="Max" value="<?= $max_price ?>" class="w-full border border-[var(--border)] rounded-lg p-2 bg-[var(--bg-body)]">
                 </div>
             </div>
 
-            <button type="submit" class="w-full bg-[var(--primary)] text-white font-bold py-3 rounded shadow-md hover:bg-[var(--primary-dark)]">Apply Filters</button>
+            <button type="submit" class="w-full bg-[var(--primary)] text-white font-bold py-3 rounded-xl shadow-md hover:bg-[var(--primary-dark)] transition">Apply Filters</button>
         </form>
     </div>
 </aside>
@@ -704,15 +774,18 @@ function getStarRating($id) {
 
 <script>
     const CSRF_TOKEN = "<?= csrf_token() ?>";
-    // --- Dark Mode Logic ---
+    
+    // --- Dark Mode Synchronization Logic matching index.php ---
     const toggleBtn = document.getElementById('themeToggle');
     const icon = toggleBtn.querySelector('i');
     const body = document.body;
 
+    // Check LocalStorage
     if (localStorage.getItem('theme') === 'dark') {
         body.classList.add('dark');
         icon.className = 'ri-sun-line';
     }
+
     toggleBtn.addEventListener('click', () => {
         body.classList.toggle('dark');
         const isDark = body.classList.contains('dark');
@@ -720,7 +793,7 @@ function getStarRating($id) {
         icon.className = isDark ? 'ri-sun-line' : 'ri-moon-line';
     });
 
-    // --- Header Scroll Effect ---
+    // --- Header Scroll Effect matching index.php ---
     window.addEventListener('scroll', () => {
         const header = document.getElementById('mainHeader');
         if (window.scrollY > 50) {
@@ -730,7 +803,7 @@ function getStarRating($id) {
         }
     });
 
-    // --- Mobile Menu ---
+    // --- Mobile Menu matching index.php ---
     const mobileBtn = document.getElementById('mobileToggle');
     const closeBtn = document.getElementById('closeMenu');
     const mobileMenu = document.getElementById('mobileMenu');
@@ -761,7 +834,7 @@ function getStarRating($id) {
         }
     }
 
-    // --- Instantly search as typing logic ---
+    // --- Instant Search Debounce ---
     const desktopSearch = document.getElementById('desktopSearchInput');
     const mobileSearch = document.getElementById('mobileSearchInput');
     let searchDebounceTimer;
@@ -780,7 +853,7 @@ function getStarRating($id) {
     function fetchLiveResults(query) {
         const url = new URL(window.location.href);
         url.searchParams.set('search', query);
-        url.searchParams.delete('page'); // Reset pagination on new search term
+        url.searchParams.delete('page');
 
         fetch(url.toString())
             .then(res => res.text())
@@ -788,14 +861,12 @@ function getStarRating($id) {
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 
-                // Update product grid content
                 const originalContainer = document.getElementById('productGridContainer');
                 const fetchedContainer = doc.getElementById('productGridContainer');
                 if (originalContainer && fetchedContainer) {
                     originalContainer.innerHTML = fetchedContainer.innerHTML;
                 }
 
-                // Update search heading & count
                 const originalTitle = document.getElementById('searchTitle');
                 const fetchedTitle = doc.getElementById('searchTitle');
                 if (originalTitle && fetchedTitle) {
@@ -877,7 +948,7 @@ function getStarRating($id) {
         const colors = type === 'success' ? 'bg-green-600' : 'bg-red-600';
         const icon = type === 'success' ? 'ri-check-line' : 'ri-error-warning-line';
 
-        toast.className = `pointer-events-auto flex items-center gap-3 ${colors} text-white px-6 py-3 rounded shadow-lg transform translate-x-full transition-all duration-300`;
+        toast.className = `pointer-events-auto flex items-center gap-3 ${colors} text-white px-6 py-3 rounded-xl shadow-lg transform translate-x-full transition-all duration-300`;
         toast.innerHTML = `<i class="${icon} text-xl"></i> <span class="font-bold text-sm">${message}</span>`;
         
         container.appendChild(toast);

@@ -16,7 +16,7 @@ if (!csrf_verify_json()) {
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
 
 if (!$user_id) {
-    echo json_encode(['success'=>false,'message'=>'Login required','redirect'=>'buyers_login.php']);
+    echo json_encode(['success'=>false,'message'=>'Login required','redirect'=>'login.php']);
     exit;
 }
 

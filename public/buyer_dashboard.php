@@ -121,7 +121,72 @@ $active_nav = 'dashboard';
 include 'nav.php';
 ?>
 
+<!-- Fonts & RemixIcons -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+    tailwind.config = {
+        darkMode: 'class',
+        theme: {
+            extend: {
+                colors: {
+                    agro: { 50: '#ecfdf5', 100: '#d1fae5', 500: '#22c55e', 600: '#16a34a', 700: '#15803d', 900: '#064e3b' },
+                    jumia: { orange: '#f68b1e', blue: '#264996' } 
+                },
+                fontFamily: {
+                    sans: ['Plus Jakarta Sans', 'sans-serif']
+                }
+            }
+        }
+    }
+</script>
+
 <style>
+:root {
+    /* Variables synchronized directly with index.php & shop.php */
+    --primary: #15803d;       
+    --primary-dark: #14532d;  
+    --accent: #22c55e;        
+    --accent-hover: #16a34a;
+    --bg-body: #f8fafc;       
+    --bg-card: #ffffff;
+    --text-main: #1e293b;     
+    --text-muted: #64748b;    
+    --border: #e2e8f0;
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --glass: rgba(255, 255, 255, 0.85);
+    
+    --primary-light: #dcfce7;
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+body.dark {
+    /* Dark Variables synchronized directly with index.php & shop.php */
+    --primary: #22c55e;
+    --primary-dark: #4ade80;
+    --accent: #15803d;
+    --bg-body: #0f172a;       
+    --bg-card: #1e293b;       
+    --text-main: #f1f5f9;
+    --text-muted: #94a3b8;
+    --border: #334155;
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    --glass: rgba(15, 23, 42, 0.85);
+    
+    --primary-light: #14532d;
+}
+
+body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--bg-body);
+    color: var(--text-main);
+    transition: background 0.3s ease, color 0.3s ease;
+}
+
 .tab-btn { 
     padding: 0.625rem 1rem; 
     font-size: 0.8125rem; 
@@ -137,13 +202,13 @@ include 'nav.php';
 .tab-btn.active { 
     background: var(--primary); 
     color: #fff; 
-    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.15); 
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.2); 
 }
 .tab-btn:not(.active) { 
     color: var(--text-muted); 
 }
 .tab-btn:not(.active):hover { 
-    background: var(--border); 
+    background: var(--primary-light); 
     color: var(--text-main); 
 }
 .step-line { 
@@ -163,7 +228,7 @@ include 'nav.php';
 <div class="pt-24 md:pt-32 pb-24 md:pb-16 min-h-screen px-3 sm:px-6 max-w-6xl mx-auto">
 
     <!-- Header Section -->
-    <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm mb-6 md:mb-8 flex flex-col md:flex-row items-center justify-between gap-5 text-center md:text-left">
+    <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm mb-6 md:mb-8 flex flex-col md:flex-row items-center justify-between gap-5 text-center md:text-left transition-colors duration-300">
         <div class="flex flex-col md:flex-row items-center gap-4">
             <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center text-white text-2xl font-extrabold shadow-md flex-shrink-0">
                 <?= strtoupper(substr($buyer['name'],0,1)) ?>
@@ -183,7 +248,7 @@ include 'nav.php';
     </div>
 
     <!-- Tab Container -->
-    <div class="grid grid-cols-2 md:flex md:flex-row gap-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-1.5 mb-6 md:mb-8 w-full shadow-sm">
+    <div class="grid grid-cols-2 md:flex md:flex-row gap-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-1.5 mb-6 md:mb-8 w-full shadow-sm transition-colors duration-300">
         <button onclick="setTab('overview')"  id="tab-overview"  class="tab-btn <?= $activeTab==='overview'?'active':'' ?>">
             <i class="ri-dashboard-line text-base"></i><span>Overview</span>
         </button>
@@ -210,7 +275,7 @@ include 'nav.php';
                 ['icon'=>'ri-checkbox-circle-line','color'=>'text-purple-600 bg-purple-50 dark:bg-purple-950/40 dark:text-purple-300','label'=>'Completed Delivery','value'=>$stats['delivered']],
             ];
             foreach($cards as $c): ?>
-            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-3 sm:p-5 shadow-sm hover:shadow-md transition-shadow duration-300">
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-3 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300">
                 <div class="flex items-center justify-between mb-2 md:mb-4">
                     <span class="text-[10px] md:text-xs text-[var(--text-muted)] font-bold uppercase tracking-wider"><?= $c['label'] ?></span>
                     <div class="w-8 h-8 md:w-10 md:h-10 rounded-xl <?= $c['color'] ?> flex items-center justify-center flex-shrink-0">
@@ -223,7 +288,7 @@ include 'nav.php';
         </div>
 
         <!-- Recent Activity Section -->
-        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm overflow-hidden">
+        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm overflow-hidden transition-colors duration-300">
             <div class="px-4 py-4 border-b border-[var(--border)] flex justify-between items-center">
                 <h2 class="font-extrabold text-[var(--text-main)] text-base md:text-lg flex items-center gap-2">
                     <span class="w-2.5 h-2.5 rounded-full bg-emerald-600 dark:bg-emerald-400"></span> Recent Orders
@@ -233,17 +298,17 @@ include 'nav.php';
             
             <?php if(empty($orders)): ?>
             <div class="p-12 text-center">
-                <div class="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-900/40 flex items-center justify-center mx-auto mb-4 border border-[var(--border)]">
-                    <i class="ri-shopping-bag-3-line text-2xl text-slate-400 dark:text-slate-300"></i>
+                <div class="w-16 h-16 rounded-full bg-[var(--bg-body)] flex items-center justify-center mx-auto mb-4 border border-[var(--border)]">
+                    <i class="ri-shopping-bag-3-line text-2xl text-[var(--text-muted)]"></i>
                 </div>
                 <p class="font-semibold text-sm text-[var(--text-muted)]">No purchases recorded yet</p>
-                <a href="shop.php" class="inline-block mt-4 bg-[var(--primary-light)] text-[var(--primary)] dark:bg-emerald-950/20 dark:text-emerald-400 px-5 py-2 rounded-xl text-xs font-bold hover:bg-[var(--primary)] hover:text-white transition-all duration-200">Start Shopping</a>
+                <a href="shop.php" class="inline-block mt-4 bg-[var(--primary-light)] text-[var(--primary)] px-5 py-2 rounded-xl text-xs font-bold hover:bg-[var(--primary)] hover:text-white transition-all duration-200">Start Shopping</a>
             </div>
             <?php else: ?>
             <div class="divide-y divide-[var(--border)]">
                 <?php foreach(array_slice($orders,0,5) as $o): ?>
                 <?php $sc = $statusConfig[$o['order_status']] ?? ['label'=>$o['order_status'],'color'=>'bg-gray-50 text-gray-800 border border-gray-200/30 dark:bg-gray-900 dark:text-gray-300','icon'=>'ri-circle-line']; ?>
-                <div class="px-4 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:bg-[var(--primary-light)]/10 transition-all duration-200">
+                <div class="px-4 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:bg-[var(--primary-light)]/20 transition-all duration-200">
                     <div class="flex items-center gap-3 w-full min-w-0">
                         <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 <?= $sc['color'] ?>">
                             <i class="<?= $sc['icon'] ?> text-base"></i>
@@ -254,12 +319,12 @@ include 'nav.php';
                             </div>
                             <div class="text-[11px] text-[var(--text-muted)] mt-0.5 flex items-center gap-1.5 font-medium flex-wrap">
                                 <span><?= $o['item_count'] ?> item<?= $o['item_count']!=1?'s':'' ?></span>
-                                <span class="text-slate-300 dark:text-slate-700">•</span>
+                                <span class="text-[var(--text-muted)]">•</span>
                                 <span><?= date('d M Y', strtotime($o['created_at'])) ?></span>
                             </div>
                         </div>
                     </div>
-                    <div class="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 w-full sm:w-auto border-t sm:border-t-0 border-slate-100 dark:border-slate-800/60 pt-2 sm:pt-0">
+                    <div class="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 w-full sm:w-auto border-t sm:border-t-0 border-[var(--border)] pt-2 sm:pt-0">
                         <div class="text-sm sm:text-base font-extrabold text-[var(--text-main)]">₵<?= number_format($o['total_amount'],2) ?></div>
                         <span class="inline-flex items-center gap-1 text-[9px] md:text-[10px] px-2 py-0.5 md:py-1 rounded-full font-bold uppercase tracking-wider <?= $sc['color'] ?>">
                             <i class="<?= $sc['icon'] ?> text-[9px]"></i> <?= $sc['label'] ?>
@@ -276,8 +341,8 @@ include 'nav.php';
     <div id="panel-orders" class="<?= $activeTab!=='orders'?'hidden':'' ?> space-y-6 animate-fadeIn">
         <?php if(empty($orders)): ?>
         <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-10 md:p-16 text-center shadow-sm">
-            <div class="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-900/40 flex items-center justify-center mx-auto mb-4 border border-[var(--border)]">
-                <i class="ri-shopping-cart-2-line text-2xl text-slate-400 dark:text-slate-300"></i>
+            <div class="w-16 h-16 rounded-full bg-[var(--bg-body)] flex items-center justify-center mx-auto mb-4 border border-[var(--border)]">
+                <i class="ri-shopping-cart-2-line text-2xl text-[var(--text-muted)]"></i>
             </div>
             <h3 class="text-lg font-bold text-[var(--text-main)] mb-1">Your Order Shelf is Empty</h3>
             <p class="text-[var(--text-muted)] text-sm mb-6 max-w-sm mx-auto">Your physical produce shipments will show up here as soon as you place an order.</p>
@@ -302,7 +367,7 @@ include 'nav.php';
             ?>
             <div class="bg-[var(--bg-card)] border-2 <?= $isNew?'border-[var(--primary)] shadow-md':'border-[var(--border)] shadow-sm' ?> rounded-2xl overflow-hidden transition-all duration-300">
                 <!-- Order Header -->
-                <div class="p-4 md:p-5 border-b border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10 flex flex-col sm:flex-row gap-4 justify-between sm:items-center">
+                <div class="p-4 md:p-5 border-b border-[var(--border)] bg-[var(--bg-body)] flex flex-col sm:flex-row gap-4 justify-between sm:items-center">
                     <div>
                         <div class="flex items-center gap-2.5 flex-wrap">
                             <span class="font-black text-[var(--text-main)] text-base md:text-lg">Order ID: #<?= $o['id'] ?></span>
@@ -310,7 +375,7 @@ include 'nav.php';
                         </div>
                         <p class="text-[11px] md:text-xs text-[var(--text-muted)] mt-1.5 font-medium">
                             Date: <span class="text-[var(--text-main)]"><?= date('d M Y, h:i A', strtotime($o['created_at'])) ?></span>
-                            <span class="text-slate-300 dark:text-slate-700 mx-1.5">|</span>
+                            <span class="text-[var(--text-muted)] mx-1.5">|</span>
                             Packages: <span class="text-[var(--text-main)] font-semibold"><?= count($farmerPackages) ?> source vendor(s)</span>
                         </p>
                     </div>
@@ -336,7 +401,7 @@ include 'nav.php';
                     ?>
                     <div class="p-4 md:p-6 bg-[var(--bg-card)] space-y-4">
                         <!-- Package Header / Group Code Meta -->
-                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-[var(--border)]">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-[var(--bg-body)] p-3 rounded-xl border border-[var(--border)]">
                             <div class="flex items-center gap-2">
                                 <span class="w-2 h-2 rounded-full bg-[var(--primary)]"></span>
                                 <span class="text-xs font-bold text-[var(--text-main)]">
@@ -366,16 +431,16 @@ include 'nav.php';
                                 <?php $done = $si <= $stepIndex; $current = $si === $stepIndex; ?>
                                 <div class="flex flex-col items-center flex-shrink-0 z-10">
                                     <div class="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300
-                                        <?= $done ? 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-md shadow-emerald-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-400' ?>
+                                        <?= $done ? 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-md shadow-emerald-500/10' : 'bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-muted)]' ?>
                                         <?= $current ? 'ring-4 ring-emerald-500/20 dark:ring-emerald-500/10 scale-105' : '' ?>">
                                         <i class="<?= $step['icon'] ?> text-sm"></i>
                                     </div>
-                                    <span class="text-[9px] mt-1.5 font-bold uppercase tracking-wide <?= $done?'text-emerald-600 dark:text-emerald-400':'text-slate-400 dark:text-slate-400' ?> text-center w-14">
+                                    <span class="text-[9px] mt-1.5 font-bold uppercase tracking-wide <?= $done?'text-emerald-600 dark:text-emerald-400':'text-[var(--text-muted)]' ?> text-center w-14">
                                         <?= $step['label'] ?>
                                     </span>
                                 </div>
                                 <?php if($si < count($steps)-1): ?>
-                                <div class="step-line <?= $si < $stepIndex?'bg-emerald-600 dark:bg-emerald-500':'bg-slate-200 dark:bg-slate-800' ?> mx-1"></div>
+                                <div class="step-line <?= $si < $stepIndex?'bg-emerald-600 dark:bg-emerald-500':'bg-[var(--border)]' ?> mx-1"></div>
                                 <?php endif; ?>
                                 <?php endforeach; ?>
                             </div>
@@ -387,11 +452,11 @@ include 'nav.php';
                                     <?php $done = $si <= $stepIndex; $current = $si === $stepIndex; ?>
                                     <div class="flex flex-col items-center text-center">
                                         <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300
-                                            <?= $done ? 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-400' ?>
+                                            <?= $done ? 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-sm' : 'bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-muted)]' ?>
                                             <?= $current ? 'ring-2 ring-emerald-500/20 scale-105' : '' ?>">
                                             <i class="<?= $step['icon'] ?> text-[10px]"></i>
                                         </div>
-                                        <span class="text-[7px] mt-1 font-bold uppercase tracking-tight leading-none <?= $done?'text-emerald-600 dark:text-emerald-400':'text-slate-400 dark:text-slate-400' ?>">
+                                        <span class="text-[7px] mt-1 font-bold uppercase tracking-tight leading-none <?= $done?'text-emerald-600 dark:text-emerald-400':'text-[var(--text-muted)]' ?>">
                                             <?= $step['label'] ?>
                                         </span>
                                     </div>
@@ -406,7 +471,7 @@ include 'nav.php';
                             <?php foreach($pkg['items'] as $oi): ?>
                             <?php $img = !empty($oi['photo']) ? "../uploads/produce/".htmlspecialchars($oi['photo']) : "https://via.placeholder.com/60?text=?"; ?>
                             <div class="flex items-center gap-3 md:gap-4 py-3 first:pt-0 last:pb-0">
-                                <div class="w-12 h-12 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900 border border-[var(--border)] flex-shrink-0 flex items-center justify-center p-1">
+                                <div class="w-12 h-12 rounded-xl overflow-hidden bg-white dark:bg-slate-800 border border-[var(--border)] flex-shrink-0 flex items-center justify-center p-1">
                                     <img src="<?= $img ?>" alt="<?= htmlspecialchars($oi['produce_name']) ?>" class="w-full h-full object-cover rounded-lg">
                                 </div>
                                 <div class="flex-grow min-w-0">
@@ -439,11 +504,11 @@ include 'nav.php';
 
                         <!-- Scoped Activity Logs for this Package Group -->
                         <details class="group">
-                            <summary class="text-[11px] text-slate-500 dark:text-slate-400 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 font-bold flex items-center gap-2 transition-all duration-200">
+                            <summary class="text-[11px] text-[var(--text-muted)] cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 font-bold flex items-center gap-2 transition-all duration-200">
                                 <i class="ri-history-line"></i> Activity Logs & History
-                                <i class="ri-arrow-down-s-line text-slate-400 transition ml-auto group-open:rotate-180"></i>
+                                <i class="ri-arrow-down-s-line text-[var(--text-muted)] transition ml-auto group-open:rotate-180"></i>
                             </summary>
-                            <div class="pb-2 pt-3 pl-2 space-y-3 bg-slate-50/20 dark:bg-slate-900/5 rounded-xl border border-dashed border-[var(--border)] mt-2">
+                            <div class="pb-2 pt-3 pl-2 space-y-3 bg-[var(--bg-body)] rounded-xl border border-dashed border-[var(--border)] mt-2">
                                 <?php if(empty($allTrackHistory)): ?>
                                     <p class="text-[10px] text-[var(--text-muted)] italic pl-1">No transaction status updates logged yet.</p>
                                 <?php else: ?>
@@ -465,7 +530,7 @@ include 'nav.php';
                 </div>
 
                 <!-- Shipping Metadata & Global Actions -->
-                <div class="px-4 py-4 flex flex-col sm:flex-row gap-4 justify-between sm:items-center border-t border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10">
+                <div class="px-4 py-4 flex flex-col sm:flex-row gap-4 justify-between sm:items-center border-t border-[var(--border)] bg-[var(--bg-body)]">
                     <div class="text-[11px] md:text-xs text-[var(--text-muted)] flex items-start gap-2 max-w-md w-full">
                         <i class="ri-map-pin-line text-emerald-600 dark:text-emerald-400 text-sm mt-0.5 flex-shrink-0"></i>
                         <div class="min-w-0">
@@ -490,7 +555,7 @@ include 'nav.php';
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
 
             <!-- Profile Overview Card -->
-            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm flex flex-col items-center justify-between text-center self-start">
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm flex flex-col items-center justify-between text-center self-start transition-colors duration-300">
                 <div class="w-full">
                     <div class="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center text-white text-3xl md:text-4xl font-extrabold mx-auto mb-4 shadow-md relative">
                         <?= strtoupper(substr($buyer['name'],0,1)) ?>
@@ -519,18 +584,18 @@ include 'nav.php';
             </div>
 
             <!-- Profile Form Column -->
-            <div class="lg:col-span-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 md:p-8 shadow-sm">
+            <div class="lg:col-span-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 md:p-8 shadow-sm transition-colors duration-300">
                 <h2 class="font-extrabold text-base md:text-lg text-[var(--text-main)] mb-6 flex items-center gap-2">
                     <i class="ri-user-settings-line text-emerald-600 dark:text-emerald-400 text-lg md:text-xl"></i> Personal Settings
                 </h2>
 
                 <?php if($profileError): ?>
-                <div class="mb-5 p-4 bg-red-50 dark:bg-red-950/10 border border-red-200/50 rounded-xl text-red-700 dark:text-red-400 text-sm flex items-center gap-2">
+                <div class="mb-5 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200/50 rounded-xl text-red-700 dark:text-red-400 text-sm flex items-center gap-2">
                     <i class="ri-error-warning-line text-red-600 dark:text-red-400"></i> <?= htmlspecialchars($profileError) ?>
                 </div>
                 <?php endif; ?>
                 <?php if($profileSuccess): ?>
-                <div class="mb-5 p-4 bg-emerald-50 dark:bg-emerald-950/10 border border-emerald-200/50 rounded-xl text-emerald-700 dark:text-emerald-400 text-sm flex items-center gap-2">
+                <div class="mb-5 p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/50 rounded-xl text-emerald-700 dark:text-emerald-400 text-sm flex items-center gap-2">
                     <i class="ri-checkbox-circle-line text-emerald-600 dark:text-emerald-400"></i> <?= htmlspecialchars($profileSuccess) ?>
                 </div>
                 <?php endif; ?>
@@ -546,7 +611,7 @@ include 'nav.php';
                         <div>
                             <label class="block text-[10px] md:text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Email Address (Read-only)</label>
                             <input type="email" value="<?= htmlspecialchars($buyer['email']??'') ?>" disabled
-                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-base md:text-sm bg-slate-50 dark:bg-slate-900/60 text-[var(--text-muted)] cursor-not-allowed">
+                                class="w-full border border-[var(--border)] rounded-xl px-4 py-3 text-base md:text-sm bg-[var(--bg-body)] opacity-60 text-[var(--text-muted)] cursor-not-allowed">
                         </div>
                         <div>
                             <label class="block text-[10px] md:text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Phone Contact</label>
@@ -586,26 +651,31 @@ include 'nav.php';
 </div>
 
 <!-- Mobile Bottom Nav -->
-<nav class="md:hidden fixed bottom-0 left-0 w-full bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-50 flex justify-between items-center px-6 py-2.5 text-[10px] font-bold tracking-wide uppercase shadow-2xl transition-colors duration-200">
-    <a href="index.php" class="flex flex-col items-center gap-1 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition">
+<nav class="md:hidden fixed bottom-0 left-0 w-full bg-[var(--bg-card)] border-t border-[var(--border)] z-50 flex justify-between items-center px-6 py-2.5 text-[10px] font-bold tracking-wide uppercase shadow-2xl transition-colors duration-200">
+    <a href="index.php" class="flex flex-col items-center gap-1 text-[var(--text-muted)] hover:text-[var(--primary)] transition">
         <i class="ri-home-4-line text-xl transition"></i>
         <span>Home</span>
     </a>
-    <a href="shop.php" class="flex flex-col items-center gap-1 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition">
+    <a href="shop.php" class="flex flex-col items-center gap-1 text-[var(--text-muted)] hover:text-[var(--primary)] transition">
         <i class="ri-store-2-line text-xl transition"></i>
         <span>Shop</span>
     </a>
-    <a href="wishlist.php" class="flex flex-col items-center gap-1 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition">
+    <a href="wishlist.php" class="flex flex-col items-center gap-1 text-[var(--text-muted)] hover:text-[var(--primary)] transition">
         <i class="ri-heart-3-line text-xl transition"></i>
         <span>Saved</span>
     </a>
-    <a href="buyer_dashboard.php" class="flex flex-col items-center gap-1 text-emerald-600 dark:text-emerald-400 transition">
+    <a href="buyer_dashboard.php" class="flex flex-col items-center gap-1 text-[var(--primary)] transition">
         <i class="ri-user-fill text-xl transition"></i>
         <span>Account</span>
     </a>
 </nav>
 
 <script>
+// LocalStorage Theme sync
+if (localStorage.getItem('theme') === 'dark') {
+    document.body.classList.add('dark');
+}
+
 const csrfToken = '<?= $_SESSION['csrf_token'] ?? (function_exists('get_csrf_token') ? get_csrf_token() : (function_exists('csrf_token') ? csrf_token() : '')) ?>';
 
 if (typeof showToast !== 'function') {

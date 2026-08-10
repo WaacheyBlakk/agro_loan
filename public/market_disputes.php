@@ -218,17 +218,84 @@ $active_nav = 'dashboard';
 include 'nav.php';
 ?>
 
+<!-- Fonts & RemixIcons -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+    tailwind.config = {
+        darkMode: 'class',
+        theme: {
+            extend: {
+                colors: {
+                    agro: { 50: '#ecfdf5', 100: '#d1fae5', 500: '#22c55e', 600: '#16a34a', 700: '#15803d', 900: '#064e3b' },
+                    jumia: { orange: '#f68b1e', blue: '#264996' } 
+                },
+                fontFamily: {
+                    sans: ['Plus Jakarta Sans', 'sans-serif']
+                }
+            }
+        }
+    }
+</script>
+
+<style>
+:root {
+    /* Variables synchronized directly with index.php, shop.php & buyer_dashboard.php */
+    --primary: #15803d;       
+    --primary-dark: #14532d;  
+    --accent: #22c55e;        
+    --accent-hover: #16a34a;
+    --bg-body: #f8fafc;       
+    --bg-card: #ffffff;
+    --text-main: #1e293b;     
+    --text-muted: #64748b;    
+    --border: #e2e8f0;
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --glass: rgba(255, 255, 255, 0.85);
+    
+    --primary-light: #dcfce7;
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+body.dark {
+    /* Dark Variables synchronized directly with index.php, shop.php & buyer_dashboard.php */
+    --primary: #22c55e;
+    --primary-dark: #4ade80;
+    --accent: #15803d;
+    --bg-body: #0f172a;       
+    --bg-card: #1e293b;       
+    --text-main: #f1f5f9;
+    --text-muted: #94a3b8;
+    --border: #334155;
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    --glass: rgba(15, 23, 42, 0.85);
+    
+    --primary-light: #14532d;
+}
+
+body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--bg-body);
+    color: var(--text-main);
+    transition: background 0.3s ease, color 0.3s ease;
+}
+</style>
+
 <div class="pt-28 md:pt-32 pb-16 min-h-screen px-4 sm:px-6 max-w-6xl mx-auto">
     
     <!-- Top breadcrumb / Navigation -->
     <div class="mb-6">
-        <a href="<?= $user_role === 'farmer' ? 'seller_dashboard.php' : 'buyer_dashboard.php' ?>" class="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 hover:text-[var(--primary)] font-semibold transition">
+        <a href="<?= $user_role === 'farmer' ? 'seller_dashboard.php' : 'buyer_dashboard.php' ?>" class="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--primary)] font-semibold transition">
             <i class="ri-arrow-left-line"></i> Back to Dashboard
         </a>
     </div>
 
     <!-- Page Header -->
-    <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 md:p-8 shadow-sm mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 md:p-8 shadow-sm mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-colors duration-300">
         <div>
             <h1 class="text-2xl font-black text-[var(--text-main)] tracking-tight flex items-center gap-2">
                 <i class="ri-scales-3-line text-[var(--primary)] text-3xl"></i> Dispute Resolution Center
@@ -261,9 +328,9 @@ include 'nav.php';
         </h2>
 
         <?php if (empty($disputes)): ?>
-        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-16 text-center shadow-sm">
-            <div class="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-900/40 flex items-center justify-center mx-auto mb-4">
-                <i class="ri-shield-check-line text-2xl text-slate-400 dark:text-slate-500"></i>
+        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-16 text-center shadow-sm transition-colors duration-300">
+            <div class="w-16 h-16 rounded-full bg-[var(--bg-body)] flex items-center justify-center mx-auto mb-4 border border-[var(--border)]">
+                <i class="ri-shield-check-line text-2xl text-[var(--text-muted)]"></i>
             </div>
             <h3 class="text-lg font-bold text-[var(--text-main)] mb-1">Clean Record</h3>
             <p class="text-[var(--text-muted)] text-sm max-w-sm mx-auto">There are currently no active or historic disputes linked to your user account profile.</p>
@@ -271,7 +338,7 @@ include 'nav.php';
         <?php else: ?>
             <div class="grid grid-cols-1 gap-6">
                 <?php foreach ($disputes as $d): ?>
-                <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm">
+                <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm transition-colors duration-300">
                     <div class="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-4 mb-4">
                         <div>
                             <div class="flex items-center gap-3 flex-wrap">
@@ -309,13 +376,13 @@ include 'nav.php';
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                         <!-- Buyer Segment -->
-                        <div class="bg-slate-100/80 dark:bg-slate-900/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <div class="bg-[var(--bg-body)] p-4 rounded-xl border border-[var(--border)]">
                             <h4 class="text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-1.5 text-blue-700 dark:text-blue-400">
                                 <i class="ri-user-shared-line"></i> Buyer's Case & Evidence
                             </h4>
                             
                             <?php if ($d['initiator_role'] === 'buyer'): ?>
-                                <div class="mb-4 p-3 bg-white dark:bg-slate-950/40 rounded-lg border border-slate-200/60 dark:border-slate-800/60 text-xs shadow-sm">
+                                <div class="mb-4 p-3 bg-[var(--bg-card)] rounded-lg border border-[var(--border)] text-xs shadow-sm">
                                     <span class="font-bold block text-[var(--text-muted)] uppercase tracking-wider text-[9px] mb-1">Primary Statement (Initiator)</span>
                                     <p class="text-[var(--text-main)] leading-relaxed italic">"<?= nl2br(htmlspecialchars($d['description'])) ?>"</p>
                                 </div>
@@ -326,15 +393,15 @@ include 'nav.php';
                             <?php else: ?>
                                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                     <?php foreach ($buyer_evidences as $ev): ?>
-                                        <div class="group relative rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-100 dark:bg-slate-900 p-1">
+                                        <div class="group relative rounded-xl border border-[var(--border)] overflow-hidden bg-[var(--bg-card)] p-1">
                                             <img src="../uploads/disputes/<?= htmlspecialchars($ev['file_path']) ?>" alt="Buyer Evidence" class="w-full aspect-square object-cover rounded-lg">
-                                            <div class="absolute inset-0 bg-white/95 dark:bg-slate-950/95 opacity-0 group-hover:opacity-100 transition-all duration-200 flex flex-col items-center justify-center p-3 text-center text-[11px] text-slate-800 dark:text-slate-100 backdrop-blur-xs">
+                                            <div class="absolute inset-0 bg-[var(--bg-card)]/95 opacity-0 group-hover:opacity-100 transition-all duration-200 flex flex-col items-center justify-center p-3 text-center text-[11px] text-[var(--text-main)] backdrop-blur-xs">
                                                 <?php if (!empty($ev['notes'])): ?>
-                                                    <p class="italic w-full mb-2 bg-slate-50 dark:bg-slate-900/60 p-2 rounded max-h-[60px] overflow-y-auto text-xs leading-snug border border-slate-100 dark:border-slate-800/80">
+                                                    <p class="italic w-full mb-2 bg-[var(--bg-body)] p-2 rounded max-h-[60px] overflow-y-auto text-xs leading-snug border border-[var(--border)]">
                                                         <strong class="text-amber-700 dark:text-amber-400">Note:</strong> <?= htmlspecialchars($ev['notes']) ?>
                                                     </p>
                                                 <?php else: ?>
-                                                    <p class="italic mb-2 text-slate-400 dark:text-slate-500">No notes attached.</p>
+                                                    <p class="italic mb-2 text-[var(--text-muted)]">No notes attached.</p>
                                                 <?php endif; ?>
                                                 <div class="flex items-center gap-3 mt-1">
                                                     <a href="../uploads/disputes/<?= htmlspecialchars($ev['file_path']) ?>" target="_blank" class="text-blue-600 dark:text-sky-400 hover:underline font-bold">View File</a>
@@ -356,13 +423,13 @@ include 'nav.php';
                         </div>
 
                         <!-- Farmer Segment -->
-                        <div class="bg-slate-100/80 dark:bg-slate-900/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <div class="bg-[var(--bg-body)] p-4 rounded-xl border border-[var(--border)]">
                             <h4 class="text-xs font-black uppercase tracking-wider mb-3 flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
                                 <i class="ri-user-received-line"></i> Farmer's Case & Evidence
                             </h4>
                             
                             <?php if ($d['initiator_role'] === 'farmer'): ?>
-                                <div class="mb-4 p-3 bg-white dark:bg-slate-950/40 rounded-lg border border-slate-200/60 dark:border-slate-800/60 text-xs shadow-sm">
+                                <div class="mb-4 p-3 bg-[var(--bg-card)] rounded-lg border border-[var(--border)] text-xs shadow-sm">
                                     <span class="font-bold block text-[var(--text-muted)] uppercase tracking-wider text-[9px] mb-1">Primary Statement (Initiator)</span>
                                     <p class="text-[var(--text-main)] leading-relaxed italic">"<?= nl2br(htmlspecialchars($d['description'])) ?>"</p>
                                 </div>
@@ -373,15 +440,15 @@ include 'nav.php';
                             <?php else: ?>
                                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                     <?php foreach ($farmer_evidences as $ev): ?>
-                                        <div class="group relative rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-100 dark:bg-slate-900 p-1">
+                                        <div class="group relative rounded-xl border border-[var(--border)] overflow-hidden bg-[var(--bg-card)] p-1">
                                             <img src="../uploads/disputes/<?= htmlspecialchars($ev['file_path']) ?>" alt="Farmer Evidence" class="w-full aspect-square object-cover rounded-lg">
-                                            <div class="absolute inset-0 bg-white/95 dark:bg-slate-950/95 opacity-0 group-hover:opacity-100 transition-all duration-200 flex flex-col items-center justify-center p-3 text-center text-[11px] text-slate-800 dark:text-slate-100 backdrop-blur-xs">
+                                            <div class="absolute inset-0 bg-[var(--bg-card)]/95 opacity-0 group-hover:opacity-100 transition-all duration-200 flex flex-col items-center justify-center p-3 text-center text-[11px] text-[var(--text-main)] backdrop-blur-xs">
                                                 <?php if (!empty($ev['notes'])): ?>
-                                                    <p class="italic w-full mb-2 bg-slate-50 dark:bg-slate-900/60 p-2 rounded max-h-[60px] overflow-y-auto text-xs leading-snug border border-slate-100 dark:border-slate-800/80">
+                                                    <p class="italic w-full mb-2 bg-[var(--bg-body)] p-2 rounded max-h-[60px] overflow-y-auto text-xs leading-snug border border-[var(--border)]">
                                                         <strong class="text-amber-700 dark:text-amber-400">Note:</strong> <?= htmlspecialchars($ev['notes']) ?>
                                                     </p>
                                                 <?php else: ?>
-                                                    <p class="italic mb-2 text-slate-400 dark:text-slate-500">No notes attached.</p>
+                                                    <p class="italic mb-2 text-[var(--text-muted)]">No notes attached.</p>
                                                 <?php endif; ?>
                                                 <div class="flex items-center gap-3 mt-1">
                                                     <a href="../uploads/disputes/<?= htmlspecialchars($ev['file_path']) ?>" target="_blank" class="text-blue-600 dark:text-sky-400 hover:underline font-bold">View File</a>
@@ -405,7 +472,7 @@ include 'nav.php';
 
                     <!-- Supplemental Form (Active Cases Only) -->
                     <?php if (in_array($d['status'], ['open', 'under_review'])): ?>
-                    <details class="border-t border-slate-200 dark:border-slate-800 pt-4 group">
+                    <details class="border-t border-[var(--border)] pt-4 group">
                         <summary class="text-xs font-bold text-[var(--primary)] cursor-pointer hover:underline flex items-center gap-1 select-none">
                             <i class="ri-add-circle-line text-sm"></i> Submit Additional Evidence
                         </summary>
@@ -417,11 +484,11 @@ include 'nav.php';
                             <input type="hidden" name="dispute_id" value="<?= $d['id'] ?>">
                             <div>
                                 <label class="block text-xs font-bold text-[var(--text-muted)] uppercase mb-1">Select Images *</label>
-                                <input type="file" name="evidence[]" multiple required accept="image/*" class="w-full text-sm text-slate-500 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border file:border-slate-200 dark:file:border-slate-800 file:text-xs file:font-semibold file:bg-slate-50 file:text-slate-700 dark:file:bg-slate-900 dark:file:text-slate-300 hover:file:bg-slate-100 dark:hover:file:bg-slate-800 file:transition cursor-pointer">
+                                <input type="file" name="evidence[]" multiple required accept="image/*" class="w-full text-sm text-[var(--text-muted)] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border file:border-[var(--border)] file:text-xs file:font-semibold file:bg-[var(--bg-body)] file:text-[var(--text-main)] hover:file:bg-[var(--primary-light)] file:transition cursor-pointer">
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-[var(--text-muted)] uppercase mb-1">Reason / Clarification Note</label>
-                                <input type="text" name="notes" placeholder="e.g., Detailed image displaying quality metrics variation" class="w-full border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 text-[var(--text-main)] dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-[var(--primary)]">
+                                <input type="text" name="notes" placeholder="e.g., Detailed image displaying quality metrics variation" class="w-full border border-[var(--border)] rounded-xl px-3 py-2 text-xs bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]">
                             </div>
                             <button type="submit" name="add_evidence" class="bg-[var(--primary)] text-white text-xs px-4 py-2 rounded-xl font-bold hover:bg-[var(--primary-dark)] transition">
                                 Upload Evidences
@@ -434,7 +501,7 @@ include 'nav.php';
                     <?php if ($d['status'] === 'resolved' || $d['status'] === 'dismissed'): ?>
                     <?php 
                         $decisionBg = $d['status'] === 'resolved' 
-                            ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/15 dark:border-emerald-800/40 dark:text-emerald-100' 
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-800/40 dark:text-emerald-300' 
                             : 'bg-slate-100 border-slate-300 text-slate-800 dark:bg-slate-900/40 dark:border-slate-800 dark:text-slate-200';
                     ?>
                     <div class="mt-4 p-5 rounded-xl border <?= $decisionBg ?>">
@@ -442,7 +509,7 @@ include 'nav.php';
                             <i class="ri-checkbox-circle-line text-lg"></i> Resolution Decision (<?= ucfirst($d['status']) ?>)
                         </div>
                         <p class="text-xs opacity-85 mb-3">Processed on: <?= date('d M Y, h:i A', strtotime($d['decision_date'])) ?></p>
-                        <div class="text-sm italic p-4 rounded-lg bg-white/80 dark:bg-slate-950/50 border border-slate-200/50 dark:border-slate-800/50 leading-relaxed font-medium">
+                        <div class="text-sm italic p-4 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] leading-relaxed font-medium text-[var(--text-main)]">
                             "<?= nl2br(htmlspecialchars($d['decision'] ?? 'No formal statement submitted.')) ?>"
                         </div>
                     </div>
@@ -457,8 +524,8 @@ include 'nav.php';
 
 <!-- FILE NEW DISPUTE MODAL -->
 <div id="new-dispute-modal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-xl relative animate-fadeIn text-slate-900 dark:text-slate-100">
-        <button onclick="document.getElementById('new-dispute-modal').classList.add('hidden')" class="absolute top-4 right-4 text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition text-xl">
+    <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl max-w-xl w-full p-6 shadow-xl relative animate-fadeIn text-[var(--text-main)] transition-colors duration-300">
+        <button onclick="document.getElementById('new-dispute-modal').classList.add('hidden')" class="absolute top-4 right-4 text-[var(--text-muted)] hover:text-[var(--text-main)] transition text-xl">
             <i class="ri-close-line"></i>
         </button>
         <h3 class="text-lg font-bold mb-1">File Transaction Dispute</h3>
@@ -472,7 +539,7 @@ include 'nav.php';
             
             <div>
                 <label class="block text-xs font-bold text-[var(--text-muted)] uppercase mb-1">Linked Order ID *</label>
-                <select name="group_id" required class="w-full border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-[var(--primary)]">
+                <select name="group_id" required class="w-full border border-[var(--border)] rounded-xl px-3 py-2.5 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]">
                     <option value="">-- Choose Order --</option>
                     <?php foreach ($eligibleGroups as $eg): ?>
                         <option value="<?= $eg['id'] ?>"><?= htmlspecialchars($eg['group_code']) ?> — <?= htmlspecialchars($eg['farmer_name'] ?? $eg['buyer_name']) ?> (₵<?= number_format($eg['subtotal'], 2) ?>)</option>
@@ -482,21 +549,21 @@ include 'nav.php';
 
             <div>
                 <label class="block text-xs font-bold text-[var(--text-muted)] uppercase mb-1">Issue Overview Title *</label>
-                <input type="text" name="title" required placeholder="e.g., Damp/spoiled maize kernel sack delivery" class="w-full border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-[var(--primary)]">
+                <input type="text" name="title" required placeholder="e.g., Damp/spoiled maize kernel sack delivery" class="w-full border border-[var(--border)] rounded-xl px-3 py-2.5 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]">
             </div>
 
             <div>
                 <label class="block text-xs font-bold text-[var(--text-muted)] uppercase mb-1">Detailed Explanation *</label>
-                <textarea name="description" rows="4" required placeholder="Describe what went wrong in complete detail. Highlight date, delivery driver terms, quantities mismatch..." class="w-full border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-[var(--primary)] resize-none"></textarea>
+                <textarea name="description" rows="4" required placeholder="Describe what went wrong in complete detail. Highlight date, delivery driver terms, quantities mismatch..." class="w-full border border-[var(--border)] rounded-xl px-3 py-2.5 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)] resize-none"></textarea>
             </div>
 
             <div>
                 <label class="block text-xs font-bold text-[var(--text-muted)] uppercase mb-1">Support Files / Photos (Multiple Allowed)</label>
-                <input type="file" name="evidence[]" multiple accept="image/*" class="w-full text-sm text-slate-500 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border file:border-slate-200 dark:file:border-slate-800 file:text-xs file:font-semibold file:bg-slate-50 file:text-slate-700 dark:file:bg-slate-900 dark:file:text-slate-300 hover:file:bg-slate-100 dark:hover:file:bg-slate-800 file:transition cursor-pointer">
+                <input type="file" name="evidence[]" multiple accept="image/*" class="w-full text-sm text-[var(--text-muted)] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border file:border-[var(--border)] file:text-xs file:font-semibold file:bg-[var(--bg-body)] file:text-[var(--text-main)] hover:file:bg-[var(--primary-light)] file:transition cursor-pointer">
             </div>
 
             <div class="flex justify-end gap-2 pt-2">
-                <button type="button" onclick="document.getElementById('new-dispute-modal').classList.add('hidden')" class="border border-slate-200 dark:border-slate-800 text-[var(--text-muted)] px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-900 transition">
+                <button type="button" onclick="document.getElementById('new-dispute-modal').classList.add('hidden')" class="border border-[var(--border)] text-[var(--text-muted)] px-4 py-2 rounded-xl text-xs font-bold hover:bg-[var(--bg-body)] transition">
                     Cancel
                 </button>
                 <button type="submit" class="bg-red-600 dark:bg-red-500 hover:bg-red-700 dark:hover:bg-red-600 text-white px-5 py-2 rounded-xl text-xs font-bold transition">
@@ -506,6 +573,13 @@ include 'nav.php';
         </form>
     </div>
 </div>
+
+<script>
+// Sync dark mode setting from localStorage
+if (localStorage.getItem('theme') === 'dark') {
+    document.body.classList.add('dark');
+}
+</script>
 
 </body>
 </html>

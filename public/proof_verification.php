@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../src/security_headers.php';
 require_once __DIR__ . '/../src/csrf.php';
-
+//proof_verification.php
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }

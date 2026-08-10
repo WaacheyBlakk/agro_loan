@@ -67,16 +67,83 @@ $active_nav = 'cart';
 include 'nav.php';
 ?>
 
+<!-- Fonts & RemixIcons -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+    tailwind.config = {
+        darkMode: 'class',
+        theme: {
+            extend: {
+                colors: {
+                    agro: { 50: '#ecfdf5', 100: '#d1fae5', 500: '#22c55e', 600: '#16a34a', 700: '#15803d', 900: '#064e3b' },
+                    jumia: { orange: '#f68b1e', blue: '#264996' } 
+                },
+                fontFamily: {
+                    sans: ['Plus Jakarta Sans', 'sans-serif']
+                }
+            }
+        }
+    }
+</script>
+
+<style>
+:root {
+    /* Variables synchronized directly with index.php, shop.php, buyer_dashboard.php, etc. */
+    --primary: #15803d;       
+    --primary-dark: #14532d;  
+    --accent: #22c55e;        
+    --accent-hover: #16a34a;
+    --bg-body: #f8fafc;       
+    --bg-card: #ffffff;
+    --text-main: #1e293b;     
+    --text-muted: #64748b;    
+    --border: #e2e8f0;
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --glass: rgba(255, 255, 255, 0.85);
+    
+    --primary-light: #dcfce7;
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+body.dark {
+    /* Dark Variables synchronized directly with index.php, shop.php, buyer_dashboard.php, etc. */
+    --primary: #22c55e;
+    --primary-dark: #4ade80;
+    --accent: #15803d;
+    --bg-body: #0f172a;       
+    --bg-card: #1e293b;       
+    --text-main: #f1f5f9;
+    --text-muted: #94a3b8;
+    --border: #334155;
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    --glass: rgba(15, 23, 42, 0.85);
+    
+    --primary-light: #14532d;
+}
+
+body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--bg-body);
+    color: var(--text-main);
+    transition: background 0.3s ease, color 0.3s ease;
+}
+</style>
+
 <div class="pt-24 pb-12 min-h-screen px-4 md:px-8 max-w-5xl mx-auto">
     <div class="mb-6">
-        <a href="cart.php" class="text-sm text-[var(--text-muted)] hover:text-[var(--primary)] flex items-center gap-1 w-fit">
+        <a href="cart.php" class="text-sm text-[var(--text-muted)] hover:text-[var(--primary)] flex items-center gap-1 w-fit transition">
             <i class="ri-arrow-left-line"></i> Back to Cart
         </a>
         <h1 class="text-2xl font-bold text-[var(--text-main)] mt-2">Checkout</h1>
     </div>
 
     <?php if($error): ?>
-    <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2">
+    <div class="mb-4 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-xl text-red-700 dark:text-red-400 text-sm flex items-center gap-2">
         <i class="ri-error-warning-line text-xl"></i> <?= htmlspecialchars($error) ?>
     </div>
     <?php endif; ?>
@@ -94,7 +161,7 @@ include 'nav.php';
         </div>
         <div class="h-px w-8 bg-[var(--border)]"></div>
         <div class="flex items-center gap-2">
-            <span class="w-8 h-8 rounded-full bg-[var(--border)] text-[var(--text-muted)] flex items-center justify-center text-xs font-bold">3</span>
+            <span class="w-8 h-8 rounded-full bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-muted)] flex items-center justify-center text-xs font-bold">3</span>
             <span class="text-sm font-semibold text-[var(--text-muted)] hidden sm:block">Confirmation</span>
         </div>
     </div>
@@ -108,7 +175,7 @@ include 'nav.php';
             <div class="lg:col-span-3 space-y-5">
 
                 <!-- Delivery Details Card -->
-                <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm">
+                <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm transition-colors duration-300">
                     <h2 class="text-base font-bold text-[var(--text-main)] mb-4 flex items-center gap-2">
                         <i class="ri-map-pin-line text-[var(--primary)]"></i> Delivery Details
                     </h2>
@@ -117,34 +184,34 @@ include 'nav.php';
                             <label class="block text-xs font-semibold text-[var(--text-muted)] mb-1">Full Name *</label>
                             <input type="text" name="delivery_name" required
                                 value="<?= htmlspecialchars($buyer['name']??'') ?>"
-                                class="w-full border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                                class="w-full border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition"
                                 placeholder="Your full name">
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-[var(--text-muted)] mb-1">Phone Number *</label>
                             <input type="tel" name="delivery_phone" required
                                 value="<?= htmlspecialchars($buyer['phone']??'') ?>"
-                                class="w-full border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                                class="w-full border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition"
                                 placeholder="0XX XXX XXXX">
                         </div>
                         <div class="sm:col-span-2">
                             <label class="block text-xs font-semibold text-[var(--text-muted)] mb-1">Delivery Address *</label>
                             <input type="text" name="delivery_address" required
                                 value="<?= htmlspecialchars($buyer['location']??'') ?>"
-                                class="w-full border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                                class="w-full border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition"
                                 placeholder="Town / District / Region">
                         </div>
                         <div class="sm:col-span-2">
                             <label class="block text-xs font-semibold text-[var(--text-muted)] mb-1">Order Notes <span class="font-normal">(optional)</span></label>
                             <textarea name="buyer_notes" rows="2"
-                                class="w-full border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent resize-none"
+                                class="w-full border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent resize-none transition"
                                 placeholder="Any special instructions for the farmer…"></textarea>
                         </div>
                     </div>
                 </div>
 
                 <!-- Payment Card -->
-                <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm">
+                <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm transition-colors duration-300">
                     <h2 class="text-base font-bold text-[var(--text-main)] mb-4 flex items-center gap-2">
                         <i class="ri-smartphone-line text-[var(--primary)]"></i> Mobile Money Payment
                     </h2>
@@ -153,19 +220,19 @@ include 'nav.php';
                     <div class="flex gap-3 mb-4">
                         <label class="flex-1 relative cursor-pointer">
                             <input type="radio" name="momo_network" value="MTN" checked class="sr-only peer">
-                            <div class="border-2 border-[var(--border)] peer-checked:border-yellow-400 peer-checked:bg-yellow-50 rounded-xl p-3 text-center transition">
+                            <div class="border-2 border-[var(--border)] peer-checked:border-yellow-400 peer-checked:bg-yellow-50 dark:peer-checked:bg-yellow-950/30 rounded-xl p-3 text-center transition">
                                 <div class="text-xs font-bold text-[var(--text-main)]">MTN MoMo</div>
                             </div>
                         </label>
                         <label class="flex-1 relative cursor-pointer">
                             <input type="radio" name="momo_network" value="Telecel" class="sr-only peer">
-                            <div class="border-2 border-[var(--border)] peer-checked:border-red-400 peer-checked:bg-red-50 rounded-xl p-3 text-center transition">
+                            <div class="border-2 border-[var(--border)] peer-checked:border-red-400 peer-checked:bg-red-50 dark:peer-checked:bg-red-950/30 rounded-xl p-3 text-center transition">
                                 <div class="text-xs font-bold text-[var(--text-main)]">Telecel Cash</div>
                             </div>
                         </label>
                         <label class="flex-1 relative cursor-pointer">
                             <input type="radio" name="momo_network" value="AirtelTigo" class="sr-only peer">
-                            <div class="border-2 border-[var(--border)] peer-checked:border-blue-400 peer-checked:bg-blue-50 rounded-xl p-3 text-center transition">
+                            <div class="border-2 border-[var(--border)] peer-checked:border-blue-400 peer-checked:bg-blue-50 dark:peer-checked:bg-blue-950/30 rounded-xl p-3 text-center transition">
                                 <div class="text-xs font-bold text-[var(--text-main)]">AT Money</div>
                             </div>
                         </label>
@@ -176,7 +243,7 @@ include 'nav.php';
                         <div class="relative">
                             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] font-bold text-sm">+233</span>
                             <input type="tel" name="momo_number" required id="momoInput"
-                                class="w-full border border-[var(--border)] rounded-lg pl-14 pr-3 py-2.5 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent"
+                                class="w-full border border-[var(--border)] rounded-lg pl-14 pr-3 py-2.5 text-sm bg-[var(--bg-body)] text-[var(--text-main)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition"
                                 placeholder="XX XXX XXXX" pattern="[0-9]{9,10}" maxlength="10">
                         </div>
                         <p class="text-[10px] text-[var(--text-muted)] mt-1 flex items-center gap-1">
@@ -189,7 +256,7 @@ include 'nav.php';
 
             <!-- Right column: order summary -->
             <div class="lg:col-span-2">
-                <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm sticky top-24">
+                <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm sticky top-24 transition-colors duration-300">
                     <h2 class="text-base font-bold text-[var(--text-main)] mb-4 pb-3 border-b border-[var(--border)]">
                         Order Summary
                     </h2>
@@ -199,8 +266,8 @@ include 'nav.php';
                         <?php foreach($items as $item): ?>
                         <?php $imgSrc = !empty($item['image']) ? "../uploads/produce/".htmlspecialchars($item['image']) : "https://via.placeholder.com/60?text=?"; ?>
                         <div class="flex items-center gap-3">
-                            <div class="w-12 h-12 rounded-lg overflow-hidden bg-gray-50 flex-shrink-0">
-                                <img src="<?= $imgSrc ?>" alt="<?= htmlspecialchars($item['name']) ?>" class="w-full h-full object-contain p-1">
+                            <div class="w-12 h-12 rounded-lg overflow-hidden bg-white dark:bg-slate-800 border border-[var(--border)] flex-shrink-0">
+                                <img src="<?= $imgSrc ?>" alt="<?= htmlspecialchars($item['name']) ?>" class="w-full h-full object-contain mix-blend-multiply dark:mix-blend-normal p-1">
                             </div>
                             <div class="flex-grow min-w-0">
                                 <p class="text-xs font-semibold text-[var(--text-main)] line-clamp-1"><?= htmlspecialchars($item['name']) ?></p>
@@ -229,8 +296,8 @@ include 'nav.php';
                     </div>
 
                     <!-- Escrow badge -->
-                    <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl flex gap-2">
-                        <i class="ri-shield-check-fill text-blue-600 text-xl flex-shrink-0"></i>
+                    <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 rounded-xl flex gap-2">
+                        <i class="ri-shield-check-fill text-blue-600 dark:text-blue-400 text-xl flex-shrink-0"></i>
                         <p class="text-xs text-blue-700 dark:text-blue-300 font-medium">
                             Escrow Protected — Payment held securely until you confirm delivery.
                         </p>
@@ -253,16 +320,16 @@ include 'nav.php';
 
 <!-- Payment Processing Overlay -->
 <div id="paymentOverlay" class="fixed inset-0 bg-black/60 z-[9999] hidden flex items-center justify-center p-4">
-    <div class="bg-[var(--bg-card)] rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl">
+    <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl transition-colors duration-300">
         <!-- Spinner -->
         <div id="paySpinner" class="w-16 h-16 border-4 border-[var(--primary-light)] border-t-[var(--primary)] rounded-full animate-spin mx-auto mb-5"></div>
         <!-- Success icon -->
-        <div id="paySuccess" class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5 hidden">
-            <i class="ri-check-fill text-green-600 text-4xl"></i>
+        <div id="paySuccess" class="w-16 h-16 bg-emerald-100 dark:bg-emerald-950/40 rounded-full flex items-center justify-center mx-auto mb-5 hidden">
+            <i class="ri-check-fill text-emerald-600 dark:text-emerald-400 text-4xl"></i>
         </div>
         <!-- Fail icon -->
-        <div id="payFail" class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-5 hidden">
-            <i class="ri-close-fill text-red-600 text-4xl"></i>
+        <div id="payFail" class="w-16 h-16 bg-red-100 dark:bg-red-950/40 rounded-full flex items-center justify-center mx-auto mb-5 hidden">
+            <i class="ri-close-fill text-red-600 dark:text-red-400 text-4xl"></i>
         </div>
 
         <h3 id="payTitle" class="text-lg font-bold text-[var(--text-main)] mb-2">Processing Payment…</h3>
@@ -284,6 +351,11 @@ include 'nav.php';
 </div>
 
 <script>
+// Sync dark mode from localStorage
+if (localStorage.getItem('theme') === 'dark') {
+    document.body.classList.add('dark');
+}
+
 document.getElementById('checkoutForm').addEventListener('submit', async function(e) {
     e.preventDefault();
 
@@ -311,9 +383,8 @@ document.getElementById('checkoutForm').addEventListener('submit', async functio
         const data = await res.json();
 
         if (data.success && data.order_id && data.reference) {
-        pollPayment(data.order_id, data.reference);
+            pollPayment(data.order_id, data.reference);
         } else {
-            // If stock_errors present, show each on its own line
             const msg = data.stock_errors ? data.stock_errors.join('\n') : (data.message || 'Could not initiate payment. Please try again.');
             showPayFail(msg);
         }

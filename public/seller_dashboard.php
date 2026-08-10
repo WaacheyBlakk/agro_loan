@@ -4,7 +4,7 @@ require_once __DIR__ . '/../src/csrf.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-//Seller_dashboard.php
+//seller_dashboard.php
 require_once __DIR__ . '/../src/db.php';
 
 $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
@@ -119,25 +119,114 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['update_profile'])) {
 $activeTab = $_GET['tab'] ?? 'overview';
 
 $statusConfig = [
-    'pending_payment'   => ['label'=>'Pending Payment',   'color'=>'bg-yellow-100 text-yellow-700', 'icon'=>'ri-time-line'],
-    'payment_confirmed' => ['label'=>'Payment Confirmed', 'color'=>'bg-blue-100 text-blue-700',    'icon'=>'ri-check-double-line'],
-    'preparing'         => ['label'=>'Preparing',         'color'=>'bg-purple-100 text-purple-700','icon'=>'ri-box-3-line'],
-    'in_transit'        => ['label'=>'In Transit',        'color'=>'bg-orange-100 text-orange-700','icon'=>'ri-truck-line'],
-    'ready_for_pickup'  => ['label'=>'Ready for Pickup',  'color'=>'bg-cyan-100 text-cyan-700',    'icon'=>'ri-store-line'],
-    'delivered'         => ['label'=>'Delivered',         'color'=>'bg-green-100 text-green-700',  'icon'=>'ri-checkbox-circle-line'],
-    'cancelled'         => ['label'=>'Cancelled',         'color'=>'bg-red-100 text-red-700',      'icon'=>'ri-close-circle-line'],
+    'pending_payment'   => ['label'=>'Pending Payment',   'color'=>'bg-amber-50 text-amber-800 border border-amber-200/50 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/40', 'icon'=>'ri-time-line'],
+    'payment_confirmed' => ['label'=>'Payment Confirmed', 'color'=>'bg-blue-50 text-blue-800 border border-blue-200/50 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-900/40',    'icon'=>'ri-check-double-line'],
+    'preparing'         => ['label'=>'Preparing',         'color'=>'bg-purple-50 text-purple-800 border border-purple-200/50 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-900/40','icon'=>'ri-box-3-line'],
+    'in_transit'        => ['label'=>'In Transit',        'color'=>'bg-orange-50 text-orange-800 border border-orange-200/50 dark:bg-orange-950/30 dark:text-orange-300 dark:border-orange-900/40','icon'=>'ri-truck-line'],
+    'ready_for_pickup'  => ['label'=>'Ready for Pickup',  'color'=>'bg-cyan-50 text-cyan-800 border border-cyan-200/50 dark:bg-cyan-950/30 dark:text-cyan-300 dark:border-cyan-900/40',    'icon'=>'ri-store-line'],
+    'delivered'         => ['label'=>'Delivered',         'color'=>'bg-emerald-50 text-emerald-800 border border-emerald-200/50 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/40',  'icon'=>'ri-checkbox-circle-line'],
+    'cancelled'         => ['label'=>'Cancelled',         'color'=>'bg-rose-50 text-rose-800 border border-rose-200/50 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-900/40',      'icon'=>'ri-close-circle-line'],
 ];
 
 $escrowConfig = [
-    'held'     => ['label'=>'In Escrow','color'=>'text-yellow-600','icon'=>'ri-lock-line'],
-    'released' => ['label'=>'Paid Out', 'color'=>'text-green-600', 'icon'=>'ri-check-line'],
-    'refunded' => ['label'=>'Refunded', 'color'=>'text-red-600',   'icon'=>'ri-arrow-go-back-line'],
+    'held'     => ['label'=>'In Escrow','color'=>'text-amber-600 dark:text-amber-400','icon'=>'ri-lock-line'],
+    'released' => ['label'=>'Paid Out', 'color'=>'text-emerald-600 dark:text-emerald-400', 'icon'=>'ri-check-line'],
+    'refunded' => ['label'=>'Refunded', 'color'=>'text-red-600 dark:text-red-400',   'icon'=>'ri-arrow-go-back-line'],
 ];
 
 $page_title = 'Seller Dashboard | AgroMarket';
 $active_nav = 'dashboard';
 include 'nav.php';
 ?>
+
+<!-- Fonts & RemixIcons -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+    tailwind.config = {
+        darkMode: 'class',
+        theme: {
+            extend: {
+                colors: {
+                    agro: { 50: '#ecfdf5', 100: '#d1fae5', 500: '#22c55e', 600: '#16a34a', 700: '#15803d', 900: '#064e3b' },
+                    jumia: { orange: '#f68b1e', blue: '#264996' } 
+                },
+                fontFamily: {
+                    sans: ['Plus Jakarta Sans', 'sans-serif']
+                }
+            }
+        }
+    }
+</script>
+
+<style>
+:root {
+    /* Variables synchronized directly with index.php, shop.php, buyer_dashboard.php & market_disputes.php */
+    --primary: #15803d;       
+    --primary-dark: #14532d;  
+    --accent: #22c55e;        
+    --accent-hover: #16a34a;
+    --bg-body: #f8fafc;       
+    --bg-card: #ffffff;
+    --text-main: #1e293b;     
+    --text-muted: #64748b;    
+    --border: #e2e8f0;
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --glass: rgba(255, 255, 255, 0.85);
+    
+    --primary-light: #dcfce7;
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+body.dark {
+    /* Dark Variables synchronized directly with index.php, shop.php, buyer_dashboard.php & market_disputes.php */
+    --primary: #22c55e;
+    --primary-dark: #4ade80;
+    --accent: #15803d;
+    --bg-body: #0f172a;       
+    --bg-card: #1e293b;       
+    --text-main: #f1f5f9;
+    --text-muted: #94a3b8;
+    --border: #334155;
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    --glass: rgba(15, 23, 42, 0.85);
+    
+    --primary-light: #14532d;
+}
+
+body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--bg-body);
+    color: var(--text-main);
+    transition: background 0.3s ease, color 0.3s ease;
+}
+
+.tab-btn { 
+    padding: .5rem 1rem; 
+    font-size: .85rem; 
+    font-weight: 600; 
+    border-radius: .5rem; 
+    transition: all .2s; 
+    cursor: pointer; 
+    border: none; 
+    background: none; 
+}
+.tab-btn.active { 
+    background: var(--primary); 
+    color: #fff; 
+}
+.tab-btn:not(.active) { 
+    color: var(--text-muted); 
+}
+.tab-btn:not(.active):hover { 
+    background: var(--primary-light); 
+    color: var(--text-main); 
+}
+</style>
 
 <div class="pt-24 pb-12 min-h-screen px-4 md:px-6 max-w-6xl mx-auto">
 
@@ -159,11 +248,11 @@ include 'nav.php';
 
     <!-- MoMo Warning (if not set) -->
     <?php if (empty($farmer['momo_phone'])): ?>
-    <div class="mb-5 p-4 bg-amber-50 border border-amber-300 rounded-2xl flex gap-3 items-start">
-        <i class="ri-alert-line text-amber-600 text-xl flex-shrink-0 mt-0.5"></i>
+    <div class="mb-5 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-900/40 rounded-2xl flex gap-3 items-start">
+        <i class="ri-alert-line text-amber-600 dark:text-amber-400 text-xl flex-shrink-0 mt-0.5"></i>
         <div>
-            <p class="text-sm font-bold text-amber-800">MoMo number not set!</p>
-            <p class="text-xs text-amber-700 mt-0.5">You need a Mobile Money number to receive payments when buyers confirm delivery.
+            <p class="text-sm font-bold text-amber-800 dark:text-amber-300">MoMo number not set!</p>
+            <p class="text-xs text-amber-700 dark:text-amber-400 mt-0.5">You need a Mobile Money number to receive payments when buyers confirm delivery.
                <button onclick="setTab('profile')" class="underline font-semibold ml-1">Add it now →</button>
             </p>
         </div>
@@ -171,7 +260,7 @@ include 'nav.php';
     <?php endif; ?>
 
     <!-- Tabs -->
-    <div class="flex gap-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-1.5 mb-6 overflow-x-auto w-fit max-w-full">
+    <div class="flex gap-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-1.5 mb-6 overflow-x-auto w-fit max-w-full shadow-sm transition-colors duration-300">
         <button onclick="setTab('overview')"  id="tab-overview"  class="tab-btn <?= $activeTab==='overview'?'active':'' ?> whitespace-nowrap"><i class="ri-dashboard-line mr-1"></i>Overview</button>
         <button onclick="setTab('orders')"    id="tab-orders"    class="tab-btn <?= $activeTab==='orders'?'active':'' ?> whitespace-nowrap">
             <i class="ri-shopping-bag-3-line mr-1"></i>Orders
@@ -182,7 +271,7 @@ include 'nav.php';
         <button onclick="setTab('listings')"  id="tab-listings"  class="tab-btn <?= $activeTab==='listings'?'active':'' ?> whitespace-nowrap"><i class="ri-store-2-line mr-1"></i>My Listings</button>
         <button onclick="setTab('profile')"   id="tab-profile"   class="tab-btn <?= $activeTab==='profile'?'active':'' ?> whitespace-nowrap"><i class="ri-user-line mr-1"></i>Profile</button>
                 
-        <a href="market_disputes.php" class="tab-btn whitespace-nowrap text-red-600 hover:text-red-700 flex items-center gap-1">
+        <a href="market_disputes.php" class="tab-btn whitespace-nowrap text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 flex items-center gap-1">
             <i class="ri-scales-3-line"></i> Order Disputes
         </a>
     </div>
@@ -193,15 +282,15 @@ include 'nav.php';
         <div class="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             <?php
             $cards = [
-                ['icon'=>'ri-shopping-bag-3-line','color'=>'text-blue-600 bg-blue-50','label'=>'Total Packages','value'=>$stats['total_orders']],
-                ['icon'=>'ri-money-cedi-circle-line','color'=>'text-green-600 bg-green-50','label'=>'Gross Revenue','value'=>'₵ '.number_format($stats['gross_revenue'],2)],
-                ['icon'=>'ri-lock-line','color'=>'text-yellow-600 bg-yellow-50','label'=>'In Escrow','value'=>'₵ '.number_format($stats['escrow_held'],2)],
-                ['icon'=>'ri-bank-line','color'=>'text-emerald-600 bg-emerald-50','label'=>'Paid Out','value'=>'₵ '.number_format($stats['paid_out'],2)],
-                ['icon'=>'ri-time-line','color'=>'text-orange-600 bg-orange-50','label'=>'Active Packages','value'=>$stats['active_orders']],
-                ['icon'=>'ri-checkbox-circle-line','color'=>'text-purple-600 bg-purple-50','label'=>'Completed','value'=>$stats['completed_orders']],
+                ['icon'=>'ri-shopping-bag-3-line','color'=>'text-blue-600 bg-blue-50 dark:bg-blue-950/40 dark:text-blue-300','label'=>'Total Packages','value'=>$stats['total_orders']],
+                ['icon'=>'ri-money-cedi-circle-line','color'=>'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300','label'=>'Gross Revenue','value'=>'₵ '.number_format($stats['gross_revenue'],2)],
+                ['icon'=>'ri-lock-line','color'=>'text-amber-600 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300','label'=>'In Escrow','value'=>'₵ '.number_format($stats['escrow_held'],2)],
+                ['icon'=>'ri-bank-line','color'=>'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300','label'=>'Paid Out','value'=>'₵ '.number_format($stats['paid_out'],2)],
+                ['icon'=>'ri-time-line','color'=>'text-orange-600 bg-orange-50 dark:bg-orange-950/40 dark:text-orange-300','label'=>'Active Packages','value'=>$stats['active_orders']],
+                ['icon'=>'ri-checkbox-circle-line','color'=>'text-purple-600 bg-purple-50 dark:bg-purple-950/40 dark:text-purple-300','label'=>'Completed','value'=>$stats['completed_orders']],
             ];
             foreach($cards as $c): ?>
-            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 shadow-sm">
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 shadow-sm transition-all duration-300">
                 <div class="w-10 h-10 rounded-xl <?= $c['color'] ?> flex items-center justify-center mb-3">
                     <i class="<?= $c['icon'] ?> text-xl"></i>
                 </div>
@@ -212,21 +301,21 @@ include 'nav.php';
         </div>
 
         <!-- Escrow Explanation -->
-        <div class="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800 rounded-2xl p-5 shadow-sm">
+        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm transition-colors duration-300">
             <h3 class="font-bold text-[var(--text-main)] mb-2 flex items-center gap-2">
-                <i class="ri-shield-check-fill text-green-600 text-xl"></i> How Escrow Works
+                <i class="ri-shield-check-fill text-emerald-600 dark:text-emerald-400 text-xl"></i> How Escrow Works
             </h3>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm text-[var(--text-muted)]">
                 <div class="flex gap-2">
-                    <span class="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">1</span>
+                    <span class="w-6 h-6 rounded-full bg-emerald-600 dark:bg-emerald-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">1</span>
                     <p>Buyer places an order and pays via Mobile Money. Funds are held securely in escrow.</p>
                 </div>
                 <div class="flex gap-2">
-                    <span class="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">2</span>
+                    <span class="w-6 h-6 rounded-full bg-emerald-600 dark:bg-emerald-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">2</span>
                     <p>You prepare and deliver the order. Update the status so the buyer can track progress.</p>
                 </div>
                 <div class="flex gap-2">
-                    <span class="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">3</span>
+                    <span class="w-6 h-6 rounded-full bg-emerald-600 dark:bg-emerald-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">3</span>
                     <p>Buyer confirms delivery. Funds are instantly released to your MoMo number.</p>
                 </div>
             </div>
@@ -236,7 +325,7 @@ include 'nav.php';
     <!-- ===== TAB: ORDERS ===== -->
     <div id="panel-orders" class="<?= $activeTab!=='orders'?'hidden':'' ?>">
         <?php if(empty($groups)): ?>
-        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-12 text-center shadow-sm">
+        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-12 text-center shadow-sm transition-colors duration-300">
             <i class="ri-inbox-line text-6xl text-[var(--text-muted)] opacity-30 mb-4 block"></i>
             <h3 class="text-lg font-bold text-[var(--text-main)] mb-2">No orders yet</h3>
             <p class="text-[var(--text-muted)] text-sm mb-5">Orders from buyers will appear here. Make sure your listings are active!</p>
@@ -261,7 +350,7 @@ include 'nav.php';
         <div class="space-y-4" id="ordersContainer">
             <?php foreach ($groups as $g): ?>
             <?php $sc = $statusConfig[$g['status']] ?? ['label'=>$g['status'],'color'=>'bg-gray-100 text-gray-700','icon'=>'ri-circle-line']; ?>
-            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-sm order-card" data-status="<?= $g['status'] ?>">
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-sm order-card transition-colors duration-300" data-status="<?= $g['status'] ?>">
 
                 <!-- Header -->
                 <div class="p-4 border-b border-[var(--border)] flex flex-wrap gap-3 justify-between items-start bg-[var(--bg-body)]">
@@ -293,8 +382,8 @@ include 'nav.php';
                         $ec  = $escrowConfig[$oi['escrow_status']] ?? ['label'=>'N/A','color'=>'text-gray-500','icon'=>'ri-circle-line'];
                     ?>
                     <div class="flex items-center gap-3">
-                        <div class="w-12 h-12 rounded-lg overflow-hidden bg-gray-50 flex-shrink-0">
-                            <img src="<?= $img ?>" alt="<?= htmlspecialchars($oi['produce_name']) ?>" class="w-full h-full object-contain p-1">
+                        <div class="w-12 h-12 rounded-lg overflow-hidden bg-white dark:bg-slate-800 border border-[var(--border)] flex-shrink-0">
+                            <img src="<?= $img ?>" alt="<?= htmlspecialchars($oi['produce_name']) ?>" class="w-full h-full object-contain mix-blend-multiply dark:mix-blend-normal p-1">
                         </div>
                         <div class="flex-grow min-w-0">
                             <p class="text-sm font-semibold text-[var(--text-main)] line-clamp-1"><?= htmlspecialchars($oi['produce_name']) ?></p>
@@ -354,14 +443,14 @@ include 'nav.php';
                 </div>
                 <?php elseif($g['status']==='delivered'): ?>
                 <div class="px-4 pb-3 border-t border-[var(--border)] pt-3">
-                    <span class="text-xs text-green-600 font-semibold flex items-center gap-1">
+                    <span class="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
                         <i class="ri-checkbox-circle-fill text-base"></i>
                         Delivered & Payment Released to Your MoMo Account
                     </span>
                 </div>
                 <?php elseif($g['payment_status']==='pending'): ?>
                 <div class="px-4 pb-3 border-t border-[var(--border)] pt-3">
-                    <span class="text-xs text-yellow-600 font-semibold flex items-center gap-1">
+                    <span class="text-xs text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
                         <i class="ri-time-line"></i> Awaiting payment from buyer
                     </span>
                 </div>
@@ -370,8 +459,8 @@ include 'nav.php';
             </div>
             <?php endforeach; ?>
 
-            <a href="market_disputes.php" class="text-xs text-red-600 font-semibold hover:underline flex items-center gap-1 py-2">
-                    <i class="ri-alert-line"></i> Dispute Order
+            <a href="market_disputes.php" class="text-xs text-red-600 dark:text-red-400 font-semibold hover:underline flex items-center gap-1 py-2">
+                <i class="ri-alert-line"></i> Dispute Order
             </a>
         </div>
         <?php endif; ?>
@@ -387,7 +476,7 @@ include 'nav.php';
         </div>
 
         <?php if(empty($listings)): ?>
-        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-12 text-center shadow-sm">
+        <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-12 text-center shadow-sm transition-colors duration-300">
             <i class="ri-plant-line text-6xl text-[var(--text-muted)] opacity-30 mb-4 block"></i>
             <h3 class="text-lg font-bold text-[var(--text-main)] mb-2">No listings yet</h3>
             <p class="text-[var(--text-muted)] text-sm mb-5">Start selling by listing your agricultural produce.</p>
@@ -409,20 +498,20 @@ include 'nav.php';
                     $isActive = false;
                 }
             ?>
-            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition">
-                <div class="relative aspect-video overflow-hidden bg-gray-50">
-                    <img src="<?= $img ?>" alt="<?= htmlspecialchars($l['produce_name']) ?>" class="w-full h-full object-contain p-4">
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition duration-300">
+                <div class="relative aspect-video overflow-hidden bg-white dark:bg-slate-800">
+                    <img src="<?= $img ?>" alt="<?= htmlspecialchars($l['produce_name']) ?>" class="w-full h-full object-contain mix-blend-multiply dark:mix-blend-normal p-4">
                     <div class="absolute top-2 left-2 flex flex-col gap-1">
-                        <span class="text-[10px] px-2 py-0.5 rounded-full font-bold <?= $inStock?'bg-green-100 text-green-700':'bg-red-100 text-red-600' ?>">
+                        <span class="text-[10px] px-2 py-0.5 rounded-full font-bold <?= $inStock?'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400':'bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400' ?>">
                             <?= $inStock ? $l['bags_available'].' bags left' : 'Out of Stock' ?>
                         </span>
                         <?php if (!$isActive): ?>
-                        <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-gray-200 text-gray-700 border border-gray-300">
+                        <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
                             Hidden / Inactive
                         </span>
                         <?php endif; ?>
                     </div>
-                    <div class="absolute top-2 right-2 text-[10px] bg-white/80 backdrop-blur-sm px-2 py-0.5 rounded-full text-[var(--text-muted)] font-medium">
+                    <div class="absolute top-2 right-2 text-[10px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm px-2 py-0.5 rounded-full text-[var(--text-muted)] font-medium">
                         <?= htmlspecialchars($l['category_name']) ?>
                     </div>
                 </div>
@@ -435,11 +524,11 @@ include 'nav.php';
                     </div>
 
                     <div class="flex gap-3 text-center text-xs mb-3">
-                        <div class="flex-1 bg-[var(--bg-body)] rounded-lg py-2">
+                        <div class="flex-1 bg-[var(--bg-body)] rounded-lg py-2 border border-[var(--border)]">
                             <div class="font-bold text-[var(--text-main)]"><?= $l['total_orders'] ?></div>
                             <div class="text-[var(--text-muted)]">Orders</div>
                         </div>
-                        <div class="flex-1 bg-[var(--bg-body)] rounded-lg py-2">
+                        <div class="flex-1 bg-[var(--bg-body)] rounded-lg py-2 border border-[var(--border)]">
                             <div class="font-bold text-[var(--text-main)]"><?= $l['bags_available'] ?></div>
                             <div class="text-[var(--text-muted)]">Bags Left</div>
                         </div>
@@ -467,41 +556,41 @@ include 'nav.php';
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
             <!-- Profile Card -->
-            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm text-center">
-                <div class="w-20 h-20 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center text-white text-3xl font-bold mx-auto mb-3">
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm text-center transition-colors duration-300">
+                <div class="w-20 h-20 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] flex items-center justify-center text-white text-3xl font-bold mx-auto mb-3 shadow">
                     <?= strtoupper(substr($farmer['name'],0,1)) ?>
                 </div>
                 <h2 class="font-bold text-lg text-[var(--text-main)]"><?= htmlspecialchars($farmer['name']) ?></h2>
                 <p class="text-sm text-[var(--text-muted)]"><?= htmlspecialchars($farmer['email']) ?></p>
-                <span class="inline-block mt-2 text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-semibold">Farmer Account</span>
+                <span class="inline-block mt-2 text-xs bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200/20 px-3 py-1 rounded-full font-semibold">Farmer Account</span>
                 <?php if($farmer['location']): ?>
                 <p class="text-xs text-[var(--text-muted)] mt-3 flex items-center justify-center gap-1">
-                    <i class="ri-map-pin-line"></i> <?= htmlspecialchars($farmer['location']) ?>
+                    <i class="ri-map-pin-line text-emerald-600 dark:text-emerald-400"></i> <?= htmlspecialchars($farmer['location']) ?>
                 </p>
                 <?php endif; ?>
                 <?php if($farmer['momo_phone']): ?>
-                <div class="mt-3 p-2 bg-yellow-50 rounded-lg">
-                    <p class="text-xs text-yellow-700 font-medium flex items-center justify-center gap-1">
+                <div class="mt-3 p-2.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/30 rounded-xl">
+                    <p class="text-xs text-amber-700 dark:text-amber-400 font-medium flex items-center justify-center gap-1">
                         <i class="ri-smartphone-line"></i> MoMo: <?= htmlspecialchars($farmer['momo_phone']) ?>
                     </p>
                 </div>
                 <?php else: ?>
-                <div class="mt-3 p-2 bg-red-50 rounded-lg">
-                    <p class="text-xs text-red-600 font-medium">No MoMo number — add one to receive payments!</p>
+                <div class="mt-3 p-2.5 bg-red-50 dark:bg-red-950/20 border border-red-200/30 rounded-xl">
+                    <p class="text-xs text-red-600 dark:text-red-400 font-medium">No MoMo number — add one to receive payments!</p>
                 </div>
                 <?php endif; ?>
             </div>
 
             <!-- Edit Form -->
-            <div class="lg:col-span-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm">
+            <div class="lg:col-span-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm transition-colors duration-300">
                 <h2 class="font-bold text-[var(--text-main)] mb-5 flex items-center gap-2">
                     <i class="ri-edit-line text-[var(--primary)]"></i> Edit Profile
                 </h2>
                 <?php if($profileError): ?>
-                <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm"><?= htmlspecialchars($profileError) ?></div>
+                <div class="mb-4 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200/50 rounded-xl text-red-700 dark:text-red-400 text-sm"><?= htmlspecialchars($profileError) ?></div>
                 <?php endif; ?>
                 <?php if($profileSuccess): ?>
-                <div class="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex items-center gap-2">
+                <div class="mb-4 p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/50 rounded-xl text-emerald-700 dark:text-emerald-400 text-sm flex items-center gap-2">
                     <i class="ri-check-fill"></i> <?= htmlspecialchars($profileSuccess) ?>
                 </div>
                 <?php endif; ?>
@@ -522,7 +611,7 @@ include 'nav.php';
                         </div>
                         <div class="sm:col-span-2">
                             <label class="block text-xs font-semibold text-[var(--text-muted)] mb-1">
-                                MoMo Number * <span class="font-normal text-yellow-600">(Required to receive payments)</span>
+                                MoMo Number * <span class="font-normal text-amber-600 dark:text-amber-400">(Required to receive payments)</span>
                             </label>
                             <div class="relative">
                                 <span class="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] font-bold text-sm">+233</span>
@@ -556,7 +645,7 @@ include 'nav.php';
 </div>
 
 <!-- Standardized Mobile Bottom Nav (Syncs with Seller Tabs) -->
-<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-between items-center px-4 py-2 text-[10px] font-semibold bg-[var(--bg-card)] border-t border-[var(--border)] shadow-lg">
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-between items-center px-4 py-2 text-[10px] font-semibold bg-[var(--bg-card)] border-t border-[var(--border)] shadow-lg transition-colors duration-200">
     <button onclick="setTab('overview')" id="btn-nav-overview" class="flex flex-col items-center gap-1 transition w-full py-1 text-[var(--text-muted)]">
         <i class="ri-dashboard-line text-xl"></i>Overview
     </button>
@@ -574,15 +663,13 @@ include 'nav.php';
     </button>
 </nav>
 
-<style>
-.tab-btn { padding:.5rem 1rem; font-size:.85rem; font-weight:600; border-radius:.5rem; transition:all .2s; cursor:pointer; border:none; background:none; }
-.tab-btn.active { background:var(--primary); color:#fff; }
-.tab-btn:not(.active) { color:var(--text-muted); }
-.tab-btn:not(.active):hover { background:var(--bg-body); color:var(--text-main); }
-</style>
-
 <script>
-    const CSRF_TOKEN = "<?= csrf_token() ?>";
+// LocalStorage Theme sync
+if (localStorage.getItem('theme') === 'dark') {
+    document.body.classList.add('dark');
+}
+
+const CSRF_TOKEN = "<?= csrf_token() ?>";
 if (typeof showToast !== 'function') {
     window.showToast = function(message, type) {
         alert((type === 'error' ? ' ' : ' ') + message);

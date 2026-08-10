@@ -66,7 +66,7 @@ CREATE TABLE `buyers` (
   `city` varchar(100) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
------------------------------------------------
+-- --------------------------------------------------------
 
 --
 -- Table structure for table `buyer_profiles`
@@ -190,7 +190,7 @@ CREATE TABLE `dispute_evidence` (
   `notes` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--------------------------------------------------
+-- --------------------------------------------------------
 
 --
 -- Table structure for table `escrow`

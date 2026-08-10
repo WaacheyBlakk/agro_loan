@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../src/security_headers.php';
 require_once __DIR__ . '/../src/csrf.php';
-
+//view_application.php
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -435,10 +435,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['proof'])) {
                                 <span style="color:var(--primary); font-weight:bold; font-size:16px;">GHS <?= number_format($app['disbursed_amount'], 2) ?></span>
                             </div>
                             <div>
+                                <small style="color:var(--text-muted); font-weight:600; font-size:11px; text-transform:uppercase;">Loan Duration</small><br>
+                                <strong style="font-size:16px;"><?= !empty($app['duration_months']) ? htmlspecialchars($app['duration_months']) . ' Months' : 'N/A' ?></strong>
+                            </div>
+                            <div>
+                                <small style="color:var(--text-muted); font-weight:600; font-size:11px; text-transform:uppercase;">Repayment Due Date</small><br>
+                                <strong style="font-size:16px;"><?= !empty($app['repayment_due_date']) ? date('M d, Y', strtotime($app['repayment_due_date'])) : 'N/A' ?></strong>
+                            </div>
+                            <div>
                                 <small style="color:var(--text-muted); font-weight:600; font-size:11px; text-transform:uppercase;">Current Active Stage</small><br>
                                 <strong style="font-size:16px;">Stage <?= htmlspecialchars($app['current_stage']) ?></strong>
                             </div>
                         </div>
+
+                        <?php 
+                        // Check if loan duration has elapsed
+                        $is_due_elapsed = (!empty($app['repayment_due_date']) && strtotime($app['repayment_due_date']) <= time());
+                        ?>
+
+                        <?php if ($is_due_elapsed && $app['status'] === 'approved'): ?>
+                            <div class="alert" style="background-color: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; margin-top:20px; margin-bottom: 25px;">
+                                <i data-feather="clock"></i> Loan repayment period has officially elapsed. Repayments are now active regardless of previous stage completion. 
+                                <a href="farmer_repayment.php?loan_id=<?= $app['id'] ?>" class="link" style="margin-left:10px; font-weight:700;">Go to Loan Repayments &rarr;</a>
+                            </div>
+                        <?php endif; ?>
 
                         <hr style="border:0; border-top:1px solid #f3f4f6; margin:30px 0;">
 

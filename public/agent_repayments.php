@@ -106,20 +106,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repayment_id'], $_POS
 // Fetch pending repayments specifically for loans in Stage > 3 (where farmers make repayments)
 $pendingStmt = $pdo->prepare("
     SELECT r.*,
-           la.title   AS loan_title,
-           la.amount  AS loan_principal,
-           la.outstanding_balance,
-           u.name     AS farmer_name,
-           u.email    AS farmer_email,
-           ap.interest_rate
-      FROM loan_repayments r
-      JOIN loan_applications la ON r.loan_id = la.id
-      JOIN users u               ON r.farmer_id = u.id
-      LEFT JOIN agent_profiles ap ON la.agent_id = ap.user_id
-     WHERE la.agent_id = ? 
-       AND r.status = 'pending' 
-       AND la.current_stage > 3
-     ORDER BY r.submitted_at DESC
+       la.title   AS loan_title,
+       la.amount  AS loan_principal,
+       la.outstanding_balance,
+       u.name     AS farmer_name,
+       u.email    AS farmer_email,
+       ap.interest_rate
+    FROM loan_repayments r
+    JOIN loan_applications la ON r.loan_id = la.id
+    JOIN users u               ON r.farmer_id = u.id
+    LEFT JOIN agent_profiles ap ON la.agent_id = ap.user_id
+    WHERE la.agent_id = ? 
+    AND r.status = 'pending' 
+    AND (la.current_stage > 3 OR (la.repayment_due_date IS NOT NULL AND la.repayment_due_date <= NOW()))
+    ORDER BY r.submitted_at DESC
 ");
 $pendingStmt->execute([$agent_id]);
 $pending_repayments = $pendingStmt->fetchAll(PDO::FETCH_ASSOC);

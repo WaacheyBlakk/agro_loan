@@ -139,13 +139,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loan_id'])) {
 // Fetch approved or completed loans that have passed Stage 3 (current_stage > 3)
 $stmt = $pdo->prepare("
     SELECT la.*, u.name AS agent_name, ap.interest_rate, ap.loan_terms
-      FROM loan_applications la
-      LEFT JOIN users u         ON la.agent_id = u.id
-      LEFT JOIN agent_profiles ap ON la.agent_id = ap.user_id
-     WHERE la.farmer_id = ? 
-       AND (la.status = 'approved' OR la.status = 'completed') 
-       AND la.current_stage > 3
-     ORDER BY la.created_at DESC
+    FROM loan_applications la
+    LEFT JOIN users u         ON la.agent_id = u.id
+    LEFT JOIN agent_profiles ap ON la.agent_id = ap.user_id
+    WHERE la.farmer_id = ? 
+    AND (la.status = 'approved' OR la.status = 'completed') 
+    AND (la.current_stage > 3 OR (la.repayment_due_date IS NOT NULL AND la.repayment_due_date <= NOW()))
+    ORDER BY la.created_at DESC
 ");
 $stmt->execute([$farmer_id]);
 $approved_loans = $stmt->fetchAll(PDO::FETCH_ASSOC);

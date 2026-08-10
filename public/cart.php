@@ -45,6 +45,73 @@ $active_nav = 'cart';
 include 'nav.php';
 ?>
 
+<!-- Fonts & RemixIcons -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+    tailwind.config = {
+        darkMode: 'class',
+        theme: {
+            extend: {
+                colors: {
+                    agro: { 50: '#ecfdf5', 100: '#d1fae5', 500: '#22c55e', 600: '#16a34a', 700: '#15803d', 900: '#064e3b' },
+                    jumia: { orange: '#f68b1e', blue: '#264996' } 
+                },
+                fontFamily: {
+                    sans: ['Plus Jakarta Sans', 'sans-serif']
+                }
+            }
+        }
+    }
+</script>
+
+<style>
+:root {
+    /* Variables synchronized directly with index.php, shop.php, buyer_dashboard.php, etc. */
+    --primary: #15803d;       
+    --primary-dark: #14532d;  
+    --accent: #22c55e;        
+    --accent-hover: #16a34a;
+    --bg-body: #f8fafc;       
+    --bg-card: #ffffff;
+    --text-main: #1e293b;     
+    --text-muted: #64748b;    
+    --border: #e2e8f0;
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --glass: rgba(255, 255, 255, 0.85);
+    
+    --primary-light: #dcfce7;
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+body.dark {
+    /* Dark Variables synchronized directly with index.php, shop.php, buyer_dashboard.php, etc. */
+    --primary: #22c55e;
+    --primary-dark: #4ade80;
+    --accent: #15803d;
+    --bg-body: #0f172a;       
+    --bg-card: #1e293b;       
+    --text-main: #f1f5f9;
+    --text-muted: #94a3b8;
+    --border: #334155;
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    --glass: rgba(15, 23, 42, 0.85);
+    
+    --primary-light: #14532d;
+}
+
+body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--bg-body);
+    color: var(--text-main);
+    transition: background 0.3s ease, color 0.3s ease;
+}
+</style>
+
 <div class="pt-24 pb-12 min-h-screen px-4 md:px-8 max-w-7xl mx-auto">
     <h1 class="text-2xl font-bold text-[var(--text-main)] mb-6 flex items-center gap-2">
         <i class="ri-shopping-bag-3-line text-[var(--primary)]"></i>
@@ -53,8 +120,8 @@ include 'nav.php';
     </h1>
 
     <?php if(empty($items)): ?>
-    <div class="flex flex-col items-center justify-center bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl py-20 px-6 text-center shadow-sm">
-        <div class="w-24 h-24 bg-green-50 rounded-full flex items-center justify-center mb-5">
+    <div class="flex flex-col items-center justify-center bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl py-20 px-6 text-center shadow-sm transition-colors duration-300">
+        <div class="w-24 h-24 bg-[var(--primary-light)] rounded-full flex items-center justify-center mb-5">
             <i class="ri-shopping-cart-2-line text-5xl text-[var(--primary)]"></i>
         </div>
         <h2 class="text-xl font-bold text-[var(--text-main)] mb-2">Your cart is empty</h2>
@@ -75,29 +142,29 @@ include 'nav.php';
                 $inStock = $item['bags_available'] > 0;
                 $maxQty  = min($item['bags_available'], 100);
             ?>
-            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 flex gap-4 shadow-sm" id="cart-row-<?= $item['product_id'] ?>">
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 flex gap-4 shadow-sm transition-colors duration-300" id="cart-row-<?= $item['product_id'] ?>">
                 <!-- Image -->
-                <a href="product_details.php?id=<?= $item['product_id'] ?>" class="flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-gray-50">
-                    <img src="<?= $imgSrc ?>" alt="<?= htmlspecialchars($item['name']) ?>" class="w-full h-full object-contain p-2">
+                <a href="product_details.php?id=<?= $item['product_id'] ?>" class="flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-white dark:bg-slate-800 border border-[var(--border)]">
+                    <img src="<?= $imgSrc ?>" alt="<?= htmlspecialchars($item['name']) ?>" class="w-full h-full object-contain mix-blend-multiply dark:mix-blend-normal p-2">
                 </a>
 
                 <!-- Details -->
                 <div class="flex-grow min-w-0">
-                    <p class="text-xs text-[var(--text-muted)] mb-0.5">Sold by <span class="font-medium"><?= htmlspecialchars($item['farmer_name']) ?></span></p>
-                    <a href="product_details.php?id=<?= $item['product_id'] ?>" class="text-sm font-semibold text-[var(--text-main)] hover:text-[var(--primary)] line-clamp-2">
+                    <p class="text-xs text-[var(--text-muted)] mb-0.5">Sold by <span class="font-medium text-[var(--text-main)]"><?= htmlspecialchars($item['farmer_name']) ?></span></p>
+                    <a href="product_details.php?id=<?= $item['product_id'] ?>" class="text-sm font-semibold text-[var(--text-main)] hover:text-[var(--primary)] line-clamp-2 transition">
                         <?= htmlspecialchars($item['name']) ?>
                     </a>
                     <div class="text-sm font-bold text-[var(--text-main)] mt-1">₵ <?= number_format($item['price_per_bag'],2) ?>/bag</div>
 
                     <?php if(!$inStock): ?>
-                    <span class="inline-block mt-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded font-medium">Out of Stock</span>
+                    <span class="inline-block mt-1 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-2 py-0.5 rounded font-medium">Out of Stock</span>
                     <?php endif; ?>
                 </div>
 
                 <!-- Qty + Subtotal + Remove -->
                 <div class="flex flex-col items-end justify-between flex-shrink-0">
                     <button onclick="removeItem(<?= $item['product_id'] ?>)"
-                        class="text-[var(--text-muted)] hover:text-red-500 transition text-lg">
+                        class="text-[var(--text-muted)] hover:text-red-500 dark:hover:text-red-400 transition text-lg">
                         <i class="ri-delete-bin-5-line"></i>
                     </button>
 
@@ -125,7 +192,7 @@ include 'nav.php';
 
         <!-- Order Summary -->
         <div class="w-full lg:w-80 flex-shrink-0">
-            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5 shadow-sm sticky top-24">
+            <div class="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5 shadow-sm sticky top-24 transition-colors duration-300">
                 <h2 class="text-base font-bold text-[var(--text-main)] mb-4 pb-3 border-b border-[var(--border)]">
                     Order Summary
                 </h2>
@@ -141,7 +208,7 @@ include 'nav.php';
                     </div>
                     <div class="flex justify-between text-[var(--text-muted)] text-xs italic">
                         <span>Delivery</span>
-                        <span class="text-green-600 font-semibold">Negotiated with Seller</span>
+                        <span class="text-emerald-600 dark:text-emerald-400 font-semibold">Negotiated with Seller</span>
                     </div>
                     <div class="border-t border-[var(--border)] pt-3 flex justify-between font-bold text-base text-[var(--text-main)]">
                         <span>Total</span>
@@ -149,9 +216,9 @@ include 'nav.php';
                     </div>
                 </div>
 
-                <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 rounded-lg">
                     <div class="flex gap-2 items-start">
-                        <i class="ri-shield-check-line text-blue-600 text-lg flex-shrink-0 mt-0.5"></i>
+                        <i class="ri-shield-check-line text-blue-600 dark:text-blue-400 text-lg flex-shrink-0 mt-0.5"></i>
                         <p class="text-xs text-blue-700 dark:text-blue-300 font-medium">
                             Your payment is held in escrow and only released to the farmer after you confirm delivery.
                         </p>
@@ -163,7 +230,7 @@ include 'nav.php';
                     <i class="ri-secure-payment-line mr-1"></i> Proceed to Checkout
                 </a>
 
-                <a href="shop.php" class="mt-3 block text-center text-sm text-[var(--text-muted)] hover:text-[var(--primary)] font-medium">
+                <a href="shop.php" class="mt-3 block text-center text-sm text-[var(--text-muted)] hover:text-[var(--primary)] font-medium transition">
                     ← Continue Shopping
                 </a>
             </div>
@@ -173,7 +240,7 @@ include 'nav.php';
 </div>
 
 <!-- Mobile Bottom Nav -->
-<nav class="md:hidden fixed bottom-0 left-0 w-full bottom-nav z-50 flex justify-between items-center px-6 py-2 text-[10px] font-medium text-[var(--text-muted)]">
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-between items-center px-6 py-2 text-[10px] font-medium bg-[var(--bg-card)] border-t border-[var(--border)] text-[var(--text-muted)] transition-colors duration-200">
     <a href="index.php"    class="flex flex-col items-center gap-1 hover:text-[var(--primary)]"><i class="ri-home-4-line text-xl"></i>Home</a>
     <a href="shop.php"     class="flex flex-col items-center gap-1 hover:text-[var(--primary)]"><i class="ri-store-2-line text-xl"></i>Shop</a>
     <a href="wishlist.php" class="flex flex-col items-center gap-1 hover:text-[var(--primary)]"><i class="ri-heart-3-line text-xl"></i>Wishlist</a>
@@ -181,6 +248,11 @@ include 'nav.php';
 </nav>
 
 <script>
+// Sync dark mode from localStorage
+if (localStorage.getItem('theme') === 'dark') {
+    document.body.classList.add('dark');
+}
+
 // Check for toast notification function presence or establish a fallback handler
 if (typeof showToast !== 'function') {
     window.showToast = function(message, type) {
