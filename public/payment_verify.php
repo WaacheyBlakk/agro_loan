@@ -7,6 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/momo.php';
 require_once __DIR__ . '/../src/order_helpers.php';
+require_once __DIR__ . '/../src/mailer.php';
 
 header('Content-Type: application/json');
 
@@ -64,11 +65,6 @@ if ($apiStatus === 'successful' || $apiStatus === 'approved') {
         $feePercent = 1.0;
 
         foreach ($items as $item) {
-            // NOTE: stock was already decremented in checkout_process.php when
-            // the order was created. Do NOT decrement it again here — that was
-            // the cause of the double-subtraction bug. Payment confirmation only
-            // needs to move funds into escrow, not touch stock a second time.
-
             $feeAmount    = round($item['subtotal'] * ($feePercent / 100), 2);
             $farmerAmount = $item['subtotal'];
 
@@ -83,6 +79,13 @@ if ($apiStatus === 'successful' || $apiStatus === 'approved') {
         ")->execute([$order_id, 'payment_confirmed', 'Payment received and confirmed. Funds held in escrow, split per farmer package.', $user_id]);
 
         $pdo->commit();
+
+        $buyerInfo = $pdo->prepare("SELECT name, email FROM buyers WHERE id = ?");
+        $buyerInfo->execute([$user_id]);
+        $buyer = $buyerInfo->fetch(PDO::FETCH_ASSOC);
+        if ($buyer && !empty($buyer['email'])) {
+            send_payment_confirmation_email($buyer['email'], $buyer['name'], $order_id, $order['total_amount']);
+        }
 
         echo json_encode(['status'=>'confirmed','order_id'=>$order_id]);
 

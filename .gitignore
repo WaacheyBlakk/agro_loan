@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+composer.json
 
 # User-uploaded content (KYC documents, produce photos, etc.)
 # Ignore everything directly under uploads/ except .htaccess...

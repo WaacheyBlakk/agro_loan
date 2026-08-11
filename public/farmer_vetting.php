@@ -7,6 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 require_once __DIR__ . '/../src/db.php';
+require_once __DIR__ . '/../src/mailer.php';
 
 $pdo = getPDO();
 
@@ -37,16 +38,6 @@ try {
     } catch (PDOException $ex) {
         // Migration failover
     }
-}
-
-/**
- * Sends an HTML email notification.
- */
-function send_email_notification($to, $subject, $message) {
-    $headers = "MIME-Version: 1.0" . "\r\n";
-    $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-    $headers .= "From: AgroLoan Notifications <no-reply@agroloan.com>" . "\r\n";
-    return @mail($to, $subject, $message, $headers);
 }
 
 /**
@@ -257,7 +248,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['application_id'], $_P
                 $sms_text = "Hello {$f_name}, your application '{$l_title}' was rejected. Reason: '{$reason_snippet}'. You can modify and resubmit it now.";
             }
 
-            if (!empty($f_email)) send_email_notification($f_email, $subject, $email_body);
+            if (!empty($f_email)) send_mail($f_email, $subject, email_template($subject, $email_body), $f_name);
             if (!empty($f_phone)) send_sms_notification($f_phone, $sms_text);
         }
     }

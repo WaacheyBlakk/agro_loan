@@ -7,6 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/users.php';
+require_once __DIR__ . '/../src/mailer.php';
 
 // Administration Authentication Check
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
@@ -25,16 +26,6 @@ $errorMessage = '';
 $disputeType = $_GET['type'] ?? 'loan';
 if (!in_array($disputeType, ['loan', 'market'])) {
     $disputeType = 'loan';
-}
-
-/**
- * Sends an HTML email notification.
- */
-function send_email_notification($to, $subject, $message) {
-    $headers = "MIME-Version: 1.0" . "\r\n";
-    $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-    $headers .= "From: AgroLoan Admin Compliance <disputes@agroloan.com>" . "\r\n";
-    return @mail($to, $subject, $message, $headers);
 }
 
 /**
@@ -102,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Notify Creator
                 if (!empty($party['creator_email'])) {
-                    send_email_notification($party['creator_email'], $subject, $email_body);
+                   send_mail($party['creator_email'], $subject, email_template($subject, $email_body), $party['creator_name'] ?? null);
                 }
                 if (!empty($party['creator_phone'])) {
                     send_sms_notification($party['creator_phone'], $sms_text);
@@ -110,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 // Notify Defendant
                 if (!empty($party['defendant_email'])) {
-                    send_email_notification($party['defendant_email'], $subject, $email_body);
+                    send_mail($party['defendant_email'], $subject, email_template($subject, $email_body), $party['defendant_name'] ?? null);
                 }
                 if (!empty($party['defendant_phone'])) {
                     send_sms_notification($party['defendant_phone'], $sms_text);

@@ -6,10 +6,16 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 //place_order.php
 require_once __DIR__ . '/../src/db.php';
+require_once __DIR__ . '/../src/mailer.php';
+
 $pdo = getPDO();
 
 $buyer_id = $_SESSION['user_id'] ?? $_SESSION['buyer_id'] ?? $_SESSION['id'] ?? null;
 if (!$buyer_id) { header('Location: login.php'); exit; }
+
+$buyerInfo = $pdo->prepare("SELECT name, email FROM buyers WHERE id = ?");
+$buyerInfo->execute([$buyer_id]);
+$buyer = $buyerInfo->fetch(PDO::FETCH_ASSOC);
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: checkout.php'); exit; }
 csrf_verify();
@@ -94,6 +100,11 @@ try {
     $delCartAlt->execute([$buyer_id]);
 
     $pdo->commit();
+
+    if ($buyer && !empty($buyer['email'])) {
+        send_order_confirmation_email($buyer['email'], $buyer['name'], $order_id, $total);
+    }
+
     header("Location: orders_success.php?order_id=" . $order_id);
     exit;
 

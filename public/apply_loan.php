@@ -8,6 +8,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/../src/auth.php';
 require_once __DIR__ . '/../src/users.php';
 require_once __DIR__ . '/../src/loan.php';
+require_once __DIR__ . '/../src/mailer.php';
 
 // Authentication Check
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'farmer') {
@@ -29,17 +30,6 @@ try {
     } catch (PDOException $ex) {
         // Fallback in case of database permission restrictions
     }
-}
-
-/**
- * Sends an HTML email notification.
- */
-function send_email_notification($to, $subject, $message) {
-    $headers = "MIME-Version: 1.0" . "\r\n";
-    $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-    $headers .= "From: AgroLoan Notifications <no-reply@agroloan.com>" . "\r\n";
-    
-    return @mail($to, $subject, $message, $headers);
 }
 
 /**
@@ -161,7 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $sms_text = "Hello Agent {$a_name}, farmer {$username} has submitted a loan application '{$_POST['title']}' (GHS {$formatted_amount}) to you. Please review it on the portal.";
 
                 if (!empty($a_email)) {
-                    send_email_notification($a_email, $subject, $email_body);
+                    send_mail($a_email, $subject, email_template($subject, $email_body), $a_name);
                 }
                 if (!empty($a_phone)) {
                     send_sms_notification($a_phone, $sms_text);

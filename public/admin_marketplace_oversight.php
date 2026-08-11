@@ -6,7 +6,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require_once __DIR__ . '/../src/db.php';
-require_once __DIR__ . '/../src/momo.php'; // Required for transaction and payout disbursements
+require_once __DIR__ . '/../src/momo.php'; 
+require_once __DIR__ . '/../src/mailer.php';
 
 // Role Verification
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
@@ -90,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
 
             // Fetch held escrow records associated with this specific order group
             $escrowStmt = $pdo->prepare("
-                SELECT e.*, u.momo_phone, u.name AS farmer_name
+                SELECT e.*, u.momo_phone, u.name AS farmer_name, u.email AS farmer_email
                 FROM escrow e
                 JOIN users u ON e.farmer_id = u.id
                 WHERE e.order_group_id = ? AND e.status = 'held'
@@ -125,6 +126,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
                         continue;
                     }
 
+                    if (!empty($escrow['farmer_email'])) {
+                    send_escrow_release_email($escrow['farmer_email'], $escrow['farmer_name'], $order_id, $escrow['amount']);
+                    }
+
                     $momoPhone = '233' . ltrim(preg_replace('/\D/', '', $escrow['momo_phone']), '0');
 
                     // API mobile payout call
@@ -140,6 +145,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
 
                     $pdo->prepare("UPDATE escrow SET status = 'released', released_at = NOW(), momo_disbursement_ref = ? WHERE id = ?")
                         ->execute([$ref, $escrow['id']]);
+                    
+                    if (!empty($escrow['farmer_email'])) {
+                        send_escrow_release_email($escrow['farmer_email'], $escrow['farmer_name'], $order_id, $escrow['amount']);
+                    }
 
                     $pdo->prepare("INSERT INTO order_tracking (order_id, status, notes) VALUES (?, 'escrow_released', ?)")
                         ->execute([$order_id, "₵" . number_format($escrow['amount'], 2) . " released to {$escrow['farmer_name']} for Group {$group_code}."]);

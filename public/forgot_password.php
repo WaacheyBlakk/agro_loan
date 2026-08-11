@@ -3,6 +3,7 @@ require_once __DIR__ . '/../src/security_headers.php';
 require_once __DIR__ . '/../src/csrf.php';
 // public/forgot_password.php
 require_once __DIR__ . '/../src/db.php';
+require_once __DIR__ . '/../src/mailer.php';
 $pdo = getPDO(); 
 
 $message = '';
@@ -47,18 +48,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Appending a 'type' parameter allows reset_password.php to know which table to query
             $type_param = ($target_table === 'buyers') ? 'buyer' : 'user';
             $resetLink = "$protocol://$host$dir/reset_password.php?token=" . $token . "&type=" . $type_param;
-
-            // Demo Link for testing
-            $demoLink = $resetLink; 
-            /*
-            @mail(
-                $email,
-                "AgroLoan Password Reset",
-                "We received a request to reset your AgroLoan password.\n\n" .
-                "Click the link below to choose a new password (valid for 1 hour):\n" .
-                $resetLink . "\n\n" .
-                "If you did not request this, you can safely ignore this email."
-            ); */
+            
+            send_password_reset_email($email, $resetLink);
         }
 
         // Standard security practice: display the confirmation message regardless of whether the email was found
@@ -308,14 +299,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <a href="login.php" class="back-link">
             <i class="ri-arrow-left-line"></i> Back to Login
         </a>
-
-        <?php if (isset($demoLink)): ?>
-            <div class="dev-box">
-                <strong><i class="ri-code-s-slash-line"></i> Developer Demo</strong>
-                Email simulation (Localhost):<br>
-                <a href="<?= $demoLink ?>">Click here to reset password</a>
-            </div>
-        <?php endif; ?>
 
     </div>
 

@@ -7,6 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/users.php';
+require_once __DIR__ . '/../src/mailer.php';
 
 // Authentication Check
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['farmer', 'agent'])) {
@@ -72,16 +73,6 @@ try {
     } catch (PDOException $ex) {
         // Fallback in case of column addition restrictions
     }
-}
-
-/**
- * Sends an HTML email notification.
- */
-function send_email_notification($to, $subject, $message) {
-    $headers = "MIME-Version: 1.0" . "\r\n";
-    $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-    $headers .= "From: AgroLoan Support <disputes@agroloan.com>" . "\r\n";
-    return @mail($to, $subject, $message, $headers);
 }
 
 /**
@@ -184,7 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $sms_text = "Hello {$def['name']}, a dispute has been filed against you by {$username} regarding '{$loan['loan_title']}'. It is currently under administrative review.";
 
             if (!empty($def['email'])) {
-                send_email_notification($def['email'], $subject, $email_body);
+                send_mail($def['email'], $subject, email_template($subject, $email_body), $def['name']);
             }
             if (!empty($def['phone'])) {
                 send_sms_notification($def['phone'], $sms_text);

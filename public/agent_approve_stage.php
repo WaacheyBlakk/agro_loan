@@ -5,6 +5,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require_once __DIR__ . '/../src/db.php';
+require_once __DIR__ . '/../src/mailer.php';
 $pdo = getPDO();
 
 // Ensure logged-in agent
@@ -46,6 +47,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['sta
             throw new Exception("Stage is not ready for disbursement or already processed.");
         }
 
+        $farmerInfo = $pdo->prepare("
+            SELECT u.name, u.email 
+            FROM loan_applications la 
+            JOIN users u ON u.id = la.farmer_id 
+            WHERE la.id = ?
+        ");
+        $farmerInfo->execute([$targetStage['application_id']]);
+        $farmer = $farmerInfo->fetch(PDO::FETCH_ASSOC);
+
         // 2. Update Stage Status
         $stmt = $pdo->prepare("UPDATE loan_stages SET status = ? WHERE id = ?");
         $stmt->execute([$new_status, $stage_id]);
@@ -71,6 +81,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['sta
 
         $pdo->commit();
         
+        if ($farmer && !empty($farmer['email'])) {
+            send_loan_stage_email($farmer['email'], $farmer['name'], $targetStage['stage_number'], $new_status === 'disbursed' ? 'approved' : 'rejected');
+        }
+                
         // Set Flash Message
         $_SESSION['flash_msg'] = ($new_status === 'disbursed') ? "Funds released successfully." : "Disbursement rejected.";
         $_SESSION['flash_type'] = ($new_status === 'disbursed') ? "success" : "error";

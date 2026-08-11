@@ -4,6 +4,7 @@ require_once __DIR__ . '/../src/csrf.php';
 require_once __DIR__ . '/../src/config.php';
 require_once __DIR__ . '/../src/sessions.php';
 require_once __DIR__ . '/../src/db.php';
+require_once __DIR__ . '/../src/mailer.php';
 
 // Ensure only admin can access
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
@@ -74,14 +75,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $update_stmt = $pdo->prepare("UPDATE {$table} SET status = ? WHERE id = ?");
                 $update_stmt->execute([$db_status, $target_id]);
 
-                // Dispatch Alerts (Email + Simulated SMS)
-                $notification = sendUserNotification(
-                    $user_info['name'], 
-                    $user_info['email'], 
-                    $user_info['phone'] ?? 'N/A', 
-                    $db_status, 
-                    $justification
-                );
+                $email_sent = !empty($user_info['email']) 
+                    ? send_account_status_email($user_info['email'], $user_info['name'], $db_status, $justification) 
+                    : false;
+                $notification = ['log' => "Alert dispatched to {$user_info['email']}."];
 
                 $alert_message = "Account successfully set to " . strtoupper($db_status) . ". " . $notification['log'];
                 $alert_type = "success";
