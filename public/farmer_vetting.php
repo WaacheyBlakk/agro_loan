@@ -353,7 +353,7 @@ foreach ($applications as $app) {
     .logout-btn:hover { background: var(--danger); color: white; }
     .sidebar.collapsed .logout-btn span { display: none; }
 
-    .main { flex: 1; display: flex; flex-direction: column; overflow-y: auto; position: relative; }
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow-y: auto; position: relative; }
     .topbar { background: var(--bg-card); padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow); position: sticky; top: 0; z-index: 50; }
     .toggle-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 5px; }
     .toggle-btn:hover { color: var(--primary); }
@@ -438,7 +438,7 @@ foreach ($applications as $app) {
     <aside class="sidebar" id="sidebar">
         <div class="brand">
             <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
-            <h2>AgroLoan Agent</h2>
+            <h2>Agent</h2>
         </div>
 
         <nav class="nav">

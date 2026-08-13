@@ -249,7 +249,7 @@ $selected_loan_id = isset($_GET['loan_id']) ? (int)$_GET['loan_id'] : null;
     .sidebar.collapsed .logout-btn span { display: none; }
 
     /* ── MAIN ── */
-    .main { flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow-y: auto; }
     .topbar {
         background: var(--bg-card); padding: 15px 30px;
         display: flex; justify-content: space-between; align-items: center;
@@ -436,7 +436,7 @@ $selected_loan_id = isset($_GET['loan_id']) ? (int)$_GET['loan_id'] : null;
 <aside class="sidebar" id="sidebar">
     <div class="brand">
         <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
-        <h2>AgroLoan Farmer</h2>
+        <h2>Farmer</h2>
     </div>
     <nav class="nav">
         <a href="farmer_dashboard.php" class="nav-link">

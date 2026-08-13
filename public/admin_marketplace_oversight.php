@@ -19,10 +19,10 @@ $admin_id = $_SESSION['user_id'];
 $username = $_SESSION['name'] ?? 'Administrator';
 $pdo = getPDO();
 
-// Declare $activeTab at the very top to prevent "Undefined variable" warnings
-$activeTab = $_GET['tab'] ?? 'overview';
-if (!in_array($activeTab, ['overview', 'transactions', 'disputes'])) {
-    $activeTab = 'overview';
+// Declare $activeTab at top
+$activeTab = $_GET['tab'] ?? 'transactions';
+if (!in_array($activeTab, ['transactions', 'disputes'])) {
+    $activeTab = 'transactions';
 }
 
 $successMessage = '';
@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
             $stmt = $pdo->prepare("UPDATE market_disputes SET status = ?, decision = ?, decision_date = NOW() WHERE id = ?");
             $stmt->execute([$status, $decision, $dispute_id]);
 
-            $successMessage = "Dispute case reference #{$dispute_id} resolved with status set to '" . ucfirst($status) . "'.";
+            $successMessage = "Dispute case reference #{$dispute_id} updated to '" . ucfirst($status) . "'.";
         }
 
         // 2. Mark Dispute as Under Review
@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
                 throw new Exception("Please select a valid order group and provide an intervention ruling statement.");
             }
 
-            // Retrieve general details of parent order group to map hierarchy and trace events
+            // Retrieve general details of parent order group
             $groupQuery = $pdo->prepare("SELECT order_id, group_code FROM order_groups WHERE id = ?");
             $groupQuery->execute([$group_id]);
             $groupMeta = $groupQuery->fetch(PDO::FETCH_ASSOC);
@@ -127,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
                     }
 
                     if (!empty($escrow['farmer_email'])) {
-                    send_escrow_release_email($escrow['farmer_email'], $escrow['farmer_name'], $order_id, $escrow['amount']);
+                        send_escrow_release_email($escrow['farmer_email'], $escrow['farmer_name'], $order_id, $escrow['amount']);
                     }
 
                     $momoPhone = '233' . ltrim(preg_replace('/\D/', '', $escrow['momo_phone']), '0');
@@ -145,10 +145,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
 
                     $pdo->prepare("UPDATE escrow SET status = 'released', released_at = NOW(), momo_disbursement_ref = ? WHERE id = ?")
                         ->execute([$ref, $escrow['id']]);
-                    
-                    if (!empty($escrow['farmer_email'])) {
-                        send_escrow_release_email($escrow['farmer_email'], $escrow['farmer_name'], $order_id, $escrow['amount']);
-                    }
 
                     $pdo->prepare("INSERT INTO order_tracking (order_id, status, notes) VALUES (?, 'escrow_released', ?)")
                         ->execute([$order_id, "₵" . number_format($escrow['amount'], 2) . " released to {$escrow['farmer_name']} for Group {$group_code}."]);
@@ -189,7 +185,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
                 }
 
                 if ($refundSum <= 0) {
-                    // Fallback calculations for refund total based on relevant group items if active escrows are missing
                     $groupAmountStmt = $pdo->prepare("SELECT SUM(subtotal) FROM order_items WHERE order_group_id = ?");
                     $groupAmountStmt->execute([$group_id]);
                     $refundSum = (float)$groupAmountStmt->fetchColumn();
@@ -198,11 +193,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
                 $buyerPhoneNum = $buyerData['momo_phone'] ?: $buyerData['phone'];
 
                 if (empty($buyerPhoneNum)) {
-                    $successMessage = "Group escrow successfully marked as refunded. Manual refund required (No buyer phone configured).";
+                    $successMessage = "Group escrow marked as refunded. Manual refund required (No buyer phone configured).";
                 } else {
                     $momoPhone = '233' . ltrim(preg_replace('/\D/', '', $buyerPhoneNum), '0');
 
-                    // API refund payout to buyer momo phone
+                    // API refund payout to buyer MoMo phone
                     $disburse = disburseMoMoPayment([
                         'amount'      => $refundSum,
                         'currency'    => 'GHS',
@@ -246,7 +241,7 @@ $selected_disputes      = [];
 $selected_dispute       = null;
 $dispute_evidence       = [];
 
-// Fetch dispute context if accessed from dispute logs page
+// Fetch dispute context if accessed from dispute audit
 if ($selected_dispute_id) {
     $sdStmt = $pdo->prepare("
         SELECT d.*, 
@@ -323,7 +318,7 @@ if ($selected_order_id) {
         $soeStmt->execute([$selected_order_id]);
         $selected_order_escrow = $soeStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Fetch related disputes (with joined order_groups context)
+        // Fetch related disputes
         if (!$selected_dispute) {
             $sodStmt = $pdo->prepare("
                 SELECT d.*, 
@@ -385,14 +380,12 @@ $stmtAll->execute($params);
 $all_orders = $stmtAll->fetchAll(PDO::FETCH_ASSOC);
 
 // Populate $allDisputes registry for disputes view
-$allDisputes = [];
-if ($activeTab === 'disputes') {
-    $disputeQuery = "
-        SELECT d.*, 
-               CASE WHEN d.initiator_role = 'buyer' THEN b.name ELSE u.name END AS initiator_name,
-               CASE WHEN d.defendant_role = 'buyer' THEN b2.name ELSE u2.name END AS defendant_name,
-               o.total_amount AS order_amount, o.order_status,
-               og.group_code
+$disputeQuery = "
+    SELECT d.*, 
+           CASE WHEN d.initiator_role = 'buyer' THEN b.name ELSE u.name END AS initiator_name,
+           CASE WHEN d.defendant_role = 'buyer' THEN b2.name ELSE u2.name END AS defendant_name,
+           o.total_amount AS order_amount, o.order_status,
+           og.group_code
         FROM market_disputes d
         LEFT JOIN buyers b ON (d.initiator_id = b.id AND d.initiator_role = 'buyer')
         LEFT JOIN users u ON (d.initiator_id = u.id AND d.initiator_role = 'farmer')
@@ -401,11 +394,10 @@ if ($activeTab === 'disputes') {
         LEFT JOIN orders o ON d.order_id = o.id
         LEFT JOIN order_groups og ON d.order_group_id = og.id
         ORDER BY d.created_at DESC
-    ";
-    $allDisputes = $pdo->query($disputeQuery)->fetchAll(PDO::FETCH_ASSOC);
-}
+";
+$allDisputes = $pdo->query($disputeQuery)->fetchAll(PDO::FETCH_ASSOC);
 
-// Total overview metrics for marketplace dashboard
+// Total overview metrics
 $metrics = [
     'total_volume'    => 0.0,
     'held_escrow'     => 0.0,
@@ -427,10 +419,9 @@ while ($row = $m_tx->fetch(PDO::FETCH_ASSOC)) {
 
 $m_escrow = $pdo->query("SELECT SUM(amount) AS held_sum FROM escrow WHERE status = 'held'")->fetch(PDO::FETCH_ASSOC);
 $metrics['held_escrow'] = (float)($m_escrow['held_sum'] ?? 0.0);
-
 $metrics['open_disputes'] = (int)$pdo->query("SELECT COUNT(*) FROM market_disputes WHERE status IN ('open', 'under_review')")->fetchColumn();
 
-// Status labels and display config
+// Status display mappings
 $statusConfig = [
     'pending_payment'   => ['label'=>'Pending Payment',   'color'=>'badge-pending'],
     'payment_confirmed' => ['label'=>'Payment Confirmed', 'color'=>'badge-completed'],
@@ -451,38 +442,51 @@ $escrowConfig = [
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Market Oversight & Intervention Desk | AgroLoan Administration</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Marketplace Oversight Desk | AgroLoan Administration</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    
+    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Feather Icons -->
     <script src="https://unpkg.com/feather-icons"></script>
+
     <style>
         :root {
-            --primary: #059669;
+            --primary: #059669; /* Emerald 600 */
             --primary-dark: #576868ff;
-            --secondary: #10b981;
-            --bg-body: #f1f5f9;
+            --secondary: #10b981; /* Emerald 500 */
+            --bg-body: #f3f4f6;
             --bg-card: #ffffff;
-            --text-main: #1e293b;
-            --text-muted: #64748b;
+            --text-main: #111827;
+            --text-muted: #6b7280;
             --danger: #ef4444;
             --warning: #f59e0b;
             --success: #10b981;
             --sidebar-width: 260px;
             --sidebar-collapsed: 80px;
-            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+            --border-color: #e5e7eb;
         }
 
-        * { box-sizing: border-box; }
-        body {
+        *, *::before, *::after {
+            box-sizing: border-box;
             margin: 0;
-            font-family: 'Poppins', sans-serif;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: var(--bg-body);
             color: var(--text-main);
             display: flex;
+            min-height: 100vh;
+            min-height: 100dvh;
             height: 100vh;
             overflow: hidden;
+            width: 100%;
         }
 
+        /* --- SIDEBAR --- */
         .sidebar {
             width: var(--sidebar-width);
             background: var(--primary-dark);
@@ -490,153 +494,417 @@ $escrowConfig = [
             display: flex;
             flex-direction: column;
             padding: 20px;
-            transition: width 0.3s ease;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             z-index: 100;
-            box-shadow: 4px 0 10px rgba(0,0,0,0.05);
+            box-shadow: 4px 0 10px rgba(0,0,0,0.1);
             flex-shrink: 0;
+            height: 100%;
         }
+
         .sidebar.collapsed { width: var(--sidebar-collapsed); padding: 20px 10px; }
+        
         .brand {
             display: flex;
             align-items: center;
             gap: 12px;
-            margin-bottom: 40px;
-            padding-left: 5px;
+            margin-bottom: 30px;
+            padding-left: 4px;
             overflow: hidden;
         }
+
         .brand img {
-            width: 40px; height: 40px; border-radius: 8px;
+            width: 38px; height: 38px; border-radius: 8px;
             object-fit: cover; border: 2px solid rgba(255,255,255,0.2);
+            flex-shrink: 0;
         }
+
         .brand h2 {
-            font-size: 20px; font-weight: 600; white-space: nowrap;
-            opacity: 1; transition: opacity 0.2s; margin: 0;
+            font-size: 18px; font-weight: 600; white-space: nowrap;
+            opacity: 1; transition: opacity 0.2s; color: #fff;
         }
-        .sidebar.collapsed .brand h2 { opacity: 0; width: 0; }
-        .nav { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-        .nav-link {
-            display: flex; align-items: center; gap: 14px;
-            padding: 12px 15px; color: #d1fae5; text-decoration: none;
-            border-radius: 10px; transition: all 0.2s ease;
-            white-space: nowrap; font-weight: 500;
-        }
-        .nav-link:hover {
-            background: rgba(255,255,255,0.1); color: #fff;
-            transform: translateX(4px);
-        }
-        .nav-link.active { background: var(--secondary); color: #fff; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
-        .nav-link svg { width: 20px; height: 20px; }
-        .sidebar.collapsed .nav-link { justify-content: center; padding: 12px; }
-        .sidebar.collapsed .nav-link span { display: none; }
+
+        .sidebar.collapsed .brand h2 { opacity: 0; width: 0; display: none; }
         
+        .nav { display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto; overflow-x: hidden; }
+
+        .nav-link {
+            display: flex; align-items: center; gap: 12px;
+            padding: 11px 14px; color: #d1fae5; text-decoration: none;
+            border-radius: 10px; transition: all 0.2s ease;
+            white-space: nowrap; font-weight: 500; font-size: 13.5px;
+        }
+
+        .nav-link:hover { background: rgba(255,255,255,0.1); color: #fff; transform: translateX(3px); }
+        .nav-link.active { background: var(--secondary); color: #fff; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+        .nav-link svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+        .sidebar.collapsed .nav-link { justify-content: center; padding: 11px; }
+        .sidebar.collapsed .nav-link span { display: none; }
+
         .logout-btn {
-            background: rgba(239, 68, 68, 0.1); color: #fca5a5;
-            border: 1px solid rgba(239, 68, 68, 0.15);
-            padding: 12px; border-radius: 10px; cursor: pointer;
+            background: rgba(239, 68, 68, 0.12); color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            padding: 11px; border-radius: 10px; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
-            gap: 10px; font-family: inherit; font-weight: 600;
-            transition: 0.2s; width: 100%;
+            gap: 10px; font-family: inherit; font-weight: 600; font-size: 13.5px;
+            transition: 0.2s; width: 100%; margin-top: 15px;
         }
         .logout-btn:hover { background: var(--danger); color: white; }
         .sidebar.collapsed .logout-btn span { display: none; }
 
+        /* --- MAIN VIEWPORT & TOPBAR --- */
         .main {
             flex: 1; display: flex; flex-direction: column;
-            overflow-y: auto; position: relative;
+            min-width: 0; width: 100%; height: 100%;
+            overflow-y: auto; overflow-x: hidden; position: relative;
         }
 
         .topbar {
-            background: var(--bg-card); padding: 15px 30px;
+            background: var(--bg-card); padding: 12px 24px;
             display: flex; justify-content: space-between; align-items: center;
-            box-shadow: var(--shadow); position: sticky; top: 0; z-index: 50;
+            box-shadow: var(--shadow); position: sticky; top: 0; z-index: 40;
+            width: 100%; border-bottom: 1px solid var(--border-color);
         }
+
         .toggle-btn {
             background: transparent; border: none; color: var(--text-muted);
-            cursor: pointer; padding: 5px;
+            cursor: pointer; padding: 6px; display: inline-flex; align-items: center;
+            justify-content: center; border-radius: 6px;
         }
-        .toggle-btn:hover { color: var(--primary); }
+        .toggle-btn:hover { color: var(--primary); background: #f1f5f9; }
 
-        .user-profile { display: flex; align-items: center; gap: 10px; }
+        .user-profile { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .user-meta { text-align: right; line-height: 1.2; }
+        .user-name { font-size: 13px; font-weight: 600; color: var(--text-main); white-space: nowrap; }
+        .user-role { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
         .user-avatar {
-            width: 35px; height: 35px; background: var(--primary); color: white;
+            width: 36px; height: 36px; background: var(--primary); color: white;
             border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            font-weight: bold; font-size: 14px;
+            font-weight: 600; font-size: 14px; flex-shrink: 0;
         }
-         
-        .content { padding: 30px; max-width: 1400px; margin: 0 auto; width: 100%; }
 
-        /* Metric Widgets */
+        /* --- PAGE CONTENT CONTAINER --- */
+        .content {
+            padding: 24px;
+            max-width: 1350px;
+            width: 100%;
+            margin: 0 auto;
+            min-width: 0;
+        }
+
+        .page-header {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            width: 100%;
+        }
+        .page-title { font-size: 22px; font-weight: 700; color: var(--text-main); line-height: 1.25; }
+        .page-subtitle { color: var(--text-muted); margin-top: 4px; font-size: 13px; }
+
+        /* VIEW TABS NAVIGATION */
+        .tab-nav-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid var(--border-color);
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            width: 100%;
+        }
+        .tab-nav-link {
+            padding: 10px 18px;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-decoration: none;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .tab-nav-link:hover { color: var(--primary); }
+        .tab-nav-link.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        /* METRIC CARDS */
         .metrics-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px;
-            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 16px;
+            margin-bottom: 22px;
+            width: 100%;
         }
         .metric-card {
-            background: var(--bg-card); border-radius: 12px; padding: 20px;
+            background: var(--bg-card); border-radius: 12px; padding: 18px 20px;
             display: flex; align-items: center; justify-content: space-between;
-            box-shadow: var(--shadow); border: 1px solid #e2e8f0;
+            box-shadow: var(--shadow); border: 1px solid var(--border-color);
+            min-width: 0;
         }
-        .metric-info h4 { margin: 0; font-size: 13px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; }
-        .metric-info p { margin: 5px 0 0; font-size: 24px; font-weight: 700; color: var(--text-main); }
-        .metric-icon { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .metric-info { min-width: 0; }
+        .metric-info h4 { margin: 0; font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .metric-info p { margin: 4px 0 0; font-size: 20px; font-weight: 700; color: var(--text-main); word-break: break-word; }
+        .metric-icon { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 12px; }
         .icon-blue { background: #e0e7ff; color: #4f46e5; }
         .icon-green { background: #d1fae5; color: #059669; }
         .icon-red { background: #fee2e2; color: #ef4444; }
 
-        /* Card styles */
+        /* FILTERS BAR */
+        .filters-bar {
+            background: var(--bg-card);
+            padding: 18px 20px;
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            margin-bottom: 22px;
+            border: 1px solid var(--border-color);
+            display: grid;
+            grid-template-columns: 2fr 1.2fr 1fr auto;
+            gap: 14px;
+            align-items: flex-end;
+            width: 100%;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 0;
+            width: 100%;
+        }
+
+        .filter-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-input {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 13px;
+            color: var(--text-main);
+            outline: none;
+            background-color: #fafbfa;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            width: 100%;
+            height: 38px;
+        }
+
+        select.filter-input {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            background-size: 14px;
+            padding-right: 32px;
+            cursor: pointer;
+        }
+
+        .filter-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15);
+        }
+
+        .filter-buttons {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .btn-search {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0 16px;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 13px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-family: inherit;
+            height: 38px;
+            transition: background-color 0.2s;
+            text-decoration: none;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .btn-search:hover { background-color: var(--secondary); }
+
+        .btn-action {
+            text-decoration: none;
+            padding: 0 14px;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            height: 38px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .btn-action:hover { border-color: var(--primary); color: var(--primary); background: #f0fdfa; }
+
+        .btn-submit {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-height: 38px;
+        }
+        .btn-submit:hover { background: var(--secondary); }
+
+        /* CARDS & TABLES */
         .card {
-            background: var(--bg-card); padding: 25px; border-radius: 12px;
-            box-shadow: var(--shadow); border: 1px solid #e2e8f0; margin-bottom: 25px;
+            background: var(--bg-card);
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+            margin-bottom: 22px;
+            overflow: hidden;
+            width: 100%;
+            min-width: 0;
         }
-        .flex-header {
-            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 20px;
-        }
-        .card-title { font-size: 18px; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 8px; color: var(--text-main); }
 
-        /* Form Filter Panel */
-        .filter-panel {
-            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 15px; margin-bottom: 20px;
+        .card-header-padded {
+            padding: 18px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
         }
-        .filter-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; align-items: end;
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-main);
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        .filter-group { display: flex; flex-direction: column; gap: 6px; }
-        .filter-group label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
-        select, input[type="text"], textarea {
-            padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px;
-            font-family: inherit; width: 100%; outline: none; background: #fff; color: var(--text-main);
-            transition: border-color 0.2s;
+
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            display: block;
         }
-        select:focus, input[type="text"]:focus, textarea:focus { border-color: var(--primary); }
 
-        /* Tables */
-        .table-wrap { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; min-width: 800px; }
-        th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
-        th { background: #f8fafc; font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
-        tr:hover td { background: #fcfdfe; }
-
-        /* Status badges */
-        .badge { padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; display: inline-block; }
-        .badge-pending { background: #fef3c7; color: #d97706; }
-        .badge-approved { background: #ecfdf5; color: #059669; }
-        .badge-rejected { background: #fef2f2; color: #dc2626; }
-        .badge-completed { background: #eff6ff; color: #2563eb; }
-        .badge-disbursed { background: #f5f3ff; color: #7c3aed; }
-
-        /* Action buttons */
-        .btn {
-            padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; border: none; cursor: pointer;
-            display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font-family: inherit; transition: 0.2s;
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 780px;
         }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-primary:hover { background: var(--primary-dark); }
-        .btn-secondary { background: #f1f5f9; color: var(--text-main); border: 1px solid #cbd5e1; }
-        .btn-secondary:hover { background: #e2e8f0; }
-        .btn-danger { background: var(--danger); color: white; }
-        .btn-danger:hover { background: #dc2626; }
+        .table thead { background: #f9fafb; border-bottom: 2px solid var(--border-color); }
+        .table th { padding: 13px 18px; text-align: left; font-size: 11.5px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .table td { padding: 13px 18px; border-bottom: 1px solid var(--border-color); vertical-align: middle; font-size: 13px; }
+        .table tr:last-child td { border-bottom: none; }
+        .table tbody tr:hover { background: #f8fafc; }
 
-        /* Timeline Tracker Styles */
-        .timeline { position: relative; padding-left: 20px; border-left: 2px solid #cbd5e1; margin-left: 10px; display: flex; flex-direction: column; gap: 20px; }
+        /* BADGES */
+        .badge {
+            padding: 4px 9px; border-radius: 50px; font-size: 11px;
+            font-weight: 600; display: inline-flex; align-items: center; gap: 4px;
+            text-transform: capitalize; white-space: nowrap;
+        }
+        .badge-pending { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; }
+        .badge-approved, .badge-verified, .badge-confirmed { background: #ecfdf5; color: #065f46; border: 1px solid #10b981; }
+        .badge-completed { background: #eff6ff; color: #1d4ed8; border: 1px solid #93c5fd; }
+        .badge-rejected { background: #fef2f2; color: #dc2626; border: 1px solid #fee2e2; }
+        .badge-disbursed { background: #faf5ff; color: #6d28d9; border: 1px solid #e9d5ff; }
+
+        /* DETAIL / DRILL-DOWN SPLIT LAYOUT */
+        .detail-container {
+            display: grid;
+            grid-template-columns: 1.65fr 1fr;
+            gap: 20px;
+            align-items: start;
+            width: 100%;
+        }
+
+        .detail-container > div {
+            min-width: 0;
+            width: 100%;
+        }
+
+        .detail-card {
+            background: var(--bg-card);
+            border-radius: 14px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            padding: 20px;
+            margin-bottom: 20px;
+            word-break: break-word;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .detail-title {
+            font-size: 16px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-top: 0;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .detail-group {
+            display: grid;
+            grid-template-columns: 130px 1fr;
+            padding: 9px 0;
+            border-bottom: 1px solid #f9fafb;
+            gap: 10px;
+            font-size: 13px;
+        }
+
+        .detail-label { font-weight: 600; color: var(--text-muted); font-size: 12px; }
+        .detail-val { font-size: 13px; color: var(--text-main); word-break: break-word; }
+
+        /* TIMELINE TRACKER */
+        .timeline { position: relative; padding-left: 20px; border-left: 2px solid #cbd5e1; margin-left: 10px; display: flex; flex-direction: column; gap: 18px; }
         .timeline-item { position: relative; }
         .timeline-item::before {
             content: ''; position: absolute; left: -27px; top: 4px; width: 12px; height: 12px;
@@ -644,31 +912,145 @@ $escrowConfig = [
         }
         .timeline-date { font-size: 11px; color: var(--text-muted); display: block; margin-top: 2px; }
 
-        /* Elegant Split view for selection - exact clone from loan oversight */
-        .split-view { display: grid; grid-template-columns: 2fr 1fr; gap: 30px; align-items: start; }
-        .split-view > div { min-width: 0; }
-
-        /* Overrides panel styling */
+        /* INTERVENTION BOXES */
         .intervention-box {
-            background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 20px; margin-top: 25px;
+            background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px;
+            padding: 18px; margin-bottom: 20px; width: 100%; min-width: 0;
         }
-        .intervention-box h3 { margin: 0 0 10px 0; color: #b45309; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+        .intervention-box h3, .intervention-box h4 { margin: 0 0 6px 0; color: #b45309; font-size: 15px; display: flex; align-items: center; gap: 8px; }
 
-        .alert { padding: 12px 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; display: flex; align-items: center; gap: 10px; }
-        .alert-success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
-        .alert-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        /* CONTROL FORMS */
+        .control-form { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+        .control-form label { font-size: 11.5px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .control-textarea {
+            width: 100%; min-height: 75px; border-radius: 8px;
+            border: 1px solid var(--border-color); padding: 9px 12px;
+            font-family: inherit; font-size: 13px; outline: none; resize: vertical;
+            background-color: #fafbfa;
+        }
+        .control-textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15); }
+
+        /* EVIDENCE PREVIEWS */
+        .evidence-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .evidence-card {
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            border-radius: 8px;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        /* ALERTS */
+        .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 18px; font-size: 13px; display: flex; align-items: center; gap: 10px; width: 100%; word-break: break-word; }
+        .alert-success { background: #ecfdf5; color: #065f46; border: 1px solid #10b981; }
+        .alert-error { background: #fef2f2; color: #991b1b; border: 1px solid #f87171; }
+        .empty-state { text-align: center; padding: 35px 15px; color: var(--text-muted); font-size: 13px; }
+
+        /* MOBILE BACKDROP */
+        .sidebar-backdrop {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+            z-index: 95; opacity: 0; transition: opacity 0.3s;
+        }
+        .sidebar-backdrop.active { display: block; opacity: 1; }
+
+        /* --- RESPONSIVE MEDIA QUERIES --- */
+        @media (max-width: 1080px) {
+            .filters-bar {
+                grid-template-columns: 1fr 1fr;
+            }
+            .filter-buttons {
+                grid-column: span 2;
+                justify-content: flex-end;
+            }
+        }
 
         @media (max-width: 992px) {
-            .split-view { display: flex; flex-direction: column; gap: 20px; }
+            .detail-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                overflow-x: hidden;
+            }
+            .sidebar {
+                position: fixed;
+                top: 0; left: 0; bottom: 0;
+                height: 100%;
+                width: 270px;
+                max-width: 82vw;
+                transform: translateX(-100%);
+                z-index: 1000;
+                box-shadow: 6px 0 20px rgba(0,0,0,0.25);
+            }
+            .sidebar.active {
+                transform: translateX(0);
+            }
+            .content {
+                padding: 14px;
+            }
+            .topbar {
+                padding: 10px 14px;
+            }
+            .user-meta {
+                display: none;
+            }
+            .page-title {
+                font-size: 19px;
+            }
+            .filters-bar {
+                grid-template-columns: 1fr;
+                padding: 14px;
+                gap: 12px;
+            }
+            .filter-buttons {
+                grid-column: span 1;
+                width: 100%;
+            }
+            .filter-buttons button, .filter-buttons a {
+                flex: 1;
+            }
+            .metrics-grid {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+            .detail-card {
+                padding: 14px;
+            }
+            .detail-group {
+                grid-template-columns: 1fr;
+                gap: 3px;
+                padding: 8px 0;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .btn-search, .btn-action, .btn-submit {
+                font-size: 12px;
+                padding: 0 10px;
+            }
+            .metric-card {
+                padding: 14px;
+            }
         }
     </style>
 </head>
 <body>
-    <!-- Sidebar Navigation -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- SIDEBAR -->
     <aside class="sidebar" id="sidebar">
         <div class="brand">
             <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
-            <h2>AgroLoan Administrator</h2>
+            <h2>Administrator</h2>
         </div>
         <nav class="nav">
             <a href="admin_dashboard.php" class="nav-link">
@@ -687,7 +1069,7 @@ $escrowConfig = [
                 <i data-feather="shield"></i>
                 <span>Loan Oversight</span>
             </a>
-            <a href="admin_marketplace_oversight.php" class="nav-link <?= ($activeTab !== 'disputes') ? 'active' : '' ?>">
+            <a href="admin_marketplace_oversight.php" class="nav-link active">
                 <i data-feather="shopping-bag"></i>
                 <span>Market Oversight</span>
             </a>
@@ -711,14 +1093,15 @@ $escrowConfig = [
         </form>
     </aside>
 
+    <!-- MAIN WRAPPER -->
     <main class="main">
-        <!-- Top Navigation Bar -->
+        <!-- TOPBAR -->
         <header class="topbar">
-            <button id="toggleBtn" class="toggle-btn"><i data-feather="menu"></i></button>
+            <button id="toggleBtn" class="toggle-btn" aria-label="Toggle Sidebar"><i data-feather="menu"></i></button>
             <div class="user-profile">
-                <div style="text-align:right; margin-right:8px;">
-                    <div style="font-size:14px; font-weight:600;"><?= htmlspecialchars($username) ?></div>
-                    <div style="font-size:12px; color:var(--text-muted);">Administrator</div>
+                <div class="user-meta">
+                    <div class="user-name"><?= htmlspecialchars($username) ?></div>
+                    <div class="user-role">Administrator</div>
                 </div>
                 <div class="user-avatar">
                     <?= strtoupper(substr($username,0,1)) ?>
@@ -727,25 +1110,28 @@ $escrowConfig = [
         </header>
 
         <div class="content">
-            <div class="flex-header">
+            <!-- PAGE HEADER -->
+            <div class="page-header">
                 <div>
-                    <h1 style="margin: 0; font-size: 24px; font-weight: 700;">Marketplace Oversight Registry</h1>
-                    <p style="color: var(--text-muted); margin: 5px 0 0 0;">Manage transaction logs, system tracking audits, and dispute intervention profiles.</p>
+                    <h1 class="page-title">Marketplace Oversight Registry</h1>
+                    <p class="page-subtitle">Manage transaction logs, system tracking audits, and dispute intervention profiles.</p>
                 </div>
                 <?php if ($selected_order_id || $selected_dispute_id): ?>
-                    <a href="admin_marketplace_oversight.php?tab=<?= htmlspecialchars($activeTab) ?>" class="btn btn-secondary">&larr; Back to Directory</a>
+                    <a href="admin_marketplace_oversight.php?tab=<?= htmlspecialchars($activeTab) ?>" class="btn-action">
+                        <i data-feather="arrow-left" style="width:14px"></i> Back to Directory
+                    </a>
                 <?php endif; ?>
             </div>
 
-            <!-- Feedback Messages -->
+            <!-- FEEDBACK MESSAGES -->
             <?php if (!empty($successMessage)): ?>
-                <div class="alert alert-success"><i data-feather="check-circle"></i> <?= htmlspecialchars($successMessage) ?></div>
+                <div class="alert alert-success"><i data-feather="check-circle" style="width:17px; flex-shrink:0;"></i> <span><?= htmlspecialchars($successMessage) ?></span></div>
             <?php endif; ?>
             <?php if (!empty($errorMessage)): ?>
-                <div class="alert alert-error"><i data-feather="alert-circle"></i> <?= htmlspecialchars($errorMessage) ?></div>
+                <div class="alert alert-error"><i data-feather="alert-circle" style="width:17px; flex-shrink:0;"></i> <span><?= htmlspecialchars($errorMessage) ?></span></div>
             <?php endif; ?>
 
-            <!-- Global Dashboard Metrics Cards -->
+            <!-- OVERVIEW METRICS -->
             <?php if (!$selected_order_id && !$selected_dispute_id): ?>
                 <div class="metrics-grid">
                     <div class="metric-card">
@@ -784,19 +1170,106 @@ $escrowConfig = [
                         <div class="metric-icon icon-red"><i data-feather="alert-triangle"></i></div>
                     </div>
                 </div>
+
+                <!-- DIRECTORY VIEW TABS (ALL ORDERS vs DISPUTES) -->
+                <div class="tab-nav-bar">
+                    <a href="admin_marketplace_oversight.php?tab=transactions" class="tab-nav-link <?= ($activeTab === 'transactions') ? 'active' : '' ?>">
+                        <i data-feather="list" style="width:15px;"></i> All Transaction Orders (<?= count($all_orders) ?>)
+                    </a>
+                    <a href="admin_marketplace_oversight.php?tab=disputes" class="tab-nav-link <?= ($activeTab === 'disputes') ? 'active' : '' ?>">
+                        <i data-feather="alert-triangle" style="width:15px;"></i> Logged Market Disputes (<?= count($allDisputes) ?>)
+                    </a>
+                </div>
             <?php endif; ?>
 
             <!-- DRILL-DOWN AUDIT TRANSACTION VIEW -->
             <?php if ($selected_order_id && $selected_order): ?>
-                <div class="split-view">
+                
+                <!-- DEDICATED SINGLE DISPUTE CONTEXT (When opened via dispute audit) -->
+                <?php if ($selected_dispute): ?>
+                    <div class="detail-card" style="border-left: 4px solid var(--danger); background: #fffdfd; border-color: #fecaca;">
+                        <h2 class="detail-title" style="color:var(--danger);">
+                            <span><i data-feather="alert-triangle" style="width:18px; vertical-align:middle;"></i> Dispute Case File #<?= $selected_dispute['id'] ?>: <?= htmlspecialchars($selected_dispute['title']) ?></span>
+                            <span class="badge badge-rejected"><?= str_replace('_', ' ', $selected_dispute['status']) ?></span>
+                        </h2>
+
+                        <div class="detail-group">
+                            <span class="detail-label">Filing Parties</span>
+                            <span class="detail-val">
+                                Initiator: <strong><?= htmlspecialchars($selected_dispute['initiator_name']) ?> (<?= strtoupper($selected_dispute['initiator_role']) ?>)</strong> &rarr; 
+                                Defendant: <strong><?= htmlspecialchars($selected_dispute['defendant_name']) ?> (<?= strtoupper($selected_dispute['defendant_role']) ?>)</strong>
+                            </span>
+                        </div>
+
+                        <div class="detail-group">
+                            <span class="detail-label">Claim Summary</span>
+                            <span class="detail-val" style="background:#fff; padding:10px; border-radius:6px; border:1px solid #fecaca; line-height:1.5;">
+                                "<?= nl2br(htmlspecialchars($selected_dispute['description'])) ?>"
+                            </span>
+                        </div>
+
+                        <?php if (!empty($dispute_evidence)): ?>
+                            <div class="detail-group">
+                                <span class="detail-label">Proof Documents</span>
+                                <span class="detail-val">
+                                    <div class="evidence-grid">
+                                        <?php foreach ($dispute_evidence as $evi): 
+                                            $filePath = "../uploads/disputes/" . rawurlencode($evi['file_path']);
+                                            $isImg = str_contains($evi['file_type'] ?? '', 'image');
+                                        ?>
+                                            <div class="evidence-card">
+                                                <a href="<?= htmlspecialchars($filePath) ?>" target="_blank" style="font-size:12px; color:var(--primary); font-weight:600; text-decoration:none; display:flex; align-items:center; gap:4px;">
+                                                    <i data-feather="<?= $isImg ? 'image' : 'file-text' ?>" style="width:14px;"></i> View Attached Proof
+                                                </a>
+                                                <span style="font-size:10px; color:var(--text-muted);"><?= date('M d, Y', strtotime($evi['created_at'])) ?></span>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </span>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if (!empty($selected_dispute['decision'])): ?>
+                            <div class="detail-group">
+                                <span class="detail-label">Ruling Issued</span>
+                                <span class="detail-val" style="background:#ecfdf5; padding:8px 10px; border-radius:6px; border:1px solid #10b981; color:#065f46;">
+                                    <strong>Directive:</strong> <?= htmlspecialchars($selected_dispute['decision']) ?>
+                                    <div style="font-size:11px; margin-top:2px;">Decided on: <?= date('d M Y, h:i A', strtotime($selected_dispute['decision_date'])) ?></div>
+                                </span>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if (in_array($selected_dispute['status'], ['open', 'under_review'])): ?>
+                            <form method="POST" class="control-form" style="margin-top:14px; border-top:1px dashed #fecaca; padding-top:12px;">
+                                <?php if (isset($_SESSION['csrf_token'])): ?>
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                <?php endif; ?>
+                                <input type="hidden" name="intervention_type" value="resolve_dispute">
+                                <input type="hidden" name="order_id" value="<?= $selected_order['id'] ?>">
+                                <input type="hidden" name="dispute_id" value="<?= $selected_dispute['id'] ?>">
+
+                                <div>
+                                    <label>Write Official Resolution Directive</label>
+                                    <textarea name="admin_decision" class="control-textarea" rows="2" placeholder="State binding administrative decision..." required></textarea>
+                                </div>
+                                <div style="display:flex; gap:8px;">
+                                    <button type="submit" name="status" value="resolved" class="btn-submit" style="flex:1;">Resolve Dispute Case</button>
+                                    <button type="submit" name="status" value="dismissed" class="btn-action" style="flex:1; justify-content:center;">Dismiss Claim</button>
+                                </div>
+                            </form>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
+                <div class="detail-container">
                     
-                    <!-- Left Column: Order Groups with Independent Lifecycles -->
+                    <!-- Left Column: Order Groups & Progression Events -->
                     <div>
                         <?php if (empty($selected_order_groups)): ?>
-                            <div class="card">
-                                <h2 class="card-title" style="margin-bottom:15px;"><i data-feather="package"></i> Order Items</h2>
-                                <div class="table-wrap">
-                                    <table>
+                            <div class="detail-card">
+                                <h3 style="font-size:15px; margin: 0 0 14px 0; font-weight:600;"><i data-feather="package" style="width:15px; vertical-align:middle;"></i> Line Items</h3>
+                                <div class="table-responsive">
+                                    <table class="table">
                                         <thead>
                                             <tr>
                                                 <th>Listing</th>
@@ -810,8 +1283,8 @@ $escrowConfig = [
                                             <?php foreach ($selected_order_items as $item): ?>
                                             <tr>
                                                 <td>
-                                                    <div style="display:flex; align-items:center; gap:10px;">
-                                                        <img src="<?= !empty($item['photo']) ? "../uploads/produce/".htmlspecialchars($item['photo']) : "https://via.placeholder.com/40" ?>" style="width:36px; height:36px; border-radius:6px; object-fit:cover;" onerror="this.src='https://via.placeholder.com/40'">
+                                                    <div style="display:flex; align-items:center; gap:8px;">
+                                                        <img src="<?= !empty($item['photo']) ? "../uploads/produce/".htmlspecialchars($item['photo']) : "https://via.placeholder.com/40" ?>" style="width:34px; height:34px; border-radius:6px; object-fit:cover;" onerror="this.src='https://via.placeholder.com/40'">
                                                         <span style="font-weight:600;"><?= htmlspecialchars($item['produce_name']) ?></span>
                                                     </div>
                                                 </td>
@@ -832,38 +1305,35 @@ $escrowConfig = [
                                 $group_status = $group['group_status'] ?? 'pending';
                                 $scGroup = $statusConfig[$group_status] ?? ['label' => $group_status, 'color' => 'badge-pending'];
 
-                                // Filter items belonging to this order group
                                 $group_items = array_filter($selected_order_items, function($item) use ($group_id) {
                                     return (isset($item['order_group_id']) && $item['order_group_id'] == $group_id);
                                 });
 
-                                // Filter escrow records belonging to this order group
                                 $group_escrows = array_filter($selected_order_escrow, function($escrow) use ($group_id) {
                                     return (isset($escrow['order_group_id']) && $escrow['order_group_id'] == $group_id);
                                 });
 
-                                // Filter disputes belonging to this order group
                                 $group_disputes = array_filter($selected_disputes, function($dispute) use ($group_id) {
                                     return (isset($dispute['order_group_id']) && $dispute['order_group_id'] == $group_id);
                                 });
                                 ?>
-                                <div class="card" style="border-left: 4px solid var(--primary);">
-                                    <div class="flex-header" style="margin-bottom: 15px;">
+                                <div class="detail-card" style="border-left: 4px solid var(--primary);">
+                                    <div class="detail-title" style="margin-bottom: 12px;">
                                         <div>
-                                            <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Vendor Lifecycle Segment</span>
-                                            <h3 style="margin: 2px 0 0 0; font-size: 17px; font-weight: 600;">
-                                                Group Reference: <span style="color: var(--primary);"><?= htmlspecialchars($group['group_code'] ?? 'N/A') ?></span>
+                                            <span style="font-size: 10.5px; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Vendor Segment</span>
+                                            <h3 style="margin: 2px 0 0 0; font-size: 15px; font-weight: 600;">
+                                                Group: <span style="color: var(--primary);"><?= htmlspecialchars($group['group_code'] ?? 'N/A') ?></span>
                                             </h3>
-                                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
-                                                Farmer Vendor: <strong><?= htmlspecialchars($group['farmer_name']) ?></strong> (<?= htmlspecialchars($group['farmer_momo'] ?: 'No MoMo configured') ?>)
+                                            <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">
+                                                Farmer Vendor: <strong><?= htmlspecialchars($group['farmer_name']) ?></strong> (<?= htmlspecialchars($group['farmer_momo'] ?: 'No MoMo') ?>)
                                             </div>
                                         </div>
                                         <span class="badge <?= $scGroup['color'] ?>"><?= $scGroup['label'] ?></span>
                                     </div>
 
                                     <!-- Group Line Items -->
-                                    <div class="table-wrap" style="margin-bottom: 15px;">
-                                        <table>
+                                    <div class="table-responsive" style="margin-bottom: 12px;">
+                                        <table class="table">
                                             <thead>
                                                 <tr>
                                                     <th>Listing</th>
@@ -875,20 +1345,20 @@ $escrowConfig = [
                                             <tbody>
                                                 <?php if (empty($group_items)): ?>
                                                     <tr>
-                                                        <td colspan="4" style="text-align: center; font-style: italic; color: var(--text-muted); font-size: 12px;">No individual line items stored under this group reference.</td>
+                                                        <td colspan="4" style="text-align: center; font-style: italic; color: var(--text-muted); font-size: 12px;">No line items stored.</td>
                                                     </tr>
                                                 <?php else: ?>
                                                     <?php foreach ($group_items as $item): ?>
                                                     <tr>
                                                         <td>
-                                                            <div style="display:flex; align-items:center; gap:10px;">
-                                                                <img src="<?= !empty($item['photo']) ? "../uploads/produce/".htmlspecialchars($item['photo']) : "https://via.placeholder.com/40" ?>" style="width:32px; height:32px; border-radius:6px; object-fit:cover;" onerror="this.src='https://via.placeholder.com/40'">
-                                                                <span style="font-weight:600; font-size: 13px;"><?= htmlspecialchars($item['produce_name']) ?></span>
+                                                            <div style="display:flex; align-items:center; gap:8px;">
+                                                                <img src="<?= !empty($item['photo']) ? "../uploads/produce/".htmlspecialchars($item['photo']) : "https://via.placeholder.com/40" ?>" style="width:30px; height:30px; border-radius:6px; object-fit:cover;" onerror="this.src='https://via.placeholder.com/40'">
+                                                                <span style="font-weight:600; font-size: 12.5px;"><?= htmlspecialchars($item['produce_name']) ?></span>
                                                             </div>
                                                         </td>
-                                                        <td style="font-size: 13px;"><?= $item['quantity'] ?> bags</td>
-                                                        <td style="font-size: 13px;">₵<?= number_format($item['unit_price'], 2) ?></td>
-                                                        <td style="font-weight:600; font-size: 13px;">₵<?= number_format($item['subtotal'], 2) ?></td>
+                                                        <td style="font-size: 12.5px;"><?= $item['quantity'] ?> bags</td>
+                                                        <td style="font-size: 12.5px;">₵<?= number_format($item['unit_price'], 2) ?></td>
+                                                        <td style="font-weight:600; font-size: 12.5px;">₵<?= number_format($item['subtotal'], 2) ?></td>
                                                     </tr>
                                                     <?php endforeach; ?>
                                                 <?php endif; ?>
@@ -897,22 +1367,22 @@ $escrowConfig = [
                                     </div>
 
                                     <!-- Group Financial Escrow Ledgers -->
-                                    <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 15px;">
-                                        <h4 style="margin: 0 0 8px 0; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 4px;">
+                                    <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 12px;">
+                                        <h4 style="margin: 0 0 6px 0; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 4px;">
                                             <i data-feather="shield" style="width: 12px; height: 12px;"></i> Group Escrow Ledger
                                         </h4>
                                         <?php if (empty($group_escrows)): ?>
-                                            <p style="font-size:12px; color:var(--text-muted); font-style:italic; margin: 0;">No escrow assets generated for this group context.</p>
+                                            <p style="font-size:12px; color:var(--text-muted); font-style:italic; margin: 0;">No escrow assets generated for this group.</p>
                                         <?php else: ?>
-                                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                            <div style="display: flex; flex-direction: column; gap: 6px;">
                                                 <?php foreach ($group_escrows as $esc): ?>
                                                 <?php $ec = $escrowConfig[$esc['status']] ?? ['label'=>'Unknown','color'=>'badge-pending']; ?>
                                                 <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px;">
                                                     <div>
                                                         <span style="font-weight: 600;">₵<?= number_format($esc['amount'], 2) ?></span> 
-                                                        <span style="color: var(--text-muted);"> (Fee Portion: ₵<?= number_format($esc['platform_fee_portion'], 2) ?>)</span>
+                                                        <span style="color: var(--text-muted);"> (Fee: ₵<?= number_format($esc['platform_fee_portion'], 2) ?>)</span>
                                                     </div>
-                                                    <span class="badge <?= $ec['color'] ?>" style="font-size: 9px; padding: 2px 6px;"><?= $ec['label'] ?></span>
+                                                    <span class="badge <?= $ec['color'] ?>" style="font-size: 9.5px; padding: 2px 6px;"><?= $ec['label'] ?></span>
                                                 </div>
                                                 <?php if ($esc['momo_disbursement_ref']): ?>
                                                 <div style="font-size:10px; font-family:monospace; color:var(--text-muted); word-break: break-all; background: #fff; padding: 4px; border-radius: 4px; border: 1px solid #e2e8f0;">
@@ -926,21 +1396,21 @@ $escrowConfig = [
 
                                     <!-- Group Disputes Docket -->
                                     <?php if (!empty($group_disputes)): ?>
-                                        <div style="border: 1px solid #fecaca; border-radius: 8px; padding: 12px; background: #fffdfd; margin-bottom: 15px;">
-                                            <h4 style="margin: 0 0 8px 0; font-size: 11px; color: var(--danger); text-transform: uppercase; display: flex; align-items: center; gap: 4px;">
+                                        <div style="border: 1px solid #fecaca; border-radius: 8px; padding: 12px; background: #fffdfd; margin-bottom: 12px;">
+                                            <h4 style="margin: 0 0 6px 0; font-size: 11px; color: var(--danger); text-transform: uppercase; display: flex; align-items: center; gap: 4px;">
                                                 <i data-feather="alert-triangle" style="width: 12px; height: 12px;"></i> Segment Disputes
                                             </h4>
                                             <?php foreach ($group_disputes as $disp): ?>
                                             <div style="border-bottom: 1px dashed #fecaca; padding-bottom: 8px; margin-bottom: 8px;">
                                                 <div style="display:flex; justify-content:space-between; align-items:center;">
                                                     <strong style="font-size:12px;"><?= htmlspecialchars($disp['title']) ?></strong>
-                                                    <span class="badge badge-rejected" style="font-size: 9px; padding: 2px 6px;"><?= str_replace('_', ' ', $disp['status']) ?></span>
+                                                    <span class="badge badge-rejected" style="font-size: 9.5px; padding: 2px 6px;"><?= str_replace('_', ' ', $disp['status']) ?></span>
                                                 </div>
-                                                <p style="font-size:12px; margin: 4px 0; font-style:italic;">"<?= htmlspecialchars($disp['description']) ?>"</p>
+                                                <p style="font-size:11.5px; margin: 4px 0; font-style:italic;">"<?= htmlspecialchars($disp['description']) ?>"</p>
                                                 
                                                 <?php if ($disp['decision']): ?>
                                                     <div style="font-size:11px; margin-top:4px; color:var(--text-main);">
-                                                        <strong>Resolution Decision:</strong> <em>"<?= htmlspecialchars($disp['decision']) ?>"</em>
+                                                        <strong>Ruling:</strong> <em>"<?= htmlspecialchars($disp['decision']) ?>"</em>
                                                     </div>
                                                 <?php endif; ?>
 
@@ -952,12 +1422,12 @@ $escrowConfig = [
                                                     <input type="hidden" name="intervention_type" value="review_dispute">
                                                     <input type="hidden" name="order_id" value="<?= $selected_order['id'] ?>">
                                                     <input type="hidden" name="dispute_id" value="<?= $disp['id'] ?>">
-                                                    <button type="submit" class="btn btn-secondary" style="font-size:10px; padding:3px 6px;"><i data-feather="eye" style="width:10px;"></i> Mark Under Review</button>
+                                                    <button type="submit" class="btn-action" style="height:26px; font-size:10px; padding:0 6px;"><i data-feather="eye" style="width:10px;"></i> Under Review</button>
                                                 </form>
                                                 <?php endif; ?>
 
                                                 <?php if (in_array($disp['status'], ['open', 'under_review'])): ?>
-                                                    <form method="POST" style="margin-top:8px; border-top:1px dashed #e2e8f0; padding-top:8px;">
+                                                    <form method="POST" class="control-form" style="margin-top:6px; border-top:1px dashed #e2e8f0; padding-top:6px;">
                                                         <?php if (isset($_SESSION['csrf_token'])): ?>
                                                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
                                                         <?php endif; ?>
@@ -965,12 +1435,12 @@ $escrowConfig = [
                                                         <input type="hidden" name="order_id" value="<?= $selected_order['id'] ?>">
                                                         <input type="hidden" name="dispute_id" value="<?= $disp['id'] ?>">
                                                         
-                                                        <div style="margin-bottom:6px;">
-                                                            <textarea name="admin_decision" rows="2" placeholder="Write official resolution directive..." required style="font-size:11px; padding: 6px;"></textarea>
+                                                        <div>
+                                                            <textarea name="admin_decision" class="control-textarea" rows="2" placeholder="Write official resolution directive..." required style="min-height:55px; font-size:11.5px;"></textarea>
                                                         </div>
                                                         <div style="display:flex; gap:6px;">
-                                                            <button type="submit" name="status" value="resolved" class="btn btn-primary" style="font-size:10px; padding:4px 8px;">Resolve Dispute</button>
-                                                            <button type="submit" name="status" value="dismissed" class="btn btn-secondary" style="font-size:10px; padding:4px 8px;">Dismiss Case</button>
+                                                            <button type="submit" name="status" value="resolved" class="btn-submit" style="font-size:11px; padding:6px 10px; flex:1;">Resolve Dispute</button>
+                                                            <button type="submit" name="status" value="dismissed" class="btn-action" style="font-size:11px; padding:6px 10px; flex:1;">Dismiss</button>
                                                         </div>
                                                     </form>
                                                 <?php endif; ?>
@@ -979,33 +1449,31 @@ $escrowConfig = [
                                         </div>
                                     <?php endif; ?>
 
-                                    <!-- Group Escrow Override Intervention Console -->
+                                    <!-- Group Escrow Override Intervention -->
                                     <?php if ($group_status !== 'delivered' && $group_status !== 'cancelled'): ?>
-                                        <div class="intervention-box" style="margin-top: 15px; padding: 15px;">
-                                            <h4 style="margin: 0 0 8px 0; color: #b45309; font-size: 13px; display: flex; align-items: center; gap: 4px;">
-                                                <i data-feather="sliders" style="width: 13px; height: 13px;"></i> Escrow Group Override
-                                            </h4>
-                                            <form method="POST">
+                                        <div class="intervention-box" style="margin-top: 12px; padding: 14px;">
+                                            <h4><i data-feather="sliders" style="width: 13px; height: 13px;"></i> Escrow Group Override</h4>
+                                            <form method="POST" class="control-form" style="margin-top:6px;">
                                                 <?php if (isset($_SESSION['csrf_token'])): ?>
                                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
                                                 <?php endif; ?>
                                                 <input type="hidden" name="intervention_type" value="execute_intervention">
                                                 <input type="hidden" name="group_id" value="<?= $group_id ?>">
 
-                                                <div style="margin-bottom:10px;">
-                                                    <label style="font-size:10px; font-weight:600; text-transform:uppercase; display:block; margin-bottom:3px;">Action Type</label>
-                                                    <select name="action_type" required style="font-size:11px; padding: 6px;">
+                                                <div>
+                                                    <label style="font-size:10.5px;">Action Type</label>
+                                                    <select name="action_type" class="filter-input" required style="height:34px; font-size:11.5px;">
                                                         <option value="release_to_seller">Release Escrow (Mark Segment Delivered)</option>
                                                         <option value="refund_to_buyer">Refund Escrow (Cancel Segment & Reimburse Buyer)</option>
                                                     </select>
                                                 </div>
 
-                                                <div style="margin-bottom:10px;">
-                                                    <label style="font-size:10px; font-weight:600; text-transform:uppercase; display:block; margin-bottom:3px;">Justification Note</label>
-                                                    <textarea name="decision" rows="2" required placeholder="State official reasoning for system audit trail..." style="font-size:11px; padding: 6px;"></textarea>
+                                                <div>
+                                                    <label style="font-size:10.5px;">Justification Statement</label>
+                                                    <textarea name="decision" class="control-textarea" rows="2" required placeholder="State official reasoning for audit trail..." style="min-height:55px; font-size:11.5px;"></textarea>
                                                 </div>
 
-                                                <button type="submit" onclick="return confirm('You are authorizing a direct manual intervention for group <?= htmlspecialchars($group['group_code']) ?>. Proceed?');" class="btn btn-primary" style="font-size:11px; width:100%; padding: 6px; justify-content:center;">Execute Group Intervention</button>
+                                                <button type="submit" onclick="return confirm('You are authorizing a manual override for group <?= htmlspecialchars($group['group_code']) ?>. Proceed?');" class="btn-submit" style="background:#d97706;">Execute Group Intervention</button>
                                             </form>
                                         </div>
                                     <?php endif; ?>
@@ -1014,10 +1482,10 @@ $escrowConfig = [
                         <?php endif; ?>
 
                         <!-- Progression Events Timeline -->
-                        <div class="card">
-                            <h2 class="card-title" style="margin-bottom:20px;"><i data-feather="activity"></i> Audit Milestones & Transition Logs</h2>
+                        <div class="detail-card">
+                            <h3 style="font-size:15px; margin: 0 0 16px 0; font-weight:600;"><i data-feather="activity" style="width:15px; vertical-align:middle;"></i> Audit Milestones & Transition Logs</h3>
                             <?php if (empty($selected_order_tracking)): ?>
-                                <p style="font-size:12px; color:var(--text-muted); font-style:italic; margin: 0;">No milestone tracking generated yet.</p>
+                                <div class="empty-state" style="padding:20px 0;">No milestone tracking generated yet.</div>
                             <?php else: ?>
                                 <div class="timeline">
                                     <?php foreach ($selected_order_tracking as $track): ?>
@@ -1034,47 +1502,55 @@ $escrowConfig = [
                         </div>
                     </div>
 
-                    <!-- Right Column: Detailed Order Meta & Ledger Records -->
+                    <!-- Right Column: Meta & Customer Information -->
                     <div>
-                        <!-- Main Record Sheet - exact loan details panel structure -->
-                        <div class="card">
-                            <div class="flex-header">
-                                <h2 class="card-title"><i data-feather="file-text"></i> Audit Details: ID #<?= $selected_order['id'] ?></h2>
+                        <div class="detail-card">
+                            <h2 class="detail-title">
+                                <span><i data-feather="file-text" style="width:16px; vertical-align:middle;"></i> Order Details: #<?= $selected_order['id'] ?></span>
                                 <?php $sc = $statusConfig[$selected_order['order_status']] ?? ['label'=>$selected_order['order_status'],'color'=>'badge-pending']; ?>
                                 <span class="badge <?= $sc['color'] ?>"><?= $sc['label'] ?></span>
+                            </h2>
+
+                            <div class="detail-group">
+                                <span class="detail-label">Customer Profile</span>
+                                <span class="detail-val">
+                                    <strong><?= htmlspecialchars($selected_order['buyer_name'] ?? 'Guest Buyer') ?></strong><br>
+                                    <span style="color:var(--text-muted); font-size:12px;"><?= htmlspecialchars($selected_order['buyer_email'] ?? 'No Email') ?> &bull; <?= htmlspecialchars($selected_order['buyer_phone'] ?? 'No Phone') ?></span>
+                                </span>
                             </div>
 
-                            <div style="display:flex; flex-direction:column; gap: 15px; margin-bottom: 20px;">
-                                <div>
-                                    <strong style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Recipient Customer</strong>
-                                    <div style="font-size:13px; font-weight:600; margin-top:3px;"><?= htmlspecialchars($selected_order['buyer_name'] ?? 'Guest Buyer') ?></div>
-                                    <div style="font-size:11px; color:var(--text-muted);"><?= htmlspecialchars($selected_order['buyer_email'] ?? 'No Email') ?></div>
-                                    <div style="font-size:11px; color:var(--text-muted);"><?= htmlspecialchars($selected_order['buyer_phone'] ?? 'No Phone') ?></div>
-                                </div>
-                                <div>
-                                    <strong style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Financial Ledger</strong>
-                                    <div style="font-size:13px; font-weight:600; margin-top:3px;">Total Cost: ₵<?= number_format($selected_order['total_amount'], 2) ?></div>
-                                    <div style="font-size:11px; color:var(--success); font-weight:600;">Platform Fee: ₵<?= number_format($selected_order['platform_fee'], 2) ?></div>
-                                    <div style="font-size:11px; color:var(--text-muted);">Payout Phone: <?= htmlspecialchars($selected_order['buyer_momo'] ?: 'None Set') ?></div>
-                                </div>
-                                <div>
-                                    <strong style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Delivery Address</strong>
-                                    <div style="font-size:13px; font-weight:600; margin-top:3px;"><?= htmlspecialchars($selected_order['delivery_name']) ?></div>
-                                    <div style="font-size:11px; color:var(--text-muted);"><?= htmlspecialchars($selected_order['delivery_address']) ?></div>
-                                    <div style="font-size:11px; color:var(--text-muted);">Phone: <?= htmlspecialchars($selected_order['delivery_phone']) ?></div>
-                                </div>
+                            <div class="detail-group">
+                                <span class="detail-label">Financial Ledger</span>
+                                <span class="detail-val">
+                                    Total Amount: <strong>₵<?= number_format($selected_order['total_amount'], 2) ?></strong><br>
+                                    <span style="color:var(--primary); font-size:12px; font-weight:600;">Platform Profit Fee: ₵<?= number_format($selected_order['platform_fee'], 2) ?></span><br>
+                                    <span style="color:var(--text-muted); font-size:12px;">Payout MoMo: <?= htmlspecialchars($selected_order['buyer_momo'] ?: 'None Configured') ?></span>
+                                </span>
                             </div>
 
-                            <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border:1px solid #e2e8f0; margin-bottom: 15px;">
-                                <strong style="font-size:11px; color:var(--text-muted); text-transform:uppercase; display:block; margin-bottom:5px;">Payment Details</strong>
-                                <div style="font-size:12px; color:var(--text-main);">Payment State: <strong style="text-transform:uppercase;"><?= htmlspecialchars($selected_order['payment_status']) ?></strong></div>
-                                <div style="font-size:11px; color:var(--text-muted); margin-top:3px;">Created On: <?= date('d M Y, h:i A', strtotime($selected_order['created_at'])) ?></div>
+                            <div class="detail-group">
+                                <span class="detail-label">Delivery Address</span>
+                                <span class="detail-val">
+                                    <strong><?= htmlspecialchars($selected_order['delivery_name']) ?></strong><br>
+                                    <?= htmlspecialchars($selected_order['delivery_address']) ?><br>
+                                    <span style="color:var(--text-muted); font-size:12px;">Contact: <?= htmlspecialchars($selected_order['delivery_phone']) ?></span>
+                                </span>
+                            </div>
+
+                            <div class="detail-group">
+                                <span class="detail-label">Payment Status</span>
+                                <span class="detail-val">
+                                    <strong style="text-transform:uppercase; font-size:12px;"><?= htmlspecialchars($selected_order['payment_status']) ?></strong><br>
+                                    <span style="color:var(--text-muted); font-size:11px;">Placed On: <?= date('d M Y, h:i A', strtotime($selected_order['created_at'])) ?></span>
+                                </span>
                             </div>
 
                             <?php if (!empty($selected_order['buyer_notes'])): ?>
-                            <div style="background: #faf8f5; padding: 12px; border-radius: 8px; border: 1px dashed #f59e0b;">
-                                <strong style="font-size:11px; color:var(--warning); text-transform:uppercase; display:block; margin-bottom:4px;">Instruction Notes</strong>
-                                <p style="font-size:12px; margin: 0; line-height:1.5; font-style: italic;">"<?= htmlspecialchars($selected_order['buyer_notes']) ?>"</p>
+                            <div class="detail-group" style="border-bottom:none;">
+                                <span class="detail-label">Instructions</span>
+                                <span class="detail-val" style="background: #faf8f5; padding: 8px 10px; border-radius: 6px; border: 1px dashed #f59e0b; font-style: italic; font-size:12px;">
+                                    "<?= htmlspecialchars($selected_order['buyer_notes']) ?>"
+                                </span>
                             </div>
                             <?php endif; ?>
                         </div>
@@ -1083,8 +1559,46 @@ $escrowConfig = [
 
             <!-- GLOBAL LIST REGISTRY VIEW -->
             <?php else: ?>
+                <!-- FILTERS BAR -->
+                <form method="GET" class="filters-bar">
+                    <input type="hidden" name="tab" value="<?= htmlspecialchars($activeTab) ?>">
+                    
+                    <div class="filter-group">
+                        <span class="filter-label">Keyword Search</span>
+                        <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Ref ID, Recipient name, Address..." class="filter-input">
+                    </div>
+
+                    <div class="filter-group">
+                        <span class="filter-label">Progression State</span>
+                        <select name="status" class="filter-input">
+                            <option value="">All Active & Archived</option>
+                            <?php foreach ($statusConfig as $key => $val): ?>
+                                <option value="<?= $key ?>" <?= ($status_filter === $key) ? 'selected' : '' ?>><?= $val['label'] ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <span class="filter-label">Dispute Condition</span>
+                        <select name="has_dispute" class="filter-input">
+                            <option value="">All Accounts</option>
+                            <option value="1" <?= ($dispute_filter === '1') ? 'selected' : '' ?>>Flagged Disputes Only</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-buttons">
+                        <button type="submit" class="btn-search">
+                            <i data-feather="filter" style="width:14px;"></i> Search
+                        </button>
+                        <a href="admin_marketplace_oversight.php?tab=<?= htmlspecialchars($activeTab) ?>" class="btn-action">
+                            Reset
+                        </a>
+                    </div>
+                </form>
+
+                <!-- PORTFOLIOS TABLE CARD -->
                 <div class="card">
-                    <div class="flex-header">
+                    <div class="card-header-padded">
                         <h2 class="card-title">
                             <?php if ($activeTab === 'disputes'): ?>
                                 <i data-feather="alert-triangle"></i> Registry of Logged Platform Disputes
@@ -1094,46 +1608,9 @@ $escrowConfig = [
                         </h2>
                     </div>
 
-                    <!-- Search & Filter Controls -->
-                    <div class="filter-panel">
-                        <form method="GET">
-                            <input type="hidden" name="tab" value="<?= htmlspecialchars($activeTab) ?>">
-                            <div class="filter-grid">
-                                <div class="filter-group">
-                                    <label for="search">Keyword Search</label>
-                                    <input type="text" name="search" id="search" value="<?= htmlspecialchars($search) ?>" placeholder="Ref ID, Recipient name, Address...">
-                                </div>
-
-                                <div class="filter-group">
-                                    <label for="status">Progression State</label>
-                                    <select name="status" id="status">
-                                        <option value="">-- All Active & Archived --</option>
-                                        <?php foreach ($statusConfig as $key => $val): ?>
-                                            <option value="<?= $key ?>" <?= ($status_filter === $key) ? 'selected' : '' ?>><?= $val['label'] ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-
-                                <div class="filter-group">
-                                    <label for="has_dispute">Dispute State</label>
-                                    <select name="has_dispute" id="has_dispute">
-                                        <option value="">-- All Accounts --</option>
-                                        <option value="1" <?= ($dispute_filter === '1') ? 'selected' : '' ?>>Flagged Disputes Only</option>
-                                    </select>
-                                </div>
-
-                                <div class="filter-group" style="display:flex; flex-direction:row; gap:10px;">
-                                    <button type="submit" class="btn btn-primary" style="flex:1; justify-content:center; height:41px;"><i data-feather="search"></i> Search</button>
-                                    <a href="admin_marketplace_oversight.php?tab=<?= htmlspecialchars($activeTab) ?>" class="btn btn-secondary" style="flex:1; justify-content:center; height:41px; align-items:center;">Reset</a>
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-
                     <!-- Render Tab Contents -->
                     <?php if ($activeTab === 'disputes'): ?>
-                        <!-- Disputes logs view with Group Code Context -->
-                        <div class="table-wrap">
+                        <div class="table-responsive">
                             <?php 
                             $filteredDisputes = array_filter($allDisputes, function($disp) use ($search) {
                                 if (!empty($search)) {
@@ -1144,26 +1621,29 @@ $escrowConfig = [
                             });
                             if (empty($filteredDisputes)): 
                             ?>
-                                <p style="text-align:center; color:var(--text-muted); padding:30px; font-style:italic;">No logged disputes matching filters found.</p>
+                                <div class="empty-state">
+                                    <i data-feather="alert-triangle" style="width:38px; height:38px; margin-bottom:8px; opacity:0.5;"></i>
+                                    <p>No logged disputes matching filter criteria.</p>
+                                </div>
                             <?php else: ?>
-                                <table>
+                                <table class="table">
                                     <thead>
                                         <tr>
                                             <th>Case ID</th>
-                                            <th>Order ID</th>
+                                            <th>Order Ref</th>
                                             <th>Group Code</th>
-                                            <th>Claim Overview Title</th>
+                                            <th>Claim Overview</th>
                                             <th>Lodge Party</th>
-                                            <th>Target Defendant</th>
-                                            <th>Total Order Cost</th>
+                                            <th>Defendant</th>
+                                            <th>Order Cost</th>
                                             <th>Status</th>
                                             <th>Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <?php foreach ($filteredDisputes as $disp): ?>
-                                        <tr style="background:#fff5f5;">
-                                            <td>#<?= $disp['id'] ?></td>
+                                        <tr style="background:#fffafa;">
+                                            <td style="font-weight:600; color:var(--text-muted);">#<?= $disp['id'] ?></td>
                                             <td><strong>#<?= $disp['order_id'] ?></strong></td>
                                             <td><span class="badge badge-completed"><?= htmlspecialchars($disp['group_code'] ?? 'N/A') ?></span></td>
                                             <td><strong style="color:var(--text-main); font-size:13px;"><?= htmlspecialchars($disp['title']) ?></strong></td>
@@ -1172,7 +1652,9 @@ $escrowConfig = [
                                             <td style="font-weight:600;">₵<?= number_format($disp['order_amount'], 2) ?></td>
                                             <td><span class="badge badge-rejected"><?= str_replace('_', ' ', $disp['status']) ?></span></td>
                                             <td>
-                                                <a href="admin_marketplace_oversight.php?dispute_id=<?= $disp['id'] ?>&tab=disputes" class="btn btn-secondary" style="font-size:11px; padding:5px 10px;"><i data-feather="eye" style="width:12px;"></i> Audit Case</a>
+                                                <a href="admin_marketplace_oversight.php?dispute_id=<?= $disp['id'] ?>&tab=disputes" class="btn-action">
+                                                    <i data-feather="sliders" style="width:12px;"></i> Audit Case
+                                                </a>
                                             </td>
                                         </tr>
                                         <?php endforeach; ?>
@@ -1182,23 +1664,25 @@ $escrowConfig = [
                         </div>
 
                     <?php else: ?>
-                        <!-- Standard Transactions Ledger View -->
-                        <div class="table-wrap">
+                        <div class="table-responsive">
                             <?php if (empty($all_orders)): ?>
-                                <p style="text-align:center; color:var(--text-muted); padding:30px; font-style:italic;">No orders match criteria.</p>
+                                <div class="empty-state">
+                                    <i data-feather="shopping-bag" style="width:38px; height:38px; margin-bottom:8px; opacity:0.5;"></i>
+                                    <p>No orders match search parameters.</p>
+                                </div>
                             <?php else: ?>
-                                <table>
+                                <table class="table">
                                     <thead>
                                         <tr>
                                             <th>Order Ref</th>
-                                            <th>Recipient Name</th>
+                                            <th>Recipient</th>
                                             <th>Lines</th>
                                             <th>Order Cost</th>
                                             <th>Platform Fee</th>
-                                            <th>Lifecycle Progress</th>
-                                            <th>Disputes Status</th>
+                                            <th>Lifecycle Status</th>
+                                            <th>Disputes Audit</th>
                                             <th>Order Date</th>
-                                            <th>Action</th>
+                                            <th>Control Panel</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -1207,26 +1691,28 @@ $escrowConfig = [
                                         $sc = $statusConfig[$ord['order_status']] ?? ['label'=>$ord['order_status'],'color'=>'badge-pending'];
                                         $has_active_dispute = $ord['active_disputes_count'] > 0;
                                         ?>
-                                        <tr style="<?= ($has_active_dispute) ? 'background:#fff5f5;' : '' ?>">
-                                            <td><strong>#<?= $ord['id'] ?></strong></td>
+                                        <tr style="<?= ($has_active_dispute) ? 'background:#fffafa;' : '' ?>">
+                                            <td style="font-weight:600; color:var(--text-muted);">#<?= $ord['id'] ?></td>
                                             <td>
                                                 <strong style="color:var(--text-main); font-size:13px;"><?= htmlspecialchars($ord['buyer_name'] ?? 'Guest Buyer') ?></strong>
                                                 <div style="font-size:11px; color:var(--text-muted);"><?= htmlspecialchars($ord['delivery_phone']) ?></div>
                                             </td>
                                             <td><?= $ord['item_count'] ?> items</td>
                                             <td style="font-weight:600;">₵<?= number_format($ord['total_amount'], 2) ?></td>
-                                            <td style="color:var(--success); font-weight:600;">₵<?= number_format($ord['platform_fee'], 2) ?></td>
+                                            <td style="color:var(--primary); font-weight:600;">₵<?= number_format($ord['platform_fee'], 2) ?></td>
                                             <td><span class="badge <?= $sc['color'] ?>"><?= $sc['label'] ?></span></td>
                                             <td>
                                                 <?php if ($has_active_dispute): ?>
-                                                    <span class="badge badge-rejected"><i data-feather="alert-triangle" style="width:11px; height:11px; vertical-align:middle; margin-right:3px;"></i> <?= $ord['active_disputes_count'] ?> FLAG ACTIVE</span>
+                                                    <span class="badge badge-rejected"><i data-feather="alert-triangle" style="width:11px; height:11px;"></i> <?= $ord['active_disputes_count'] ?> FLAGGED</span>
                                                 <?php else: ?>
                                                     <span style="color:var(--text-muted); font-size:12px;">Clear</span>
                                                 <?php endif; ?>
                                             </td>
                                             <td style="color:var(--text-muted); font-size:12px;"><?= date('M d, Y', strtotime($ord['created_at'])) ?></td>
                                             <td>
-                                                <a href="admin_marketplace_oversight.php?id=<?= $ord['id'] ?>&tab=transactions" class="btn btn-secondary" style="font-size:11px; padding:5px 10px;"><i data-feather="eye" style="width:12px;"></i> Audit</a>
+                                                <a href="admin_marketplace_oversight.php?id=<?= $ord['id'] ?>&tab=transactions" class="btn-action">
+                                                    <i data-feather="sliders" style="width:12px;"></i> Audit
+                                                </a>
                                             </td>
                                         </tr>
                                         <?php endforeach; ?>
@@ -1241,16 +1727,30 @@ $escrowConfig = [
     </main>
 
     <script>
-        // Initialize vector icons
+        // Initialize Feather Icons
         feather.replace();
 
-        // Responsive sidebar collapses
+        // Responsive Sidebar Drawer Controls
         const toggleBtn = document.getElementById("toggleBtn");
         const sidebar = document.getElementById("sidebar");
+        const backdrop = document.getElementById("sidebarBackdrop");
 
-        toggleBtn.addEventListener("click", () => {
-            sidebar.classList.toggle("collapsed");
-        });
+        function toggleSidebar() {
+            if (window.innerWidth <= 768) {
+                const isActive = sidebar.classList.toggle("active");
+                if (backdrop) backdrop.classList.toggle("active", isActive);
+            } else {
+                sidebar.classList.toggle("collapsed");
+            }
+        }
+
+        toggleBtn.addEventListener("click", toggleSidebar);
+        if (backdrop) {
+            backdrop.addEventListener("click", () => {
+                sidebar.classList.remove("active");
+                backdrop.classList.remove("active");
+            });
+        }
     </script>
 </body>
 </html>

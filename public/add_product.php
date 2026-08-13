@@ -290,7 +290,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <aside class="sidebar" id="sidebar">
         <div class="brand">
             <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
-            <h2>AgroLoan Farmer</h2>
+            <h2>Farmer</h2>
         </div>
 
         <nav class="nav">

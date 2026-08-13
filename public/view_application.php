@@ -224,7 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['proof'])) {
     .logout-btn:hover { background: var(--danger); color: white; }
     .sidebar.collapsed .logout-btn span { display: none; }
     .main {
-        flex: 1; display: flex; flex-direction: column;
+        flex: 1; display: flex; flex-direction: column; min-width: 0;
         overflow-y: auto; position: relative;
     }
     .topbar {
@@ -296,6 +296,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['proof'])) {
         font-weight: 500; font-family: inherit; transition: 0.2s;
     }
     .btn-upload:hover { background: var(--primary-dark); }
+    
+    /* Styled Back Button */
+    .btn-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #ffffff;
+        color: var(--text-main);
+        border: 1px solid #d1d5db;
+        padding: 10px 18px;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+    }
+    .btn-back:hover {
+        background: #f9fafb;
+        border-color: var(--primary);
+        color: var(--primary);
+        transform: translateX(-2px);
+    }
+
     .link { color: var(--primary); text-decoration: none; font-weight: 500; transition: 0.2s; }
     .link:hover { color: var(--primary-dark); text-decoration: underline; }
     .section-label { 
@@ -322,7 +346,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['proof'])) {
     <aside class="sidebar" id="sidebar">
         <div class="brand">
             <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
-            <h2>AgroLoan Farmer</h2>
+            <h2>Farmer</h2>
         </div>
 
         <nav class="nav">
@@ -402,11 +426,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['proof'])) {
 
             <!-- === DETAIL VIEW (Single Loan) === -->
             <?php if ($id): ?>
+                <!-- PROMINENT BACK BUTTON -->
+                <div style="margin-bottom: 20px;">
+                    <a href="view_application.php" class="btn-back">
+                        <i data-feather="arrow-left" style="width:18px; height:18px;"></i>
+                        <span>Back to All Applications</span>
+                    </a>
+                </div>
+
                 <?php if (!$app): ?>
                     <div class="card" style="text-align:center; padding:40px;">
                         <i data-feather="search" style="width:40px;height:40px;color:var(--text-muted);"></i>
                         <p style="margin-top:10px;">Application not found or unauthorized.</p>
-                        <a href="view_application.php" class="link">Go Back</a>
+                        <a href="view_application.php" class="btn-back" style="margin-top:15px;">
+                            <i data-feather="arrow-left" style="width:16px; height:16px;"></i>
+                            <span>Go Back to Applications</span>
+                        </a>
                     </div>
                 <?php else: ?>
                     <div class="card">
@@ -417,7 +452,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['proof'])) {
                                     <i data-feather="check-circle" style="width:14px; vertical-align:middle;"></i> Loan Completed
                                 </span>
                             <?php else: ?>
-                                <a href="view_application.php" class="link" style="font-size:14px;">&larr; Back to List</a>
+                                <span class="badge <?= $app['status'] ?>" style="font-size:13px; padding:6px 14px;">
+                                    <?= ucfirst($app['status']) ?>
+                                </span>
                             <?php endif; ?>
                         </div>
 

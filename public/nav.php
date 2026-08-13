@@ -35,16 +35,16 @@
     </script>
     <style>
     :root {
-        --primary:#16a34a; --primary-dark:#14532d; --accent:#22c55e; --accent-hover:#16a34a;
+        --primary:#16a34a; --primary-dark:#064e3b; --accent:#22c55e; --accent-hover:#16a34a;
         --bg-body:#f8fafc; --bg-card:#ffffff; --text-main:#0f172a; --text-muted:#64748b;
         --border:#f1f5f9; --shadow:0 10px 25px -5px rgba(0,0,0,0.05), 0 8px 10px -6px rgba(0,0,0,0.05);
-        --glass:rgba(255,255,255,0.85); --primary-light:#f0fdf4;
+        --glass:rgba(255,255,255,0.85); --primary-light:#ecfdf5;
     }
     body.dark {
-        --primary:#4ade80; --primary-dark:#14532d; --accent:#15803d;
+        --primary:#4ade80; --primary-dark:#064e3b; --accent:#15803d;
         --bg-body:#090d16; --bg-card:#111827; --text-main:#f3f4f6; --text-muted:#9ca3af;
         --border:#1f2937; --shadow:0 10px 25px -5px rgba(0,0,0,0.3), 0 8px 10px -6px rgba(0,0,0,0.3);
-        --glass:rgba(17,24,39,0.85); --primary-light:#14532d;
+        --glass:rgba(17,24,39,0.85); --primary-light:#064e3b;
     }
     body { font-family:'Plus Jakarta Sans',sans-serif; background:var(--bg-body); color:var(--text-main); transition:background .3s,color .3s; }
     
@@ -64,23 +64,180 @@
     .theme-toggle { background:var(--bg-card); border:1px solid var(--border); border-radius:50%; color:var(--text-main); cursor:pointer; width:38px; height:38px; font-size:1.1rem; display:flex; justify-content:center; align-items:center; transition:.2s ease-in-out; }
     .theme-toggle:hover { border-color:var(--primary); color:var(--primary); box-shadow:0 4px 12px rgba(0,0,0,0.05); }
     
-    .mobile-menu { position:fixed; top:0; right:-100%; width:85%; max-width:320px; height:100vh; background:var(--bg-card); z-index:1001; padding:30px 24px; box-shadow:-10px 0 30px rgba(0,0,0,.08); transition:right .35s cubic-bezier(0.16, 1, 0.3, 1); display:flex; flex-direction:column; gap:12px; }
-    .mobile-menu.open { right:0; }
-    
-    .overlay { position:fixed; top:0; left:0; width:100%; height:100vh; background:rgba(15,23,42,.4); backdrop-filter:blur(4px); z-index:1000; opacity:0; visibility:hidden; transition:.3s; }
-    .overlay.active { opacity:1; visibility:visible; }
-    
-    @media (max-width:992px) { .desktop-nav { display:none; } .mobile-toggle-btn { display:flex; } }
-    .mobile-toggle-btn { display:none; width:38px; height:38px; align-items:center; justify-content:center; font-size:1.4rem; background:none; border:1px solid var(--border); border-radius:50%; color:var(--text-main); cursor:pointer; transition:.2s; }
-    .mobile-toggle-btn:hover { border-color:var(--primary); color:var(--primary); }
-
     .cart-badge { position:absolute; top:-4px; right:-4px; background:#f68b1e; color:#fff; border-radius:9999px; min-width:18px; height:18px; padding:0 4px; font-size:9px; display:flex; align-items:center; justify-content:center; font-weight:800; box-shadow:0 2px 4px rgba(246,139,30,0.3); }
+
+    /* MOBILE HAMBURGER BUTTON (Right top corner in mobile view) */
+    .mobile-hamburger-btn {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        font-size: 22px;
+        cursor: pointer;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        transition: all 0.2s ease;
+    }
+    .mobile-hamburger-btn:hover {
+        background: var(--primary-light);
+        color: var(--primary);
+        border-color: var(--primary);
+    }
+
+    /* MOBILE DRAWER BACKDROP OVERLAY */
+    .mobile-drawer-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(4px);
+        z-index: 1000;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+    .mobile-drawer-overlay.active {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    /* MOBILE SLIDE-OUT DRAWER PANEL */
+    .mobile-drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: 300px;
+        max-width: 85vw;
+        height: 100vh;
+        background: var(--bg-card);
+        z-index: 1001;
+        box-shadow: -5px 0 25px rgba(0,0,0,0.15);
+        transform: translateX(100%);
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+    }
+    .mobile-drawer.active {
+        transform: translateX(0);
+    }
+
+    .drawer-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 18px 20px;
+        background: var(--primary-dark);
+        color: #ffffff;
+    }
+    .drawer-header h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+        color: #ffffff;
+    }
+    .drawer-close-btn {
+        background: rgba(255,255,255,0.2);
+        border: none;
+        color: #ffffff;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+    .drawer-close-btn:hover { background: rgba(255,255,255,0.3); }
+
+    .drawer-user-card {
+        padding: 16px 20px;
+        background: var(--primary-light);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .drawer-avatar {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        background: var(--primary);
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 18px;
+        flex-shrink: 0;
+    }
+    .drawer-user-info { overflow: hidden; }
+    .drawer-user-name {
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--text-main);
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+    .drawer-user-role { font-size: 12px; color: var(--text-muted); text-transform: capitalize; }
+
+    .drawer-menu {
+        padding: 12px 0;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+    }
+    .drawer-link {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 20px;
+        color: var(--text-main);
+        font-size: 14px;
+        font-weight: 500;
+        text-decoration: none;
+        transition: background 0.2s ease, color 0.2s ease;
+    }
+    .drawer-link i {
+        font-size: 18px;
+        color: var(--primary);
+        width: 22px;
+        text-align: center;
+    }
+    .drawer-link:hover {
+        background: var(--primary-light);
+        color: var(--primary);
+    }
+    .drawer-link.logout {
+        color: #ef4444;
+        margin-top: auto;
+    }
+    .drawer-link.logout i { color: #ef4444; }
+    .drawer-link.logout:hover { background: rgba(239, 68, 68, 0.1); }
+
+    .drawer-divider {
+        height: 1px;
+        background: var(--border);
+        margin: 8px 0;
+    }
+
+    @media (max-width: 768px) {
+        .desktop-nav { display: none; }
+        .mobile-hamburger-btn { display: inline-flex; }
+    }
     </style>
     <?php if (isset($extra_head)) echo $extra_head; ?>
 </head>
 <body class="flex flex-col min-h-screen pt-16 md:pt-20">
-
-<div class="overlay" id="overlay"></div>
 
 <header id="mainHeader">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-20 flex items-center justify-between transition-all duration-300" id="headerContainer">
@@ -107,7 +264,7 @@
         </nav>
 
         <div class="flex items-center gap-3">
-            <!-- Cart Icon -->
+            <!-- Cart Icon (Desktop) -->
             <?php if($is_logged): ?>
             <a href="cart.php" class="relative items-center justify-center w-10 h-10 rounded-full border border-[var(--border)] text-[var(--text-main)] hover:text-[var(--primary)] hover:border-[var(--primary)] transition-all hidden md:flex">
                 <i class="ri-shopping-bag-line text-lg"></i>
@@ -121,49 +278,98 @@
                 <i class="ri-moon-line"></i>
             </button>
 
-            <?php if($is_logged): ?>
-            <a href="logout.php" class="btn-login hidden md:inline-flex">Logout</a>
-            <?php else: ?>
-            <a href="buyers_login.php" class="btn-login hidden md:inline-flex">Login</a>
-            <?php endif; ?>
+            <!-- Login / Logout Button (strictly Desktop only) -->
+            <div class="hidden md:block">
+                <?php if($is_logged): ?>
+                <a href="logout.php" class="btn-login">Logout</a>
+                <?php else: ?>
+                <a href="buyers_login.php" class="btn-login">Login</a>
+                <?php endif; ?>
+            </div>
 
-            <button class="mobile-toggle-btn" id="mobileToggle" aria-label="Open Menu">
-                <i class="ri-menu-5-line"></i>
+            <!-- Mobile Hamburger Menu Button (Top right corner on mobile) -->
+            <button onclick="toggleMobileMenu()" class="mobile-hamburger-btn" aria-label="Open Mobile Menu">
+                <i class="ri-menu-3-line"></i>
             </button>
         </div>
     </div>
 </header>
 
-<!-- Mobile Menu -->
-<div class="mobile-menu" id="mobileMenu">
-    <div class="flex items-center justify-between mb-6 border-b border-[var(--border)] pb-4">
-        <span class="font-extrabold text-lg text-[var(--primary)]">Menu</span>
-        <button id="closeMenu" class="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors">
-            <i class="ri-close-line text-xl"></i>
+<!-- MOBILE DRAWER BACKDROP OVERLAY -->
+<div id="mobileMenuOverlay" class="mobile-drawer-overlay" onclick="toggleMobileMenu()"></div>
+
+<!-- MOBILE SLIDE-OUT DRAWER NAVIGATION PANEL -->
+<div id="mobileMenuDrawer" class="mobile-drawer">
+    <div class="drawer-header">
+        <h3>Menu Options</h3>
+        <button class="drawer-close-btn" onclick="toggleMobileMenu()" aria-label="Close Menu">
+            <i class="ri-close-line"></i>
         </button>
     </div>
-    
-    <div class="flex flex-col gap-1">
-        <a href="shop.php" class="nav-link text-base px-4 py-3 <?= ($active_nav??'')==='shop'?'active':'' ?>">
-            <i class="ri-store-2-line text-lg"></i> Shop
+
+    <?php if ($is_logged): ?>
+    <?php
+        $userName = $_SESSION['user_name'] ?? $_SESSION['name'] ?? $_SESSION['username'] ?? ($farmer['name'] ?? 'User Account');
+        $userInitial = strtoupper(substr($userName, 0, 1));
+    ?>
+    <div class="drawer-user-card">
+        <div class="drawer-avatar">
+            <?= $userInitial ?>
+        </div>
+        <div class="drawer-user-info">
+            <div class="drawer-user-name"><?= htmlspecialchars($userName) ?></div>
+            <div class="drawer-user-role"><?= htmlspecialchars($user_role ?? 'User') ?> Account</div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <div class="drawer-menu">
+        <a href="shop.php" class="drawer-link">
+            <i class="ri-store-3-line"></i> Shop
         </a>
+
         <?php if($is_logged): ?>
-        <a href="wishlist.php" class="nav-link text-base px-4 py-3 <?= ($active_nav??'')==='wishlist'?'active':'' ?>">
-            <i class="ri-heart-3-line text-lg"></i> Wishlist
+        <a href="cart.php" class="drawer-link">
+            <i class="ri-shopping-cart-2-line"></i> My Cart
+            <?php if(($cart_count??0)>0): ?>
+            <span class="ml-auto bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full font-bold"><?= min($cart_count, 99) ?></span>
+            <?php endif; ?>
         </a>
-        <a href="cart.php" class="nav-link text-base px-4 py-3 <?= ($active_nav??'')==='cart'?'active':'' ?>">
-            <i class="ri-shopping-bag-line text-lg"></i> Cart <?= ($cart_count??0)>0 ? "<span class='ml-auto bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full font-bold'>$cart_count</span>" : '' ?>
+        <a href="wishlist.php" class="drawer-link">
+            <i class="ri-heart-line"></i> Wishlist
         </a>
-        <?php $dash = ($user_role==='farmer') ? 'seller_dashboard.php' : 'buyer_dashboard.php'; ?>
-        <a href="<?= $dash ?>" class="nav-link text-base px-4 py-3 <?= ($active_nav??'')==='dashboard'?'active':'' ?>">
-            <i class="ri-dashboard-3-line text-lg"></i> Dashboard
+
+        <div class="drawer-divider"></div>
+
+        <?php if(($user_role??'') === 'farmer'): ?>
+        <a href="seller_dashboard.php" class="drawer-link">
+            <i class="ri-dashboard-line"></i> Seller Dashboard
         </a>
-        <div class="h-px bg-[var(--border)] my-4"></div>
-        <a href="buyers_login.php" class="flex items-center gap-3 text-red-500 font-semibold px-4 py-3 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-xl transition-colors">
-            <i class="ri-logout-box-r-line text-lg"></i> Logout
+        <a href="add_product.php" class="drawer-link">
+            <i class="ri-add-circle-line"></i> Add New Listing
+        </a>
+        <a href="apply_loan.php" class="drawer-link">
+            <i class="ri-hand-coin-line"></i> Apply for Loan
+        </a>
+        <a href="farmer_repayment.php" class="drawer-link">
+            <i class="ri-refund-2-line"></i> Loan Repayments
+        </a>
+        <a href="market_disputes.php" class="drawer-link">
+            <i class="ri-scales-3-line"></i> Order Disputes
         </a>
         <?php else: ?>
-        <div class="mt-4">
+        <a href="buyer_dashboard.php" class="drawer-link">
+            <i class="ri-dashboard-line"></i> Buyer Dashboard
+        </a>
+        <?php endif; ?>
+
+        <div class="drawer-divider"></div>
+
+        <a href="logout.php" class="drawer-link logout">
+            <i class="ri-logout-box-r-line"></i> Logout
+        </a>
+        <?php else: ?>
+        <div class="p-4 mt-auto">
             <a href="buyers_login.php" class="btn-login w-full text-center">Login / Register</a>
         </div>
         <?php endif; ?>
@@ -171,6 +377,24 @@
 </div>
 
 <script>
+    // Toggle Mobile Drawer Menu
+    function toggleMobileMenu() {
+        const overlay = document.getElementById('mobileMenuOverlay');
+        const drawer = document.getElementById('mobileMenuDrawer');
+        if (overlay && drawer) {
+            const isActive = drawer.classList.contains('active');
+            if (isActive) {
+                drawer.classList.remove('active');
+                overlay.classList.remove('active');
+                document.body.style.overflow = '';
+            } else {
+                drawer.classList.add('active');
+                overlay.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+    }
+
     // Dark Mode
     const _toggleBtn = document.getElementById('themeToggle');
     const _icon      = _toggleBtn.querySelector('i');
@@ -196,14 +420,6 @@
             container.classList.add('h-16', 'md:h-20');
         }
     });
-
-    // Mobile menu
-    const _mob = document.getElementById('mobileMenu');
-    const _ov  = document.getElementById('overlay');
-    function _toggleMenu(){ _mob.classList.toggle('open'); _ov.classList.toggle('active'); }
-    document.getElementById('mobileToggle').addEventListener('click',_toggleMenu);
-    document.getElementById('closeMenu').addEventListener('click',_toggleMenu);
-    _ov.addEventListener('click',_toggleMenu);
 
     // Toast helper (global)
     function showToast(msg, type='success'){

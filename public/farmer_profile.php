@@ -342,7 +342,7 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
 
     /* MAIN CONTENT */
     .main {
-        flex: 1; display: flex; flex-direction: column;
+        flex: 1; display: flex; flex-direction: column; min-width: 0;
         overflow-y: auto; position: relative;
     }
 
@@ -479,11 +479,13 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
 
     .gps-wrap { display: flex; gap: 10px; }
 
+    /* RESPONSIVE (EXACT MATCH WITH AGENT_PROFILE.PHP) */
     @media (max-width: 768px) {
         .sidebar { position: fixed; height: 100%; width: 0; padding: 0; overflow: hidden; }
         .sidebar.active { width: var(--sidebar-width); padding: 20px; }
         .main { margin-left: 0; }
         .form-row { grid-template-columns: 1fr; }
+        .profile-banner { flex-direction: column; text-align: center; }
     }
 </style>
 </head>
@@ -494,7 +496,7 @@ $mode = isset($_GET['edit']) && $_GET['edit'] === "1" ? "edit" : "view";
     <aside class="sidebar" id="sidebar">
         <div class="brand">
             <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
-            <h2>AgroLoan Farmer</h2>
+            <h2>Farmer</h2>
         </div>
 
         <nav class="nav">

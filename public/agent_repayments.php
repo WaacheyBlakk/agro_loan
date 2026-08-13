@@ -222,7 +222,7 @@ $total_confirmed_amt = array_sum(array_map(
     .sidebar.collapsed .logout-btn span { display: none; }
 
     /* ── MAIN ── */
-    .main { flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow-y: auto; }
     .topbar {
         background: var(--bg-card); padding: 15px 30px;
         display: flex; justify-content: space-between; align-items: center;
@@ -400,7 +400,7 @@ $total_confirmed_amt = array_sum(array_map(
 <aside class="sidebar" id="sidebar">
     <div class="brand">
         <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
-        <h2>AgroLoan Agent</h2>
+        <h2>Agent</h2>
     </div>
     <nav class="nav">
         <a href="agent_dashboard.php" class="nav-link">

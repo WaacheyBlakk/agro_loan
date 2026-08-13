@@ -330,6 +330,7 @@ if ($disputeType === 'loan') {
         flex: 1;
         display: flex;
         flex-direction: column;
+        min-width: 0;
         overflow-y: auto;
         position: relative;
     }
@@ -564,7 +565,7 @@ if ($disputeType === 'loan') {
     <aside class="sidebar" id="sidebar">
         <div class="brand">
             <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
-            <h2>AgroLoan Administrator</h2>
+            <h2>Administrator</h2>
         </div>
 
         <nav class="nav">

@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $token_hash = hash('sha256', $token);
         $expiry = date("Y-m-d H:i:s", time() + 60 * 60);
 
-        // 2. Identify the correct table (users or buyers)
+        // 2. Identify the correct table
         $target_table = '';
         
         // Check the users table first

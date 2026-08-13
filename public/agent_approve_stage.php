@@ -328,7 +328,7 @@ $stages = $pdo->query($query)->fetchAll(PDO::FETCH_ASSOC);
     <aside class="sidebar" id="sidebar">
         <div class="brand">
             <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
-            <h2>AgroLoan Agent</h2>
+            <h2>Agent</h2>
         </div>
 
         <nav class="nav">
@@ -394,7 +394,7 @@ $stages = $pdo->query($query)->fetchAll(PDO::FETCH_ASSOC);
                     <p style="color:var(--text-muted);">No stages awaiting disbursement. Verify proofs first.</p>
                 </div>
             <?php else: ?>
-                <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap:24px;">
+                <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap:24px;">
                     <?php foreach ($stages as $stage): ?>
                     <div class="card">
                         <div style="display:flex; justify-content:space-between; align-items:start;">

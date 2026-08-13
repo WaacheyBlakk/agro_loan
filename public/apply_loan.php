@@ -292,7 +292,7 @@ $rejected_list = $rejected_stmt->fetchAll(PDO::FETCH_ASSOC);
 
     /* --- MAIN CONTENT --- */
     .main {
-        flex: 1; display: flex; flex-direction: column;
+        flex: 1; display: flex; flex-direction: column; min-width: 0;
         overflow-y: auto; position: relative;
     }
 
@@ -417,7 +417,7 @@ $rejected_list = $rejected_stmt->fetchAll(PDO::FETCH_ASSOC);
     <aside class="sidebar" id="sidebar">
         <div class="brand">
             <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
-            <h2>AgroLoan Farmer</h2>
+            <h2>Farmer</h2>
         </div>
 
         <nav class="nav">

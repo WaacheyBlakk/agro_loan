@@ -688,9 +688,11 @@ footer {
                     <span class="team-role">Team Member</span>
                     <p></p>
                     <div class="social-links">
-                        <a href="#"><i class="ri-linkedin-fill"></i></a>
-                        <a href="#"><i class="ri-twitter-x-fill"></i></a>
-                        <a href="#"><i class="ri-mail-fill"></i></a>
+                        <a href="https://wa.me/233243155357"><i class="ri-whatsapp-fill"></i></a>
+                        <a href="https://linkedin.com/in/abdul-rahamansalifu"><i class="ri-linkedin-fill"></i></a>
+                        <a href="abdulrahamansalifu999@gmail.com"><i class="ri-mail-fill"></i></a>
+                        <a href="https://github.com/WaacheyBlakk"><i class="ri-github-fill"></i></a>
+                        <a href="https://x.com/waachey_blakk"><i class="ri-twitter-x-fill"></i></a>
                     </div>
                 </div>
             </div>
@@ -704,8 +706,11 @@ footer {
                     <span class="team-role">Team Member</span>
                     <p></p>
                     <div class="social-links">
+                        <a href="https://wa.me/233555709604"><i class="ri-whatsapp-fill"></i></a>
                         <a href="#"><i class="ri-linkedin-fill"></i></a>
                         <a href="#"><i class="ri-mail-fill"></i></a>
+                        <a href="#"><i class="ri-github-fill"></i></a>
+                        <a href="#"><i class="ri-twitter-x-fill"></i></a>
                     </div>
                 </div>
             </div>
@@ -719,8 +724,11 @@ footer {
                     <span class="team-role">Team Member</span>
                     <p></p>
                     <div class="social-links">
-                        <a href="#"><i class="ri-github-fill"></i></a>
+                        <a href="https://wa.me/233500677124"><i class="ri-whatsapp-fill"></i></a>
                         <a href="#"><i class="ri-linkedin-fill"></i></a>
+                        <a href="#"><i class="ri-mail-fill"></i></a>
+                        <a href="#"><i class="ri-github-fill"></i></a>
+                        <a href="#"><i class="ri-twitter-x-fill"></i></a>
                     </div>
                 </div>
             </div>

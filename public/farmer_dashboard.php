@@ -153,7 +153,7 @@ $pending_loans = count(array_filter($loans, function($l){ return !isset($l['stat
 
     /* --- MAIN CONTENT --- */
     .main {
-        flex: 1; display: flex; flex-direction: column;
+        flex: 1; display: flex; flex-direction: column; min-width: 0;
         overflow-y: auto; position: relative;
     }
 
@@ -258,7 +258,7 @@ $pending_loans = count(array_filter($loans, function($l){ return !isset($l['stat
         <div class="brand">
             <!-- Using the same logo path as the original request -->
             <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
-            <h2>AgroLoan Farmer</h2>
+            <h2>Farmer</h2>
         </div>
 
         <nav class="nav">

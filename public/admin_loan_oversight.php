@@ -78,9 +78,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
                 $subject = "Administrative Decision Issued: " . $parties['title'];
                 $email_body = "
                     <h2>Administrative Review Action Notice</h2>
-                    <p>The system administration team has formally closed the dispute file regarding '<strong>{$parties['title']}</strong>'.</p>
+                    <p>The system administration team has formally closed the dispute file regarding '<strong>" . htmlspecialchars($parties['title']) . "</strong>'.</p>
                     <p><strong>Official Directive/Decision:</strong></p>
-                    <blockquote style='background:#f3f4f6; padding:15px; border-left:4px solid #4f46e5;'>{$decision}</blockquote>
+                    <blockquote style='background:#f3f4f6; padding:15px; border-left:4px solid #4f46e5;'>" . nl2br(htmlspecialchars($decision)) . "</blockquote>
                     <p>Status set to: <strong>" . ucfirst($status) . "</strong></p>
                     <p>Please log in to review any updated transaction statuses or repayments related to this override.</p>
                 ";
@@ -99,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['intervention_type']))
         // 2. Override Stage Status (Unblocking Stalls)
         elseif ($intervention === 'override_stage') {
             $stage_id = intval($_POST['stage_id'] ?? 0);
-            $new_stage_status = $_POST['stage_status'] ?? ''; // pending, verified, rejected, awaiting_disbursement, disbursed, disbursement_rejected
+            $new_stage_status = $_POST['stage_status'] ?? ''; 
             $disbursed_flag = isset($_POST['disbursed']) ? intval($_POST['disbursed']) : 0;
 
             if ($stage_id <= 0 || empty($new_stage_status)) {
@@ -343,44 +343,56 @@ while ($row = $m_stmt->fetch(PDO::FETCH_ASSOC)) {
     $metrics['total_disbursed'] += (float)$row['disbursed_amount'];
 }
 $metrics['open_disputes'] = (int)$pdo->query("SELECT COUNT(*) FROM disputes WHERE status = 'pending'")->fetchColumn();
-
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>Loan Oversight Desk | AgroLoan Administration</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    
+    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Feather Icons -->
     <script src="https://unpkg.com/feather-icons"></script>
+
     <style>
         :root {
-            --primary: #059669;
+            --primary: #059669; /* Emerald 600 */
             --primary-dark: #576868ff;
-            --secondary: #10b981;
-            --bg-body: #f1f5f9;
+            --secondary: #10b981; /* Emerald 500 */
+            --bg-body: #f3f4f6;
             --bg-card: #ffffff;
-            --text-main: #1e293b;
-            --text-muted: #64748b;
+            --text-main: #111827;
+            --text-muted: #6b7280;
             --danger: #ef4444;
             --warning: #f59e0b;
             --success: #10b981;
             --sidebar-width: 260px;
             --sidebar-collapsed: 80px;
-            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+            --border-color: #e5e7eb;
         }
 
-        * { box-sizing: border-box; }
-        body {
+        *, *::before, *::after {
+            box-sizing: border-box;
             margin: 0;
-            font-family: 'Poppins', sans-serif;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: var(--bg-body);
             color: var(--text-main);
             display: flex;
+            min-height: 100vh;
+            min-height: 100dvh;
             height: 100vh;
             overflow: hidden;
+            width: 100%;
         }
 
+        /* --- SIDEBAR --- */
         .sidebar {
             width: var(--sidebar-width);
             background: var(--primary-dark);
@@ -388,244 +400,512 @@ $metrics['open_disputes'] = (int)$pdo->query("SELECT COUNT(*) FROM disputes WHER
             display: flex;
             flex-direction: column;
             padding: 20px;
-            transition: width 0.3s ease;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             z-index: 100;
-            box-shadow: 4px 0 10px rgba(0,0,0,0.05);
+            box-shadow: 4px 0 10px rgba(0,0,0,0.1);
             flex-shrink: 0;
+            height: 100%;
         }
+
         .sidebar.collapsed { width: var(--sidebar-collapsed); padding: 20px 10px; }
+        
         .brand {
             display: flex;
             align-items: center;
             gap: 12px;
-            margin-bottom: 40px;
-            padding-left: 5px;
+            margin-bottom: 30px;
+            padding-left: 4px;
             overflow: hidden;
         }
+
         .brand img {
-            width: 40px; height: 40px; border-radius: 8px;
+            width: 38px; height: 38px; border-radius: 8px;
             object-fit: cover; border: 2px solid rgba(255,255,255,0.2);
+            flex-shrink: 0;
         }
+
         .brand h2 {
-            font-size: 20px; font-weight: 600; white-space: nowrap;
-            opacity: 1; transition: opacity 0.2s; margin: 0;
+            font-size: 18px; font-weight: 600; white-space: nowrap;
+            opacity: 1; transition: opacity 0.2s; color: #fff;
         }
-        .sidebar.collapsed .brand h2 { opacity: 0; width: 0; }
-        .nav { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-        .nav-link {
-            display: flex; align-items: center; gap: 14px;
-            padding: 12px 15px; color: #d1fae5; text-decoration: none;
-            border-radius: 10px; transition: all 0.2s ease;
-            white-space: nowrap; font-weight: 500;
-        }
-        .nav-link:hover {
-            background: rgba(255,255,255,0.1); color: #fff;
-            transform: translateX(4px);
-        }
-        .nav-link.active { background: var(--secondary); color: #fff; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
-        .nav-link svg { width: 20px; height: 20px; }
-        .sidebar.collapsed .nav-link { justify-content: center; padding: 12px; }
-        .sidebar.collapsed .nav-link span { display: none; }
+
+        .sidebar.collapsed .brand h2 { opacity: 0; width: 0; display: none; }
         
+        .nav { display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto; overflow-x: hidden; }
+
+        .nav-link {
+            display: flex; align-items: center; gap: 12px;
+            padding: 11px 14px; color: #d1fae5; text-decoration: none;
+            border-radius: 10px; transition: all 0.2s ease;
+            white-space: nowrap; font-weight: 500; font-size: 13.5px;
+        }
+
+        .nav-link:hover { background: rgba(255,255,255,0.1); color: #fff; transform: translateX(3px); }
+        .nav-link.active { background: var(--secondary); color: #fff; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+        .nav-link svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+        .sidebar.collapsed .nav-link { justify-content: center; padding: 11px; }
+        .sidebar.collapsed .nav-link span { display: none; }
+
         .logout-btn {
-            background: rgba(239, 68, 68, 0.1); color: #fca5a5;
-            border: 1px solid rgba(239, 68, 68, 0.15);
-            padding: 12px; border-radius: 10px; cursor: pointer;
+            background: rgba(239, 68, 68, 0.12); color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            padding: 11px; border-radius: 10px; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
-            gap: 10px; font-family: inherit; font-weight: 600;
-            transition: 0.2s; width: 100%;
+            gap: 10px; font-family: inherit; font-weight: 600; font-size: 13.5px;
+            transition: 0.2s; width: 100%; margin-top: 15px;
         }
         .logout-btn:hover { background: var(--danger); color: white; }
         .sidebar.collapsed .logout-btn span { display: none; }
 
+        /* --- MAIN VIEWPORT & TOPBAR --- */
         .main {
             flex: 1; display: flex; flex-direction: column;
-            overflow-y: auto; position: relative;
+            min-width: 0; width: 100%; height: 100%;
+            overflow-y: auto; overflow-x: hidden; position: relative;
         }
 
         .topbar {
-            background: var(--bg-card); padding: 15px 30px;
+            background: var(--bg-card); padding: 12px 24px;
             display: flex; justify-content: space-between; align-items: center;
-            box-shadow: var(--shadow); position: sticky; top: 0; z-index: 50;
+            box-shadow: var(--shadow); position: sticky; top: 0; z-index: 40;
+            width: 100%; border-bottom: 1px solid var(--border-color);
         }
+
         .toggle-btn {
             background: transparent; border: none; color: var(--text-muted);
-            cursor: pointer; padding: 5px;
+            cursor: pointer; padding: 6px; display: inline-flex; align-items: center;
+            justify-content: center; border-radius: 6px;
         }
-        .toggle-btn:hover { color: var(--primary); }
+        .toggle-btn:hover { color: var(--primary); background: #f1f5f9; }
 
-        .user-profile { display: flex; align-items: center; gap: 10px; }
+        .user-profile { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .user-meta { text-align: right; line-height: 1.2; }
+        .user-name { font-size: 13px; font-weight: 600; color: var(--text-main); white-space: nowrap; }
+        .user-role { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
         .user-avatar {
-            width: 35px; height: 35px; background: var(--primary); color: white;
+            width: 36px; height: 36px; background: var(--primary); color: white;
             border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            font-weight: bold; font-size: 14px;
+            font-weight: 600; font-size: 14px; flex-shrink: 0;
         }
 
-        .content { padding: 30px; max-width: 1400px; margin: 0 auto; width: 100%; }
+        /* --- PAGE CONTENT --- */
+        .content {
+            padding: 24px;
+            max-width: 1350px;
+            width: 100%;
+            margin: 0 auto;
+            min-width: 0;
+        }
 
-        /* Metric Widgets */
+        .page-header {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            width: 100%;
+        }
+        .page-title { font-size: 22px; font-weight: 700; color: var(--text-main); line-height: 1.25; }
+        .page-subtitle { color: var(--text-muted); margin-top: 4px; font-size: 13px; }
+
+        /* METRIC CARDS */
         .metrics-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;
-            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin-bottom: 22px;
+            width: 100%;
         }
         .metric-card {
-            background: var(--bg-card); border-radius: 12px; padding: 20px;
+            background: var(--bg-card); border-radius: 12px; padding: 18px 20px;
             display: flex; align-items: center; justify-content: space-between;
-            box-shadow: var(--shadow); border: 1px solid #e2e8f0;
+            box-shadow: var(--shadow); border: 1px solid var(--border-color);
+            min-width: 0;
         }
-        .metric-info h4 { margin: 0; font-size: 13px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; }
-        .metric-info p { margin: 5px 0 0; font-size: 24px; font-weight: 700; color: var(--text-main); }
-        .metric-icon { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .metric-info { min-width: 0; }
+        .metric-info h4 { margin: 0; font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .metric-info p { margin: 4px 0 0; font-size: 20px; font-weight: 700; color: var(--text-main); word-break: break-word; }
+        .metric-icon { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 12px; }
         .icon-blue { background: #e0e7ff; color: #4f46e5; }
         .icon-green { background: #d1fae5; color: #059669; }
         .icon-red { background: #fee2e2; color: #ef4444; }
 
-        /* General layout blocks */
-        .card {
-            background: var(--bg-card); padding: 25px; border-radius: 12px;
-            box-shadow: var(--shadow); border: 1px solid #e2e8f0; margin-bottom: 25px;
-        }
-        .flex-header {
-            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 20px;
-        }
-        .card-title { font-size: 18px; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 8px; }
-
-        /* Form Filter Panel */
-        .filter-panel {
-            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 15px; margin-bottom: 20px;
-        }
-        .filter-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; align-items: end;
-        }
-        .filter-group { display: flex; flex-direction: column; gap: 6px; }
-        .filter-group label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
-
-        /* Form Controls Standard UI Reset */
-        input[type="text"], input[type="number"], textarea {
-            padding: 10px 12px; 
-            border: 1px solid #cbd5e1; 
-            border-radius: 8px; 
-            font-size: 13px;
-            font-family: inherit; 
-            width: 100%; 
-            outline: none; 
-            background: #fff;
-            color: var(--text-main); 
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-            box-sizing: border-box; 
-            display: block;
-            height: 41px;
-        }
-        textarea {
-            height: auto;
-            min-height: 80px;
-        }
-
-        /* Standardized styled select dropdown (Fixing native cross-browser alignment bugs) */
-        select {
-            padding: 10px 40px 10px 12px;
-            border: 1px solid #cbd5e1;
-            border-radius: 8px;
-            font-size: 13px;
-            font-family: inherit;
+        /* FILTERS BAR (Matched to User Management) */
+        .filters-bar {
+            background: var(--bg-card);
+            padding: 18px 20px;
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            margin-bottom: 22px;
+            border: 1px solid var(--border-color);
+            display: grid;
+            grid-template-columns: 2fr 1.2fr 1fr auto;
+            gap: 14px;
+            align-items: flex-end;
             width: 100%;
-            outline: none;
-            background-color: #fff;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 14px center;
-            background-size: 15px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 0;
+            width: 100%;
+        }
+
+        .filter-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-input {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 13px;
             color: var(--text-main);
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-            box-sizing: border-box;
-            display: block;
-            height: 41px;
-            line-height: 1.5;
+            outline: none;
+            background-color: #fafbfa;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            width: 100%;
+            height: 38px;
+        }
+
+        select.filter-input {
+            appearance: none;
             -webkit-appearance: none;
             -moz-appearance: none;
-            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            background-size: 14px;
+            padding-right: 32px;
             cursor: pointer;
         }
 
-        select:focus, input[type="text"]:focus, input[type="number"]:focus, textarea:focus { 
-            border-color: var(--primary); 
+        .filter-input:focus {
+            border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15);
         }
 
-        /* Table structures */
-        .table-wrap { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; min-width: 800px; }
-        th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
-        th { background: #f8fafc; font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
-        tr:hover td { background: #fcfdfe; }
-
-        /* Status badges */
-        .badge { padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; display: inline-block; }
-        .badge-pending { background: #fef3c7; color: #d97706; }
-        .badge-approved { background: #ecfdf5; color: #059669; }
-        .badge-rejected { background: #fef2f2; color: #dc2626; }
-        .badge-completed { background: #eff6ff; color: #2563eb; }
-        .badge-disbursed { background: #f5f3ff; color: #7c3aed; }
-        .badge-verified { background: #ecfdf5; color: #059669; }
-        .badge-awaiting_disbursement { background: #fef3c7; color: #d97706; }
-        .badge-disbursement_rejected { background: #fef2f2; color: #dc2626; }
-        .badge-partial { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-        .badge-full { background: #faf5ff; color: #6d28d9; border: 1px solid #e9d5ff; }
-        .badge-confirmed { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
-
-        /* Action buttons */
-        .btn {
-            padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; border: none; cursor: pointer;
-            display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font-family: inherit;
+        .filter-buttons {
+            display: flex;
+            gap: 8px;
+            align-items: center;
         }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-primary:hover { background: var(--primary-dark); }
-        .btn-secondary { background: #f1f5f9; color: var(--text-main); border: 1px solid #cbd5e1; }
-        .btn-secondary:hover { background: #e2e8f0; }
-        .btn-danger { background: var(--danger); color: white; }
-        .btn-danger:hover { background: #dc2626; }
 
-        /* Intervention Box Styles */
-        .intervention-box {
-            background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 20px; margin-top: 25px;
+        .btn-search {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0 16px;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 13px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-family: inherit;
+            height: 38px;
+            transition: background-color 0.2s;
+            text-decoration: none;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
-        .intervention-box h3 { margin: 0 0 10px 0; color: #b45309; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+        .btn-search:hover { background-color: var(--secondary); }
 
-        .stage-box {
-            background: #faf9ff; border: 1px solid #e0e7ff; border-radius: 10px; padding: 15px; margin-bottom: 15px;
+        .btn-action {
+            text-decoration: none;
+            padding: 0 14px;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            height: 38px;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
-        .stage-box.stalled { border-left: 4px solid var(--warning); }
+        .btn-action:hover { border-color: var(--primary); color: var(--primary); background: #f0fdfa; }
 
-        .alert { padding: 12px 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; display: flex; align-items: center; gap: 10px; }
-        .alert-success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
-        .alert-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        .btn-submit {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-height: 38px;
+        }
+        .btn-submit:hover { background: var(--secondary); }
 
-        /* Tab Controls styling */
+        /* CARDS & TABLES */
+        .card {
+            background: var(--bg-card);
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+            margin-bottom: 22px;
+            overflow: hidden;
+            width: 100%;
+        }
+
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            display: block;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 820px;
+        }
+        .table thead { background: #f9fafb; border-bottom: 2px solid var(--border-color); }
+        .table th { padding: 13px 18px; text-align: left; font-size: 11.5px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .table td { padding: 13px 18px; border-bottom: 1px solid var(--border-color); vertical-align: middle; font-size: 13px; }
+        .table tr:last-child td { border-bottom: none; }
+        .table tbody tr:hover { background: #f8fafc; }
+
+        /* BADGES */
+        .badge {
+            padding: 4px 9px; border-radius: 50px; font-size: 11px;
+            font-weight: 600; display: inline-flex; align-items: center; gap: 4px;
+            text-transform: capitalize; white-space: nowrap;
+        }
+        .badge-pending { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; }
+        .badge-approved, .badge-verified, .badge-confirmed { background: #ecfdf5; color: #065f46; border: 1px solid #10b981; }
+        .badge-completed { background: #eff6ff; color: #1d4ed8; border: 1px solid #93c5fd; }
+        .badge-rejected, .badge-disbursement_rejected { background: #fef2f2; color: #dc2626; border: 1px solid #fee2e2; }
+        .badge-disbursed, .badge-full { background: #faf5ff; color: #6d28d9; border: 1px solid #e9d5ff; }
+        .badge-awaiting_disbursement, .badge-partial { background: #fef3c7; color: #d97706; border: 1px solid #fde68a; }
+
+        /* DETAIL / DRILL-DOWN SPLIT LAYOUT */
+        .detail-container {
+            display: grid;
+            grid-template-columns: 1.65fr 1fr;
+            gap: 20px;
+            align-items: start;
+            width: 100%;
+        }
+
+        .detail-card {
+            background: var(--bg-card);
+            border-radius: 14px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            padding: 20px;
+            margin-bottom: 20px;
+            word-break: break-word;
+            width: 100%;
+        }
+
+        .detail-title {
+            font-size: 16px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-top: 0;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .detail-group {
+            display: grid;
+            grid-template-columns: 130px 1fr;
+            padding: 9px 0;
+            border-bottom: 1px solid #f9fafb;
+            gap: 10px;
+            font-size: 13px;
+        }
+
+        .detail-label { font-weight: 600; color: var(--text-muted); font-size: 12px; }
+        .detail-val { font-size: 13px; color: var(--text-main); word-break: break-word; }
+
+        /* TABS */
         .tabs-header {
-            display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid #cbd5e1;
+            display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color);
+            overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%;
         }
         .tab-btn {
-            background: none; border: none; font-family: inherit; font-size: 14px; font-weight: 600;
-            color: var(--text-muted); padding: 10px 16px; cursor: pointer; transition: 0.2s;
-            border-bottom: 3px solid transparent; margin-bottom: -1px;
+            background: none; border: none; font-family: inherit; font-size: 13px; font-weight: 600;
+            color: var(--text-muted); padding: 9px 14px; cursor: pointer; transition: 0.2s;
+            border-bottom: 3px solid transparent; margin-bottom: -1px; white-space: nowrap; flex-shrink: 0;
         }
         .tab-btn:hover { color: var(--primary); }
         .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
-        .tab-pane { display: none; }
+        .tab-pane { display: none; width: 100%; }
         .tab-pane.active { display: block; }
 
-        @media (max-width: 992px) {
-            .split-view { display: flex; flex-direction: column; gap: 20px; }
+        /* STAGE & INTERVENTION BOXES */
+        .stage-box {
+            background: #fafbfc; border: 1px solid var(--border-color);
+            border-radius: 10px; padding: 14px; margin-bottom: 14px;
+            word-break: break-word; width: 100%;
         }
-        .split-view { display: grid; grid-template-columns: 2fr 1fr; gap: 30px; align-items: start; }
+        .stage-box.stalled { border-left: 4px solid var(--warning); background: #fffdfa; }
+
+        .intervention-box {
+            background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px;
+            padding: 18px; margin-bottom: 20px; width: 100%;
+        }
+        .intervention-box h3 { margin: 0 0 6px 0; color: #b45309; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+
+        /* CONTROL FORMS */
+        .control-form { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+        .control-form label { font-size: 11.5px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .control-textarea {
+            width: 100%; min-height: 80px; border-radius: 8px;
+            border: 1px solid var(--border-color); padding: 9px 12px;
+            font-family: inherit; font-size: 13px; outline: none; resize: vertical;
+            background-color: #fafbfa;
+        }
+        .control-textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15); }
+
+        /* ALERTS */
+        .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 18px; font-size: 13px; display: flex; align-items: center; gap: 10px; width: 100%; word-break: break-word; }
+        .alert-success { background: #ecfdf5; color: #065f46; border: 1px solid #10b981; }
+        .alert-error { background: #fef2f2; color: #991b1b; border: 1px solid #f87171; }
+        .empty-state { text-align: center; padding: 35px 15px; color: var(--text-muted); font-size: 13px; }
+
+        /* MOBILE BACKDROP */
+        .sidebar-backdrop {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+            z-index: 95; opacity: 0; transition: opacity 0.3s;
+        }
+        .sidebar-backdrop.active { display: block; opacity: 1; }
+
+        /* --- RESPONSIVE MEDIA QUERIES --- */
+        @media (max-width: 1080px) {
+            .filters-bar {
+                grid-template-columns: 1fr 1fr;
+            }
+            .filter-buttons {
+                grid-column: span 2;
+                justify-content: flex-end;
+            }
+        }
+
+        @media (max-width: 992px) {
+            .detail-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                overflow-x: hidden;
+            }
+            .sidebar {
+                position: fixed;
+                top: 0; left: 0; bottom: 0;
+                height: 100%;
+                width: 270px;
+                max-width: 82vw;
+                transform: translateX(-100%);
+                z-index: 1000;
+                box-shadow: 6px 0 20px rgba(0,0,0,0.25);
+            }
+            .sidebar.active {
+                transform: translateX(0);
+            }
+            .content {
+                padding: 14px;
+            }
+            .topbar {
+                padding: 10px 14px;
+            }
+            .user-meta {
+                display: none;
+            }
+            .page-title {
+                font-size: 19px;
+            }
+            .filters-bar {
+                grid-template-columns: 1fr;
+                padding: 14px;
+                gap: 12px;
+            }
+            .filter-buttons {
+                grid-column: span 1;
+                width: 100%;
+            }
+            .filter-buttons button, .filter-buttons a {
+                flex: 1;
+            }
+            .metrics-grid {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+            .detail-card {
+                padding: 14px;
+            }
+            .detail-group {
+                grid-template-columns: 1fr;
+                gap: 3px;
+                padding: 8px 0;
+            }
+            .stage-box {
+                padding: 12px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .btn-search, .btn-action, .btn-submit {
+                font-size: 12px;
+                padding: 0 10px;
+            }
+            .metric-card {
+                padding: 14px;
+            }
+            .tab-btn {
+                padding: 8px 10px;
+                font-size: 12px;
+            }
+        }
     </style>
 </head>
 <body>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- SIDEBAR -->
     <aside class="sidebar" id="sidebar">
         <div class="brand">
             <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
-            <h2>AgroLoan Administrator</h2>
+            <h2>Administrator</h2>
         </div>
+
         <nav class="nav">
             <a href="admin_dashboard.php" class="nav-link">
                 <i data-feather="pie-chart"></i>
@@ -656,6 +936,7 @@ $metrics['open_disputes'] = (int)$pdo->query("SELECT COUNT(*) FROM disputes WHER
                 <span>My Profile</span>
             </a>
         </nav>
+
         <form action="logout.php" method="POST">
             <?php if (isset($_SESSION['csrf_token'])): ?>
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
@@ -667,39 +948,52 @@ $metrics['open_disputes'] = (int)$pdo->query("SELECT COUNT(*) FROM disputes WHER
         </form>
     </aside>
 
+    <!-- MAIN WRAPPER -->
     <main class="main">
+        <!-- TOPBAR -->
         <header class="topbar">
-            <button id="toggleBtn" class="toggle-btn"><i data-feather="menu"></i></button>
+            <button id="toggleBtn" class="toggle-btn" aria-label="Toggle Sidebar">
+                <i data-feather="menu"></i>
+            </button>
             <div class="user-profile">
-                <div style="text-align:right; margin-right:8px;">
-                    <div style="font-size:14px; font-weight:600;"><?= htmlspecialchars($username) ?></div>
-                    <div style="font-size:12px; color:var(--text-muted);">Administrator</div>
+                <div class="user-meta">
+                    <div class="user-name"><?= htmlspecialchars($username) ?></div>
+                    <div class="user-role">Administrator</div>
                 </div>
                 <div class="user-avatar">
-                    <?= strtoupper(substr($username,0,1)) ?>
+                    <?= strtoupper(substr($username, 0, 1)) ?>
                 </div>
             </div>
         </header>
 
         <div class="content">
-            <div class="flex-header">
+            <!-- PAGE HEADER -->
+            <div class="page-header">
                 <div>
-                    <h1 style="margin: 0; font-size: 24px; font-weight: 700;">Global System Loan Registry</h1>
-                    <p style="color: var(--text-muted); margin: 5px 0 0 0;">System audits, manual overrides, and transactional dispute resolution controls.</p>
+                    <h1 class="page-title">Global System Loan Registry</h1>
+                    <p class="page-subtitle">System audits, manual overrides, and transactional dispute resolution controls.</p>
                 </div>
                 <?php if ($selected_loan_id): ?>
-                    <a href="admin_loan_oversight.php" class="btn btn-secondary">&larr; Back to Loan List</a>
+                    <a href="admin_loan_oversight.php" class="btn-action">
+                        <i data-feather="arrow-left" style="width:14px"></i> Back to Loan List
+                    </a>
                 <?php endif; ?>
             </div>
 
             <?php if (!empty($successMessage)): ?>
-                <div class="alert alert-success"><i data-feather="check-circle"></i> <?= htmlspecialchars($successMessage) ?></div>
+                <div class="alert alert-success">
+                    <i data-feather="check-circle" style="width:17px; flex-shrink:0;"></i>
+                    <span><?= htmlspecialchars($successMessage) ?></span>
+                </div>
             <?php endif; ?>
             <?php if (!empty($errorMessage)): ?>
-                <div class="alert alert-error"><i data-feather="alert-circle"></i> <?= htmlspecialchars($errorMessage) ?></div>
+                <div class="alert alert-error">
+                    <i data-feather="alert-circle" style="width:17px; flex-shrink:0;"></i>
+                    <span><?= htmlspecialchars($errorMessage) ?></span>
+                </div>
             <?php endif; ?>
 
-            <!-- Metric Row on Dashboard Main State -->
+            <!-- OVERVIEW METRICS -->
             <?php if (!$selected_loan_id): ?>
                 <div class="metrics-grid">
                     <div class="metric-card">
@@ -728,177 +1022,200 @@ $metrics['open_disputes'] = (int)$pdo->query("SELECT COUNT(*) FROM disputes WHER
 
             <!-- SINGLE LOAN AUDITING DRILL-DOWN VIEW -->
             <?php if ($selected_loan_id && $selected_loan): ?>
-                <div class="split-view">
+                <div class="detail-container">
                     
-                    <!-- Left Segment: Stages, Repayments Ledger, Progression, Proof Files -->
+                    <!-- Left Segment: Dossier, Stages Timeline & Repayments -->
                     <div>
-                        <div class="card">
-                            <div class="flex-header">
-                                <h2 class="card-title"><i data-feather="file-text"></i> Profile Details: #<?= $selected_loan['id'] ?></h2>
-                                <span class="badge badge-<?= $selected_loan['status'] ?>"><?= $selected_loan['status'] ?></span>
+                        <!-- Dossier Card -->
+                        <div class="detail-card">
+                            <h2 class="detail-title">
+                                <span><i data-feather="file-text" style="width:16px; vertical-align:middle; margin-right:4px;"></i> Dossier #<?= $selected_loan['id'] ?>: <?= htmlspecialchars($selected_loan['title']) ?></span>
+                                <span class="badge badge-<?= strtolower($selected_loan['status']) ?>"><?= htmlspecialchars(ucfirst($selected_loan['status'])) ?></span>
+                            </h2>
+
+                            <div class="detail-group">
+                                <span class="detail-label">Farmer Profile</span>
+                                <span class="detail-val">
+                                    <strong><?= htmlspecialchars($selected_loan['farmer_name']) ?></strong><br>
+                                    <span style="color:var(--text-muted); font-size:12px;"><?= htmlspecialchars($selected_loan['farmer_email']) ?> &bull; <?= htmlspecialchars($selected_loan['farmer_phone'] ?? 'No Phone') ?></span>
+                                </span>
                             </div>
 
-                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
-                                <div>
-                                    <strong style="font-size:12px; color:var(--text-muted); text-transform:uppercase;">Farmer Profile</strong>
-                                    <div style="font-size:14px; font-weight:600; margin-top:3px;"><?= htmlspecialchars($selected_loan['farmer_name']) ?></div>
-                                    <div style="font-size:12px; color:var(--text-muted);"><?= htmlspecialchars($selected_loan['farmer_email']) ?></div>
-                                    <div style="font-size:12px; color:var(--text-muted);"><?= htmlspecialchars($selected_loan['farmer_phone'] ?? 'No Phone') ?></div>
-                                </div>
-                                <div>
-                                    <strong style="font-size:12px; color:var(--text-muted); text-transform:uppercase;">Vetting Agent</strong>
-                                    <div style="font-size:14px; font-weight:600; margin-top:3px;"><?= htmlspecialchars($selected_loan['agent_name'] ?? 'Unassigned') ?></div>
-                                    <div style="font-size:12px; color:var(--text-muted);"><?= htmlspecialchars($selected_loan['agent_email'] ?? '') ?></div>
-                                    <div style="font-size:12px; color:var(--text-muted);"><?= htmlspecialchars($selected_loan['agent_phone'] ?? '') ?></div>
-                                </div>
-                                <div>
-                                    <strong style="font-size:12px; color:var(--text-muted); text-transform:uppercase;">Amounts & Progress</strong>
-                                    <div style="font-size:14px; font-weight:600; margin-top:3px;">Total Limit: GHS <?= number_format($selected_loan['amount'], 2) ?></div>
-                                    <div style="font-size:13px; color:var(--success); font-weight:600;">Disbursed: GHS <?= number_format($selected_loan['disbursed_amount'], 2) ?></div>
-                                    <div style="font-size:12px; color:var(--text-muted);">Current Active Index: Stage <?= $selected_loan['current_stage'] ?></div>
-                                </div>
+                            <div class="detail-group">
+                                <span class="detail-label">Assigned Agent</span>
+                                <span class="detail-val">
+                                    <strong><?= htmlspecialchars($selected_loan['agent_name'] ?? 'Unassigned') ?></strong>
+                                    <?php if (!empty($selected_loan['agent_email'])): ?>
+                                        <br><span style="color:var(--text-muted); font-size:12px;"><?= htmlspecialchars($selected_loan['agent_email']) ?></span>
+                                    <?php endif; ?>
+                                </span>
                             </div>
 
-                            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border:1px solid #e2e8f0;">
-                                <strong style="font-size:12px; color:var(--text-muted); text-transform:uppercase; display:block; margin-bottom:5px;">Purpose of Loan</strong>
-                                <p style="font-size:13px; margin: 0; line-height:1.5;"><?= htmlspecialchars($selected_loan['purpose']) ?></p>
+                            <div class="detail-group">
+                                <span class="detail-label">Loan Financials</span>
+                                <span class="detail-val">
+                                    Total Limit: <strong>GHS <?= number_format($selected_loan['amount'], 2) ?></strong> | 
+                                    Disbursed: <strong style="color:var(--primary);">GHS <?= number_format($selected_loan['disbursed_amount'], 2) ?></strong>
+                                    <?php if (isset($selected_loan['outstanding_balance'])): ?>
+                                        <br>Outstanding Balance: <strong>GHS <?= number_format($selected_loan['outstanding_balance'], 2) ?></strong>
+                                    <?php endif; ?>
+                                </span>
+                            </div>
+
+                            <div class="detail-group">
+                                <span class="detail-label">Current Progress</span>
+                                <span class="detail-val">
+                                    Active Stage Index: <strong>Stage <?= $selected_loan['current_stage'] ?></strong>
+                                </span>
+                            </div>
+
+                            <div class="detail-group" style="border-bottom:none;">
+                                <span class="detail-label">Loan Purpose</span>
+                                <span class="detail-val" style="background:#f8fafc; padding:8px 12px; border-radius:8px; border:1px solid #e2e8f0; display:block; line-height:1.4;">
+                                    <?= nl2br(htmlspecialchars($selected_loan['purpose'])) ?>
+                                </span>
                             </div>
                         </div>
 
                         <!-- Left Panel Tabs -->
                         <div class="tabs-header">
-                            <button class="tab-btn active" onclick="switchTab(event, 'stages-tab')">Verification Timeline Stages</button>
-                            <button class="tab-btn" onclick="switchTab(event, 'repayments-tab')">Repayment Ledger (<?= count($repayments) ?>)</button>
+                            <button class="tab-btn active" onclick="switchTab(event, 'stages-tab')">
+                                <i data-feather="git-commit" style="width:14px; vertical-align:middle; margin-right:4px;"></i> Stages Timeline
+                            </button>
+                            <button class="tab-btn" onclick="switchTab(event, 'repayments-tab')">
+                                <i data-feather="credit-card" style="width:14px; vertical-align:middle; margin-right:4px;"></i> Repayments Ledger (<?= count($repayments) ?>)
+                            </button>
                         </div>
 
                         <!-- TAB CONTENT: STAGES -->
                         <div id="stages-tab" class="tab-pane active">
-                            <div class="card">
-                                <h2 class="card-title" style="margin-bottom:15px;"><i data-feather="git-commit"></i> Verification Timeline Stages</h2>
+                            <div class="detail-card">
+                                <h3 style="font-size:15px; margin: 0 0 14px 0; font-weight:600;">Verification Timeline Stages</h3>
                                 
-                                <?php foreach ($stages as $stg): ?>
-                                    <div class="stage-box <?= (in_array($stg['status'], ['awaiting_disbursement'])) ? 'stalled' : '' ?>">
-                                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-bottom: 1px dashed #cbd5e1; padding-bottom:8px; margin-bottom:12px;">
-                                            <div>
-                                                <strong style="font-size:14px;">Stage <?= $stg['stage_number'] ?></strong>
-                                                <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">Cost Limit: GHS <?= number_format($stg['required_amount'], 2) ?></span>
+                                <?php if (empty($stages)): ?>
+                                    <div class="empty-state">No timeline stages recorded for this loan.</div>
+                                <?php else: ?>
+                                    <?php foreach ($stages as $stg): ?>
+                                        <div class="stage-box <?= (in_array($stg['status'], ['awaiting_disbursement'])) ? 'stalled' : '' ?>">
+                                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; border-bottom: 1px dashed var(--border-color); padding-bottom:8px; margin-bottom:10px;">
+                                                <div>
+                                                    <strong style="font-size:13.5px;">Stage <?= $stg['stage_number'] ?></strong>
+                                                    <span style="font-size:12px; color:var(--text-muted); margin-left:6px;">Cap: GHS <?= number_format($stg['required_amount'], 2) ?></span>
+                                                </div>
+                                                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                                    <span class="badge badge-<?= $stg['status'] ?>"><?= str_replace('_', ' ', $stg['status']) ?></span>
+                                                    <span style="font-size:11.5px; color:var(--text-muted);">Disbursed: <strong><?= $stg['disbursed'] ? 'Yes' : 'No' ?></strong></span>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <span class="badge badge-<?= $stg['status'] ?>"><?= str_replace('_', ' ', $stg['status']) ?></span>
-                                                <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">Disbursed: <strong><?= $stg['disbursed'] ? 'Yes' : 'No' ?></strong></span>
-                                            </div>
+
+                                            <?php
+                                            $p_stmt = $pdo->prepare("SELECT * FROM stage_proofs WHERE stage_id = ? ORDER BY uploaded_at DESC");
+                                            $p_stmt->execute([$stg['id']]);
+                                            $proof_files = $p_stmt->fetchAll(PDO::FETCH_ASSOC);
+                                            ?>
+
+                                            <?php if (empty($proof_files)): ?>
+                                                <p style="font-size:12px; color:var(--text-muted); font-style:italic; margin:0;">No proof documents uploaded for this stage.</p>
+                                            <?php else: ?>
+                                                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-top: 8px;">
+                                                    <?php foreach ($proof_files as $pf): 
+                                                        $pf_filename = !empty($pf['filename']) ? $pf['filename'] : '';
+                                                        $path = "../uploads/app_{$selected_loan['id']}/stage_{$stg['id']}/" . rawurlencode($pf_filename);
+                                                        $is_img = str_contains($pf['file_type'] ?? '', 'image');
+                                                    ?>
+                                                        <div style="border: 1px solid var(--border-color); padding: 8px 10px; border-radius: 8px; background: #fff; display:flex; flex-direction:column; justify-content:space-between; gap:6px;">
+                                                            <div>
+                                                                <div style="font-size: 10.5px; text-transform: uppercase; font-weight:700; color:var(--text-muted);"><?= htmlspecialchars($pf['proof_type']) ?> Proof</div>
+                                                                <a href="<?= htmlspecialchars($path) ?>" target="_blank" style="font-size:12px; color:var(--primary); font-weight:600; display:inline-flex; align-items:center; gap:4px; margin-top:3px; text-decoration:none; word-break:break-all;">
+                                                                    <i data-feather="<?= $is_img ? 'image' : 'file-text' ?>" style="width:12px; height:12px; flex-shrink:0;"></i> View File
+                                                                </a>
+                                                            </div>
+                                                            <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #f1f5f9; padding-top:5px;">
+                                                                <span style="font-size:10.5px; color:var(--text-muted); text-transform:capitalize;">Status: <strong><?= htmlspecialchars($pf['status']) ?></strong></span>
+                                                                
+                                                                <form method="POST" style="margin:0; display:inline-flex; gap:2px;">
+                                                                    <?php if (isset($_SESSION['csrf_token'])): ?>
+                                                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                                                    <?php endif; ?>
+                                                                    <input type="hidden" name="intervention_type" value="override_proof">
+                                                                    <input type="hidden" name="loan_id" value="<?= $selected_loan['id'] ?>">
+                                                                    <input type="hidden" name="proof_id" value="<?= $pf['id'] ?>">
+                                                                    <button type="submit" name="proof_status" value="verified" title="Approve Proof" style="background:none; border:none; cursor:pointer; color:var(--success); padding:2px;"><i data-feather="check-circle" style="width:14px;"></i></button>
+                                                                    <button type="submit" name="proof_status" value="rejected" title="Reject Proof" style="background:none; border:none; cursor:pointer; color:var(--danger); padding:2px;"><i data-feather="x-circle" style="width:14px;"></i></button>
+                                                                </form>
+                                                            </div>
+                                                        </div>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            <?php endif; ?>
                                         </div>
-
-                                        <!-- Retrieve proofs linked directly to this stage block -->
-                                        <?php
-                                        $p_stmt = $pdo->prepare("SELECT * FROM stage_proofs WHERE stage_id = ? ORDER BY uploaded_at DESC");
-                                        $p_stmt->execute([$stg['id']]);
-                                        $proof_files = $p_stmt->fetchAll(PDO::FETCH_ASSOC);
-                                        ?>
-
-                                        <?php if (empty($proof_files)): ?>
-                                            <p style="font-size:12px; color:var(--text-muted); font-style:italic; margin: 0;">No proof documents uploaded for this stage.</p>
-                                        <?php else: ?>
-                                            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 10px;">
-                                                <?php foreach ($proof_files as $pf): 
-                                                    $pf_filename = !empty($pf['filename']) ? $pf['filename'] : '';
-                                                    $path = "../uploads/app_{$selected_loan['id']}/stage_{$stg['id']}/" . rawurlencode($pf_filename);
-                                                    $is_img = str_contains($pf['file_type'] ?? '', 'image');
-                                                ?>
-                                                    <div style="border: 1px solid #cbd5e1; padding: 10px; border-radius: 8px; background: #fff; display:flex; flex-direction:column; justify-content:space-between;">
-                                                        <div>
-                                                            <div style="font-size: 11px; text-transform: uppercase; font-weight:700; color:var(--text-muted);"><?= $pf['proof_type'] ?> Proof</div>
-                                                            <a href="<?= htmlspecialchars($path) ?>" target="_blank" style="font-size:13px; color:var(--primary); font-weight:500; display:block; margin: 5px 0;">
-                                                                <i data-feather="<?= $is_img ? 'image' : 'file-text' ?>" style="width:14px; height:14px; vertical-align:middle; margin-right:3px;"></i> View File
-                                                            </a>
-                                                        </div>
-                                                        <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
-                                                            <span style="font-size:11px; color:var(--text-muted);">Verified: <strong><?= htmlspecialchars($pf['status']) ?></strong></span>
-                                                            
-                                                            <!-- Admin Direct Verification Override form -->
-                                                            <form method="POST" style="display:inline-block;">
-                                                                <?php if (isset($_SESSION['csrf_token'])): ?>
-                                                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
-                                                                <?php endif; ?>
-                                                                <input type="hidden" name="intervention_type" value="override_proof">
-                                                                <input type="hidden" name="loan_id" value="<?= $selected_loan['id'] ?>">
-                                                                <input type="hidden" name="proof_id" value="<?= $pf['id'] ?>">
-                                                                <button type="submit" name="proof_status" value="verified" title="Force Approve" style="background:none; border:none; cursor:pointer; color:var(--success); margin-right:4px;"><i data-feather="check-circle" style="width:16px;"></i></button>
-                                                                <button type="submit" name="proof_status" value="rejected" title="Force Reject" style="background:none; border:none; cursor:pointer; color:var(--danger);"><i data-feather="x-circle" style="width:16px;"></i></button>
-                                                            </form>
-                                                        </div>
-                                                    </div>
-                                                <?php endforeach; ?>
-                                            </div>
-                                        <?php endif; ?>
-                                    </div>
-                                <?php endforeach; ?>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
                             </div>
                         </div>
 
                         <!-- TAB CONTENT: REPAYMENTS -->
                         <div id="repayments-tab" class="tab-pane">
-                            <div class="card">
-                                <h2 class="card-title" style="margin-bottom:15px;"><i data-feather="credit-card"></i> Repayments Ledger</h2>
+                            <div class="detail-card">
+                                <h3 style="font-size:15px; margin: 0 0 14px 0; font-weight:600;">Repayments Ledger</h3>
                                 
                                 <?php if (empty($repayments)): ?>
-                                    <p style="font-size:12px; color:var(--text-muted); font-style:italic; text-align:center; padding:30px 0;">No repayments recorded for this account yet.</p>
+                                    <div class="empty-state">No repayment records submitted for this account yet.</div>
                                 <?php else: ?>
-                                    <div style="display:flex; flex-direction:column; gap:16px;">
+                                    <div style="display:flex; flex-direction:column; gap:12px;">
                                         <?php foreach ($repayments as $rep): 
                                             $proofPath = "../uploads/repayments/loan_{$selected_loan['id']}/" . basename($rep['proof_filename'] ?? '');
-                                            $is_pdf = str_contains($rep['proof_file_type'] ?? '', 'pdf') || pathinfo($rep['proof_filename'], PATHINFO_EXTENSION) === 'pdf';
+                                            $is_pdf = str_contains($rep['proof_file_type'] ?? '', 'pdf') || pathinfo($rep['proof_filename'] ?? '', PATHINFO_EXTENSION) === 'pdf';
                                         ?>
-                                            <div class="stage-box" style="border-left: 4px solid var(--primary); background: #fafbfc; padding: 20px;">
-                                                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-bottom:1px dashed #e2e8f0; padding-bottom:10px; margin-bottom:10px;">
+                                            <div class="stage-box" style="border-left: 4px solid var(--primary); background: #fafbfc; padding: 14px;">
+                                                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; border-bottom:1px dashed var(--border-color); padding-bottom:6px; margin-bottom:8px;">
                                                     <div>
-                                                        <strong style="font-size:14px; color:var(--text-main);">GHS <?= number_format($rep['amount_paid'], 2) ?></strong>
-                                                        <span class="badge badge-<?= $rep['repayment_type'] ?>" style="margin-left: 8px;"><?= $rep['repayment_type'] ?> Repayment</span>
+                                                        <strong style="font-size:13.5px;">GHS <?= number_format($rep['amount_paid'], 2) ?></strong>
+                                                        <span class="badge badge-<?= htmlspecialchars($rep['repayment_type']) ?>" style="margin-left: 4px;"><?= htmlspecialchars(ucfirst($rep['repayment_type'])) ?></span>
                                                     </div>
                                                     <div>
-                                                        <span class="badge badge-<?= $rep['status'] ?>"><?= $rep['status'] ?></span>
+                                                        <span class="badge badge-<?= htmlspecialchars($rep['status']) ?>"><?= htmlspecialchars(ucfirst($rep['status'])) ?></span>
                                                     </div>
                                                 </div>
 
-                                                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:12px; font-size:13px; margin-bottom:12px; background:#fff; padding:10px; border-radius:6px; border:1px solid #f1f5f9;">
+                                                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap:6px; font-size:11.5px; margin-bottom:8px; background:#fff; padding:8px; border-radius:6px; border:1px solid #f1f5f9;">
                                                     <div>
-                                                        <span style="color:var(--text-muted); font-size:11px; display:block; text-transform:uppercase;">Balance Before</span>
+                                                        <span style="color:var(--text-muted); display:block; font-size:10px; text-transform:uppercase;">Prev Balance</span>
                                                         <strong>GHS <?= number_format($rep['balance_before'], 2) ?></strong>
                                                     </div>
                                                     <div>
-                                                        <span style="color:var(--text-muted); font-size:11px; display:block; text-transform:uppercase;">Balance After</span>
+                                                        <span style="color:var(--text-muted); display:block; font-size:10px; text-transform:uppercase;">New Balance</span>
                                                         <strong>GHS <?= number_format($rep['balance_after'], 2) ?></strong>
                                                     </div>
                                                     <div>
-                                                        <span style="color:var(--text-muted); font-size:11px; display:block; text-transform:uppercase;">Submitted Date</span>
-                                                        <strong><?= date('M d, Y H:i', strtotime($rep['submitted_at'])) ?></strong>
+                                                        <span style="color:var(--text-muted); display:block; font-size:10px; text-transform:uppercase;">Date</span>
+                                                        <strong><?= date('M d, Y', strtotime($rep['submitted_at'])) ?></strong>
                                                     </div>
                                                 </div>
 
                                                 <?php if (!empty($rep['agent_note'])): ?>
-                                                    <div style="background:#fef3c7; border: 1px solid #fde68a; padding:10px; border-radius:6px; font-size:12px; margin-bottom:12px; color:#92400e;">
+                                                    <div style="background:#fffbeb; border: 1px solid #fde68a; padding:6px 10px; border-radius:6px; font-size:11.5px; margin-bottom:8px; color:#92400e;">
                                                         <strong>Review Note:</strong> "<?= htmlspecialchars($rep['agent_note']) ?>"
                                                         <?php if (!empty($rep['reviewer_name'])): ?>
-                                                            <div style="font-size:10px; text-align:right; margin-top:4px; font-weight:600;">— Processed by <?= htmlspecialchars($rep['reviewer_name']) ?></div>
+                                                            <div style="font-size:10px; text-align:right; margin-top:2px; font-weight:600;">— <?= htmlspecialchars($rep['reviewer_name']) ?></div>
                                                         <?php endif; ?>
                                                     </div>
                                                 <?php endif; ?>
 
-                                                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                                                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                                                     <div>
                                                         <?php if (!empty($rep['proof_filename'])): ?>
-                                                            <a href="<?= htmlspecialchars($proofPath) ?>" target="_blank" style="font-size:13px; color:var(--primary); font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-                                                                <i data-feather="<?= $is_pdf ? 'file-text' : 'image' ?>" style="width:16px;"></i> View Proof Document
+                                                            <a href="<?= htmlspecialchars($proofPath) ?>" target="_blank" style="font-size:11.5px; color:var(--primary); font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                                                                <i data-feather="<?= $is_pdf ? 'file-text' : 'image' ?>" style="width:13px; height:13px;"></i> View Receipt
                                                             </a>
                                                         <?php else: ?>
-                                                            <span style="color:var(--text-muted); font-size:12px; font-style:italic;"><i data-feather="alert-circle" style="width:14px; vertical-align:middle;"></i> No proof attached</span>
+                                                            <span style="color:var(--text-muted); font-size:11.5px; font-style:italic;">No receipt attached</span>
                                                         <?php endif; ?>
                                                     </div>
 
-                                                    <!-- Direct Administrative Override Action -->
-                                                    <div style="display:flex; gap:6px; align-items:center;">
-                                                        <span style="font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; margin-right:4px;">Override Status:</span>
-                                                        <form method="POST" style="margin:0; display:inline-flex; gap:4px;">
+                                                    <div style="display:flex; gap:4px; align-items:center;">
+                                                        <span style="font-size:10.5px; font-weight:600; color:var(--text-muted); text-transform:uppercase;">Set:</span>
+                                                        <form method="POST" style="margin:0; display:inline-flex; gap:3px;">
                                                             <?php if (isset($_SESSION['csrf_token'])): ?>
                                                                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
                                                             <?php endif; ?>
@@ -906,14 +1223,14 @@ $metrics['open_disputes'] = (int)$pdo->query("SELECT COUNT(*) FROM disputes WHER
                                                             <input type="hidden" name="loan_id" value="<?= $selected_loan['id'] ?>">
                                                             <input type="hidden" name="repayment_id" value="<?= $rep['id'] ?>">
 
-                                                            <button type="submit" name="repayment_status" value="confirmed" class="btn btn-secondary" style="padding:4px 8px; font-size:11px; border-color:var(--success); color:var(--success); background:#fff;" title="Force Confirm">
-                                                                <i data-feather="check" style="width:12px;"></i>
+                                                            <button type="submit" name="repayment_status" value="confirmed" class="btn-action" style="height:28px; padding:0 6px; font-size:11px; border-color:var(--success); color:var(--success);" title="Confirm">
+                                                                <i data-feather="check" style="width:11px;"></i>
                                                             </button>
-                                                            <button type="submit" name="repayment_status" value="rejected" class="btn btn-secondary" style="padding:4px 8px; font-size:11px; border-color:var(--danger); color:var(--danger); background:#fff;" title="Force Reject">
-                                                                <i data-feather="x" style="width:12px;"></i>
+                                                            <button type="submit" name="repayment_status" value="rejected" class="btn-action" style="height:28px; padding:0 6px; font-size:11px; border-color:var(--danger); color:var(--danger);" title="Reject">
+                                                                <i data-feather="x" style="width:11px;"></i>
                                                             </button>
-                                                            <button type="submit" name="repayment_status" value="pending" class="btn btn-secondary" style="padding:4px 8px; font-size:11px; border-color:var(--warning); color:var(--warning); background:#fff;" title="Reset to Pending">
-                                                                <i data-feather="refresh-cw" style="width:12px;"></i>
+                                                            <button type="submit" name="repayment_status" value="pending" class="btn-action" style="height:28px; padding:0 6px; font-size:11px; border-color:var(--warning); color:var(--warning);" title="Reset">
+                                                                <i data-feather="refresh-cw" style="width:11px;"></i>
                                                             </button>
                                                         </form>
                                                     </div>
@@ -926,36 +1243,37 @@ $metrics['open_disputes'] = (int)$pdo->query("SELECT COUNT(*) FROM disputes WHER
                         </div>
                     </div>
 
-                    <!-- Right Segment: Intervention, Overrides & Flagged Disputes -->
+                    <!-- Right Segment: Interventions, Disputes & Status Overrides -->
                     <div>
-                        <!-- Active disputes panel -->
-                        <div class="card" style="border-color:#fecaca; background:#fffdfd;">
-                            <h2 class="card-title" style="color:var(--danger);"><i data-feather="alert-triangle"></i> System Dispute Folder</h2>
-                            <p style="font-size:12px; color:var(--text-muted); margin-bottom:15px;">Historical and active disputes linked to this loan transaction record.</p>
+                        <!-- Active Disputes Panel -->
+                        <div class="detail-card" style="border-color:#fecaca; background:#fffdfd;">
+                            <h2 class="detail-title" style="color:var(--danger);">
+                                <span><i data-feather="alert-triangle" style="width:16px; vertical-align:middle; margin-right:4px;"></i> Dispute Folder</span>
+                                <span class="badge badge-rejected"><?= count($disputes) ?> Files</span>
+                            </h2>
 
                             <?php if (empty($disputes)): ?>
-                                <p style="font-size:13px; color:var(--text-muted); text-align:center; padding: 15px 0;">No disputes reported for this transaction.</p>
+                                <div class="empty-state" style="padding:15px 0;">No active dispute files reported.</div>
                             <?php else: ?>
                                 <?php foreach ($disputes as $disp): ?>
-                                    <div style="border: 1px solid #fecaca; border-radius: 8px; padding: 12px; margin-bottom:12px; background:#fff;">
-                                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                                            <strong style="font-size:13px;"><?= htmlspecialchars($disp['title']) ?></strong>
-                                            <span class="badge" style="background:<?= ($disp['status'] === 'pending') ? '#fee2e2; color:#ef4444;' : '#e2e8f0; color:#475569;' ?>"><?= $disp['status'] ?></span>
+                                    <div style="border: 1px solid #fecaca; border-radius: 8px; padding: 10px; margin-bottom:10px; background:#fff;">
+                                        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                                            <strong style="font-size:12.5px;"><?= htmlspecialchars($disp['title']) ?></strong>
+                                            <span class="badge" style="background:<?= ($disp['status'] === 'pending') ? '#fee2e2; color:#ef4444;' : '#e2e8f0; color:#475569;' ?>"><?= htmlspecialchars(ucfirst($disp['status'])) ?></span>
                                         </div>
-                                        <div style="font-size:12px; color:var(--text-muted); margin-top:3px;">Filed by: <?= htmlspecialchars($disp['creator_name']) ?> | Target: <?= htmlspecialchars($disp['defendant_name']) ?></div>
-                                        <p style="font-size:13px; margin: 8px 0; background:#fefefe; border: 1px solid #f3f4f6; padding: 8px; border-radius:4px; font-style:italic;">
+                                        <div style="font-size:10.5px; color:var(--text-muted); margin-top:2px;">By: <?= htmlspecialchars($disp['creator_name']) ?> &rarr; <?= htmlspecialchars($disp['defendant_name']) ?></div>
+                                        <p style="font-size:12px; margin: 6px 0; background:#fafafa; border: 1px solid #f1f5f9; padding: 6px 8px; border-radius:6px; font-style:italic;">
                                             "<?= htmlspecialchars($disp['description']) ?>"
                                         </p>
 
-                                        <?php if ($disp['admin_decision']): ?>
-                                            <div style="font-size:12px; border-top:1px dashed #cbd5e1; padding-top:8px; margin-top:8px;">
-                                                <strong>Admin Directive:</strong> <em><?= htmlspecialchars($disp['admin_decision']) ?></em>
+                                        <?php if (!empty($disp['admin_decision'])): ?>
+                                            <div style="font-size:11.5px; border-top:1px dashed #e2e8f0; padding-top:6px; margin-top:6px; color:var(--text-main);">
+                                                <strong>Directive:</strong> <em><?= htmlspecialchars($disp['admin_decision']) ?></em>
                                             </div>
                                         <?php endif; ?>
 
                                         <?php if ($disp['status'] === 'pending'): ?>
-                                            <!-- Resolve Dispute Form inside file -->
-                                            <form method="POST" style="margin-top:10px; border-top:1px dashed #e2e8f0; padding-top:10px;">
+                                            <form method="POST" class="control-form" style="margin-top:8px; border-top:1px dashed #e2e8f0; padding-top:8px;">
                                                 <?php if (isset($_SESSION['csrf_token'])): ?>
                                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
                                                 <?php endif; ?>
@@ -963,13 +1281,13 @@ $metrics['open_disputes'] = (int)$pdo->query("SELECT COUNT(*) FROM disputes WHER
                                                 <input type="hidden" name="loan_id" value="<?= $selected_loan['id'] ?>">
                                                 <input type="hidden" name="dispute_id" value="<?= $disp['id'] ?>">
                                                 
-                                                <div style="margin-bottom:8px;">
-                                                    <label style="font-size:11px; font-weight:600; text-transform:uppercase; display:block; margin-bottom:3px;">Write Admin Directive Decision</label>
-                                                    <textarea name="admin_decision" rows="3" placeholder="Enter binding resolution message..." required></textarea>
+                                                <div>
+                                                    <label for="admin_decision_<?= $disp['id'] ?>">Write Resolution Directive</label>
+                                                    <textarea name="admin_decision" id="admin_decision_<?= $disp['id'] ?>" class="control-textarea" placeholder="Enter binding resolution instructions..." required></textarea>
                                                 </div>
-                                                <div style="display:flex; gap:8px;">
-                                                    <button type="submit" name="status" value="resolved" class="btn btn-primary" style="font-size:11px; padding:6px 12px;">Resolve Decision</button>
-                                                    <button type="submit" name="status" value="dismissed" class="btn btn-secondary" style="font-size:11px; padding:6px 12px;">Dismiss Dispute</button>
+                                                <div style="display:flex; gap:6px;">
+                                                    <button type="submit" name="status" value="resolved" class="btn-submit" style="font-size:11.5px; padding:6px 10px; flex:1;">Resolve Dispute</button>
+                                                    <button type="submit" name="status" value="dismissed" class="btn-action" style="font-size:11.5px; padding:6px 10px; flex:1;">Dismiss</button>
                                                 </div>
                                             </form>
                                         <?php endif; ?>
@@ -978,67 +1296,69 @@ $metrics['open_disputes'] = (int)$pdo->query("SELECT COUNT(*) FROM disputes WHER
                             <?php endif; ?>
                         </div>
 
-                        <!-- Manual Stage Intervention Override Box -->
+                        <!-- Manual Stage Intervention Box -->
                         <div class="intervention-box">
-                            <h3><i data-feather="settings"></i> Force Stage Overrides</h3>
-                            <p style="font-size:12px; color:#92400e; margin-bottom:15px; line-height:1.4;">Use to forcefully advance stalled stage transitions, manually trigger disbursements, or set final completion indexes.</p>
+                            <h3><i data-feather="settings"></i> Force Stage Intervention</h3>
+                            <p style="font-size:11.5px; color:#92400e; margin-bottom:12px; line-height:1.4;">Unblock stalled transitions or forcefully change verification status & disbursements.</p>
                             
-                            <form method="POST">
+                            <form method="POST" class="control-form">
                                 <?php if (isset($_SESSION['csrf_token'])): ?>
                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
                                 <?php endif; ?>
                                 <input type="hidden" name="intervention_type" value="override_stage">
                                 <input type="hidden" name="loan_id" value="<?= $selected_loan['id'] ?>">
                                 
-                                <div style="margin-bottom:12px;">
-                                    <label style="font-size:11px; font-weight:600; text-transform:uppercase; display:block; margin-bottom:4px;">Select Stage Target</label>
-                                    <select name="stage_id" id="override_stage_id" required>
+                                <div>
+                                    <label for="override_stage_id">Target Stage</label>
+                                    <select name="stage_id" id="override_stage_id" class="filter-input" required>
                                         <option value="">-- Choose Stage --</option>
                                         <?php foreach($stages as $stg): ?>
-                                            <option value="<?= $stg['id'] ?>">Stage <?= $stg['stage_number'] ?> (Current Status: <?= $stg['status'] ?>)</option>
+                                            <option value="<?= $stg['id'] ?>">Stage <?= $stg['stage_number'] ?> (Status: <?= $stg['status'] ?>)</option>
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
 
-                                <div style="margin-bottom:12px;">
-                                    <label style="font-size:11px; font-weight:600; text-transform:uppercase; display:block; margin-bottom:4px;">Manual Stage Status Override</label>
-                                    <select name="stage_status" id="override_stage_status" required>
+                                <div>
+                                    <label for="override_stage_status">Assign Stage Status</label>
+                                    <select name="stage_status" id="override_stage_status" class="filter-input" required>
                                         <option value="pending">Pending (Initial Status)</option>
                                         <option value="awaiting_disbursement">Awaiting Disbursement (Before-Work Uploaded)</option>
                                         <option value="disbursed">Disbursed (Funds Released / Work Ongoing)</option>
-                                        <option value="verified">Verified (Stage Fully Completed & Approved)</option>
+                                        <option value="verified">Verified (Stage Completed & Approved)</option>
                                         <option value="disbursement_rejected">Disbursement Rejected (Before-Work Rejected)</option>
-                                        <option value="rejected">Stage Rejected (After-Work/Payment Rejected)</option>
+                                        <option value="rejected">Stage Rejected (After-Work Rejected)</option>
                                     </select>
                                 </div>
 
-                                <div style="margin-bottom:15px;">
-                                    <label style="font-size:11px; font-weight:600; text-transform:uppercase; display:block; margin-bottom:4px;">Disbursement Status Force</label>
-                                    <select name="disbursed" id="override_disbursed">
+                                <div>
+                                    <label for="override_disbursed">Disbursement Execution Flag</label>
+                                    <select name="disbursed" id="override_disbursed" class="filter-input">
                                         <option value="0">Not Disbursed</option>
-                                        <option value="1">Mark Disbursed (Increments Application Disbursed Amount)</option>
+                                        <option value="1">Mark Disbursed (Adjusts Disbursed Amount)</option>
                                     </select>
                                 </div>
 
-                                <button type="submit" class="btn btn-primary" style="font-size:12px; width:100%; display:flex; justify-content:center; height:41px;">Apply Stage Intervention</button>
+                                <button type="submit" class="btn-submit" style="background:#d97706;">
+                                    Execute Stage Override
+                                </button>
                             </form>
                         </div>
 
-                        <!-- Manual Loan Profile Override -->
-                        <div class="card" style="margin-top:20px; background:#fafafa;">
-                            <h3 style="font-size:15px; margin: 0 0 10px 0;"><i data-feather="shield"></i> Manual Lifecycle Reset</h3>
-                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:15px;">Direct override of parent application state tracking parameters.</p>
+                        <!-- Manual Loan Lifecycle Reset -->
+                        <div class="detail-card">
+                            <h3 style="font-size:15px; margin: 0 0 6px 0; font-weight:600;"><i data-feather="sliders" style="width:15px; vertical-align:middle; margin-right:4px;"></i> Lifecycle Parameters</h3>
+                            <p style="font-size:11.5px; color:var(--text-muted); margin-bottom:12px;">Direct override of parent application state parameters.</p>
                             
-                            <form method="POST">
+                            <form method="POST" class="control-form">
                                 <?php if (isset($_SESSION['csrf_token'])): ?>
                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
                                 <?php endif; ?>
                                 <input type="hidden" name="intervention_type" value="override_application">
                                 <input type="hidden" name="loan_id" value="<?= $selected_loan['id'] ?>">
 
-                                <div style="margin-bottom:10px;">
-                                    <label style="font-size:11px; font-weight:600; display:block; margin-bottom:4px;">Overall App Status</label>
-                                    <select name="app_status" required>
+                                <div>
+                                    <label for="app_status">Overall Application Status</label>
+                                    <select name="app_status" id="app_status" class="filter-input" required>
                                         <option value="pending" <?= ($selected_loan['status'] === 'pending') ? 'selected' : '' ?>>Pending Review</option>
                                         <option value="approved" <?= ($selected_loan['status'] === 'approved') ? 'selected' : '' ?>>Approved</option>
                                         <option value="rejected" <?= ($selected_loan['status'] === 'rejected') ? 'selected' : '' ?>>Rejected</option>
@@ -1047,17 +1367,19 @@ $metrics['open_disputes'] = (int)$pdo->query("SELECT COUNT(*) FROM disputes WHER
                                     </select>
                                 </div>
 
-                                <div style="margin-bottom:10px;">
-                                    <label style="font-size:11px; font-weight:600; display:block; margin-bottom:4px;">Current Active Stage Index</label>
-                                    <input type="number" name="current_stage" value="<?= $selected_loan['current_stage'] ?>" min="1" max="4" required>
+                                <div>
+                                    <label for="current_stage">Active Stage Index</label>
+                                    <input type="number" name="current_stage" id="current_stage" class="filter-input" value="<?= $selected_loan['current_stage'] ?>" min="1" max="4" required>
                                 </div>
 
-                                <div style="margin-bottom:15px;">
-                                    <label style="font-size:11px; font-weight:600; display:block; margin-bottom:4px;">Outstanding Balance (GHS)</label>
-                                    <input type="text" name="outstanding_balance" value="<?= $selected_loan['outstanding_balance'] ?>" placeholder="0.00">
+                                <div>
+                                    <label for="outstanding_balance">Outstanding Balance (GHS)</label>
+                                    <input type="text" name="outstanding_balance" id="outstanding_balance" class="filter-input" value="<?= $selected_loan['outstanding_balance'] ?>" placeholder="0.00">
                                 </div>
 
-                                <button type="submit" class="btn btn-secondary" style="font-size:12px; width:100%; display:flex; justify-content:center; background:none; border:1px solid var(--primary); color:var(--primary); height:41px;">Override Parent Profile</button>
+                                <button type="submit" class="btn-action" style="width:100%; border-color:var(--primary); color:var(--primary); font-weight:600;">
+                                    Save Lifecycle Overrides
+                                </button>
                             </form>
                         </div>
                     </div>
@@ -1065,97 +1387,105 @@ $metrics['open_disputes'] = (int)$pdo->query("SELECT COUNT(*) FROM disputes WHER
 
             <!-- GLOBAL LIST REGISTRY DASHBOARD -->
             <?php else: ?>
+                <!-- FILTERS BAR -->
+                <form method="GET" class="filters-bar">
+                    <div class="filter-group">
+                        <span class="filter-label">Search Directory</span>
+                        <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Title, Farmer or Agent Name..." class="filter-input">
+                    </div>
+
+                    <div class="filter-group">
+                        <span class="filter-label">Lifecycle Status</span>
+                        <select name="status" class="filter-input">
+                            <option value="">All Statuses</option>
+                            <option value="pending" <?= ($status_filter === 'pending') ? 'selected' : '' ?>>Pending Review</option>
+                            <option value="approved" <?= ($status_filter === 'approved') ? 'selected' : '' ?>>Approved / Disbursing</option>
+                            <option value="rejected" <?= ($status_filter === 'rejected') ? 'selected' : '' ?>>Rejected</option>
+                            <option value="completed" <?= ($status_filter === 'completed') ? 'selected' : '' ?>>Completed</option>
+                            <option value="cancelled" <?= ($status_filter === 'cancelled') ? 'selected' : '' ?>>Cancelled</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <span class="filter-label">Dispute Condition</span>
+                        <select name="has_dispute" class="filter-input">
+                            <option value="">All Portfolios</option>
+                            <option value="1" <?= ($dispute_filter === '1') ? 'selected' : '' ?>>Flagged Disputes Only</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-buttons">
+                        <button type="submit" class="btn-search">
+                            <i data-feather="filter" style="width:14px;"></i> Filter
+                        </button>
+                        <a href="admin_loan_oversight.php" class="btn-action">
+                            Reset
+                        </a>
+                    </div>
+                </form>
+
+                <!-- PORTFOLIOS TABLE CARD -->
                 <div class="card">
-                    <div class="flex-header">
-                        <h2 class="card-title"><i data-feather="list"></i> Active System Portfolios</h2>
-                    </div>
-
-                    <!-- Filtering Form panel -->
-                    <div class="filter-panel">
-                        <form method="GET">
-                            <div class="filter-grid">
-                                <div class="filter-group">
-                                    <label for="search">Keyword Search</label>
-                                    <input type="text" name="search" id="search" value="<?= htmlspecialchars($search) ?>" placeholder="Title, Farmer or Agent Name...">
-                                </div>
-
-                                <div class="filter-group">
-                                    <label for="status">Loan Lifecycle State</label>
-                                    <select name="status" id="status">
-                                        <option value="">-- All Active & Archived --</option>
-                                        <option value="pending" <?= ($status_filter === 'pending') ? 'selected' : '' ?>>Pending Review</option>
-                                        <option value="approved" <?= ($status_filter === 'approved') ? 'selected' : '' ?>>Approved / Disbursing</option>
-                                        <option value="rejected" <?= ($status_filter === 'rejected') ? 'selected' : '' ?>>Rejected</option>
-                                        <option value="completed" <?= ($status_filter === 'completed') ? 'selected' : '' ?>>Completed</option>
-                                        <option value="cancelled" <?= ($status_filter === 'cancelled') ? 'selected' : '' ?>>Cancelled</option>
-                                    </select>
-                                </div>
-
-                                <div class="filter-group">
-                                    <label for="has_dispute">Dispute State</label>
-                                    <select name="has_dispute" id="has_dispute">
-                                        <option value="">-- All Accounts --</option>
-                                        <option value="1" <?= ($dispute_filter === '1') ? 'selected' : '' ?>>Flagged Disputes Only</option>
-                                    </select>
-                                </div>
-
-                                <div class="filter-group" style="display:flex; flex-direction:row; gap:10px;">
-                                    <button type="submit" class="btn btn-primary" style="flex:1; justify-content:center; height:41px;"><i data-feather="search"></i> Search</button>
-                                    <a href="admin_loan_oversight.php" class="btn btn-secondary" style="flex:1; justify-content:center; height:41px; align-items:center;">Reset</a>
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-
-                    <!-- Loans List Table -->
-                    <div class="table-wrap">
-                        <?php if (empty($all_loans)): ?>
-                            <p style="text-align:center; color:var(--text-muted); padding:30px; font-style:italic;">No transaction profiles found matching search filters.</p>
-                        <?php else: ?>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Loan Title</th>
-                                        <th>Farmer</th>
-                                        <th>Vetting Agent</th>
-                                        <th>Stage</th>
-                                        <th>Limit</th>
-                                        <th>Disbursed</th>
-                                        <th>Status</th>
-                                        <th>Disputes</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Ref ID</th>
+                                    <th>Loan Application</th>
+                                    <th>Farmer</th>
+                                    <th>Vetting Agent</th>
+                                    <th>Active Stage</th>
+                                    <th>Limit & Disbursed</th>
+                                    <th>Status</th>
+                                    <th>Dispute Audit</th>
+                                    <th>Control Panel</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (!empty($all_loans)): ?>
                                     <?php foreach ($all_loans as $ln): ?>
-                                        <tr style="<?= ($ln['active_disputes_count'] > 0) ? 'background:#fff5f5;' : '' ?>">
-                                            <td>#<?= $ln['id'] ?></td>
+                                        <tr style="<?= ($ln['active_disputes_count'] > 0) ? 'background:#fffafa;' : '' ?>">
+                                            <td style="font-weight:600; color:var(--text-muted);">#<?= $ln['id'] ?></td>
                                             <td>
-                                                <strong style="color:var(--text-main); font-size:14px;"><?= htmlspecialchars($ln['title']) ?></strong>
+                                                <strong style="color:var(--text-main); font-size:13px;"><?= htmlspecialchars($ln['title']) ?></strong>
                                                 <div style="font-size:11px; color:var(--text-muted);"><?= date('M d, Y', strtotime($ln['created_at'])) ?></div>
                                             </td>
                                             <td><?= htmlspecialchars($ln['farmer_name'] ?? 'System User') ?></td>
                                             <td><?= htmlspecialchars($ln['agent_name'] ?? 'Unassigned') ?></td>
-                                            <td>Stage <?= $ln['current_stage'] ?></td>
-                                            <td style="font-weight:600;">GHS <?= number_format($ln['amount'], 2) ?></td>
-                                            <td style="color:var(--success); font-weight:600;">GHS <?= number_format($ln['disbursed_amount'], 2) ?></td>
-                                            <td><span class="badge badge-<?= $ln['status'] ?>"><?= $ln['status'] ?></span></td>
+                                            <td><span class="badge badge-submitted">Stage <?= $ln['current_stage'] ?></span></td>
+                                            <td>
+                                                <div style="font-weight:600;">GHS <?= number_format($ln['amount'], 2) ?></div>
+                                                <div style="font-size:11px; color:var(--primary); font-weight:500;">Disbursed: GHS <?= number_format($ln['disbursed_amount'], 2) ?></div>
+                                            </td>
+                                            <td><span class="badge badge-<?= strtolower($ln['status']) ?>"><?= htmlspecialchars(ucfirst($ln['status'])) ?></span></td>
                                             <td>
                                                 <?php if ($ln['active_disputes_count'] > 0): ?>
-                                                    <span class="badge badge-rejected" style="animation: pulse 2s infinite;"><i data-feather="alert-triangle" style="width:11px; height:11px; vertical-align:middle; margin-right:3px;"></i> <?= $ln['active_disputes_count'] ?> FLAGGED</span>
+                                                    <span class="badge badge-rejected">
+                                                        <i data-feather="alert-triangle" style="width:11px; height:11px;"></i> <?= $ln['active_disputes_count'] ?> FLAGGED
+                                                    </span>
                                                 <?php else: ?>
-                                                    <span style="color:var(--text-muted); font-size:12px;">Up to date</span>
+                                                    <span style="color:var(--text-muted); font-size:12px;">Clear</span>
                                                 <?php endif; ?>
                                             </td>
                                             <td>
-                                                <a href="admin_loan_oversight.php?id=<?= $ln['id'] ?>" class="btn btn-secondary" style="font-size:11px; padding:5px 10px;"><i data-feather="eye" style="width:12px;"></i> Audit</a>
+                                                <a href="admin_loan_oversight.php?id=<?= $ln['id'] ?>" class="btn-action">
+                                                    <i data-feather="sliders" style="width:12px;"></i> Details & Action
+                                                </a>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        <?php endif; ?>
+                                <?php else: ?>
+                                    <tr>
+                                        <td colspan="9">
+                                            <div class="empty-state">
+                                                <i data-feather="shield" style="width:38px; height:38px; margin-bottom:8px; opacity:0.5;"></i>
+                                                <p>No loan portfolios identified matching your filter criteria.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             <?php endif; ?>
@@ -1163,31 +1493,40 @@ $metrics['open_disputes'] = (int)$pdo->query("SELECT COUNT(*) FROM disputes WHER
     </main>
 
     <script>
-        // Initialize simple vector icons
+        // Initialize Feather Icons
         feather.replace();
 
-        // Mobile responsive sidebar collapses
+        // Responsive Sidebar Drawer & Desktop Toggle
         const toggleBtn = document.getElementById("toggleBtn");
         const sidebar = document.getElementById("sidebar");
+        const backdrop = document.getElementById("sidebarBackdrop");
 
-        toggleBtn.addEventListener("click", () => {
-            sidebar.classList.toggle("collapsed");
-        });
+        function toggleSidebar() {
+            if (window.innerWidth <= 768) {
+                const isActive = sidebar.classList.toggle("active");
+                if (backdrop) backdrop.classList.toggle("active", isActive);
+            } else {
+                sidebar.classList.toggle("collapsed");
+            }
+        }
 
-        // Tab switching controller
+        toggleBtn.addEventListener("click", toggleSidebar);
+        if (backdrop) {
+            backdrop.addEventListener("click", () => {
+                sidebar.classList.remove("active");
+                backdrop.classList.remove("active");
+            });
+        }
+
+        // Tab Switching Function
         function switchTab(event, tabId) {
-            document.querySelectorAll('.tab-pane').forEach(el => {
-                el.classList.remove('active');
-            });
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-
+            document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById(tabId).classList.add('active');
             event.currentTarget.classList.add('active');
         }
 
-        // Stage details payload injection for interactive UI state matching
+        // Dynamic Stage Form Sync
         const stageData = <?= json_encode(array_map(function($s) {
             return [
                 'id' => (int)$s['id'],

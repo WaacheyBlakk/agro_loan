@@ -5,7 +5,7 @@ require_once __DIR__ . '/../src/config.php';
 require_once __DIR__ . '/../src/sessions.php';
 require_once __DIR__ . '/../src/db.php';
 require_once __DIR__ . '/../src/mailer.php';
-
+//admin_user_management.php
 // Ensure only admin can access
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     header("Location: login.php");
@@ -180,7 +180,7 @@ $system_users = $list_stmt->fetchAll(PDO::FETCH_ASSOC);
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>User Management | AgroLoan Admin</title>
+<title>User Management | Administrator</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <!-- Google Fonts -->
@@ -306,6 +306,7 @@ $system_users = $list_stmt->fetchAll(PDO::FETCH_ASSOC);
         flex: 1;
         display: flex;
         flex-direction: column;
+        min-width: 0;
         overflow-y: auto;
         position: relative;
     }
@@ -461,6 +462,11 @@ $system_users = $list_stmt->fetchAll(PDO::FETCH_ASSOC);
     @media (max-width: 992px) {
         .detail-container { grid-template-columns: 1fr; }
     }
+    @media (max-width: 768px) {
+        .sidebar { position: fixed; height: 100%; width: 0; padding: 0; overflow: hidden; }
+        .sidebar.active { width: var(--sidebar-width); padding: 20px; }
+        .main { margin-left: 0; }
+    }
 
     .detail-card {
         background: var(--bg-card);
@@ -545,7 +551,7 @@ $system_users = $list_stmt->fetchAll(PDO::FETCH_ASSOC);
     <aside class="sidebar" id="sidebar">
         <div class="brand">
             <img src="../assets/images/logo.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/40'">
-            <h2>AgroLoan Administrator</h2>
+            <h2>Administrator</h2>
         </div>
 
         <nav class="nav">

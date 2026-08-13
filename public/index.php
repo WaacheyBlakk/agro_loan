@@ -6,19 +6,23 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // Redirect logged-in users automatically
-if (isset($_SESSION['user'])) {
-    $role = $_SESSION['user']['role'] ?? '';
-    if ($role === 'farmer') {
+if (isset($_SESSION['role'])) {
+    $role = $_SESSION['role'];
+    if ($role === 'admin') {
+        header('Location: admin_dashboard.php');
+        exit;
+    } elseif ($role === 'farmer') {
         header('Location: farmer_dashboard.php');
         exit;
     } elseif ($role === 'agent') {
         header('Location: agent_dashboard.php');
         exit;
     } elseif ($role === 'buyer') {
-        header('Location: buyer_dashboard.php');
+        header('Location: shop.php');
         exit;
     }
 }
+$isLoggedIn = isset($_SESSION['role']);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -579,8 +583,10 @@ footer {
             <a href="services.php">Services</a>
             <a href="contact.php">Contact Us</a>
             <a href="shop.php">Shop</a>
-            <a href="login.php" class="btn-login">Login</a>
-            <a href="register.php" class="btn-login">Register</a>
+            <?php if (!$isLoggedIn): ?>
+                <a href="login.php" class="btn-login">Login</a>
+                <a href="register.php" class="btn-login">Register</a>
+            <?php endif; ?>
         </nav>
         
         <!-- Theme Toggle -->
@@ -606,8 +612,10 @@ footer {
     <a href="services.php">Services</a>
     <a href="contact.php">Contact Us</a>
     <a href="shop.php">Shop</a>
-    <a href="login.php">Login</a>
-    <a href="register.php">Register</a>
+    <?php if (!$isLoggedIn): ?>
+        <a href="login.php">Login</a>
+        <a href="register.php">Register</a>
+    <?php endif; ?>
 </div>
 
 <!-- Hero Section -->
