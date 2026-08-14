@@ -1,7 +1,6 @@
 <?php
 // src/config.php
 
-// Minimal, zero-dependency .env loader (skip if a var is already set, e.g. by Apache/nginx or the OS environment).
 $envPath = __DIR__ . '/../.env';
 if (is_readable($envPath)) {
     foreach (file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {

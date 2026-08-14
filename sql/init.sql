@@ -20,6 +20,23 @@ CREATE TABLE `agent_actions` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `agent_farm_inspections`
+--
+
+CREATE TABLE `agent_farm_inspections` (
+  `id` int(11) NOT NULL,
+  `application_id` int(11) NOT NULL,
+  `farmer_id` int(11) NOT NULL,
+  `agent_id` int(11) NOT NULL,
+  `stage_number` int(11) DEFAULT NULL,
+  `comments` text NOT NULL,
+  `photo_path` varchar(255) DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `agent_profiles`
 --
 
@@ -252,6 +269,8 @@ CREATE TABLE `loan_applications` (
   `current_stage` int(4) DEFAULT 1,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `disbursed_amount` decimal(10,2) DEFAULT 0.00,
+  `duration_months` int(11) DEFAULT NULL,
+  `repayment_due_date` datetime DEFAULT NULL,
   `outstanding_balance` decimal(12,2) DEFAULT NULL COMMENT 'Remaining repayable amount (principal + interest). NULL = not yet calculated',
   `rejection_reason` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

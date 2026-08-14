@@ -265,6 +265,13 @@ nav a.active::after { width: 100%; }
 
 /* --- LANDING PAGE SPECIFIC STYLES --- */
 
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px;
+    width: 100%;
+}
+
 /* Hero Section */
 .hero {
     min-height: 100vh;
@@ -278,7 +285,7 @@ nav a.active::after { width: 100%; }
         url('../assets/images/farm-bg.jpg') center/cover no-repeat;
     color: white;
     position: relative;
-    margin-top: 0; /* Override about.php hero logic */
+    margin-top: 0;
 }
 
 .hero-content {
@@ -333,7 +340,7 @@ nav a.active::after { width: 100%; }
 
 /* Features */
 section {
-    padding: 100px 5%; /* Matches section-padding */
+    padding: 100px 5%;
 }
 
 .section-title {
@@ -369,18 +376,18 @@ section {
 }
 
 .feature:hover {
-    transform: translateY(-10px);
+    transform: translateY(-5px);
     box-shadow: var(--shadow-lg);
     border-color: var(--primary);
 }
 
 .feature-icon {
-    font-size: 2.5rem;
+    font-size: 1.8rem;
     color: var(--primary);
     margin-bottom: 20px;
     background: var(--primary-light);
-    width: 70px;
-    height: 70px;
+    width: 60px;
+    height: 60px;
     border-radius: 16px;
     display: flex;
     align-items: center;
@@ -390,13 +397,13 @@ section {
 .feature h3 {
     color: var(--text-main);
     font-size: 1.5rem;
-    margin-bottom: 15px;
+    margin: 0 0 15px;
     font-weight: 700;
 }
 
 .feature p {
     color: var(--text-muted);
-    line-height: 1.6;
+    line-height: 1.7;
     margin: 0;
 }
 
@@ -412,7 +419,7 @@ section {
     position: relative;
     max-width: 800px;
     margin: 0 auto;
-    min-height: 250px; /* Keeps layout stable */
+    min-height: 250px;
     perspective: 1000px;
 }
 
@@ -532,7 +539,7 @@ footer {
     color: #6ee7b7;
 }
 
-/* Responsive */
+/* Responsive Styles */
 @media (max-width: 992px) {
     .hero h2 { font-size: 3rem; }
 }
@@ -547,8 +554,21 @@ footer {
     .hero h2 { font-size: 2.2rem; }
     .hero p { font-size: 1.1rem; }
     
-    .section-title { font-size: 2rem; }
+    .section-title { font-size: 2rem; margin-bottom: 40px; }
     .testimonial p { font-size: 1.1rem; }
+
+    /* Match card layout from about.php */
+    section {
+        padding: 60px 20px;
+    }
+    .features {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    .feature {
+        padding: 30px;
+        border-radius: 20px;
+    }
 }
 
 /* Animation Reveal */
@@ -630,62 +650,70 @@ footer {
 </section>
 
 <!-- Features Section -->
-<section class="features reveal">
-    <div class="feature">
-        <div class="feature-icon"><i class="ri-flashlight-fill"></i></div>
-        <h3>Fast Approvals</h3>
-        <p>Skip the paperwork of traditional banks. Our AI-driven process approves loans in record time so you don't miss the season.</p>
-    </div>
-    <div class="feature">
-        <div class="feature-icon"><i class="ri-shield-check-fill"></i></div>
-        <h3>Secure Platform</h3>
-        <p>Bank-grade security protocols ensuring your personal data and financial transactions are safe and encrypted.</p>
-    </div>
-    <div class="feature">
-        <div class="feature-icon"><i class="ri-user-voice-fill"></i></div>
-        <h3>Agent Support</h3>
-        <p>Access our network of verified field agents who guide you through application, farming advice, and repayment.</p>
+<section class="reveal">
+    <div class="container">
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon"><i class="ri-flashlight-fill"></i></div>
+                <h3>Fast Approvals</h3>
+                <p>Skip the paperwork of traditional banks. Our AI-driven process approves loans in record time so you don't miss the season.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon"><i class="ri-shield-check-fill"></i></div>
+                <h3>Secure Platform</h3>
+                <p>Bank-grade security protocols ensuring your personal data and financial transactions are safe and encrypted.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon"><i class="ri-user-voice-fill"></i></div>
+                <h3>Agent Support</h3>
+                <p>Access our network of verified field agents who guide you through application, farming advice, and repayment.</p>
+            </div>
+        </div>
     </div>
 </section>
 
 <!-- Testimonials Section -->
 <section class="testimonials reveal">
-  <h2 class="section-title">Trusted by <span>Farmers</span> Across Ghana</h2>
-  
-  <div id="testimonial-wrapper">
-    <div class="testimonial active">
-      <i class="ri-double-quotes-l quote-icon"></i>
-      <p>“Agro Loan helped me expand my maize farm. The process was simple, and the agent guided me all the way. I doubled my harvest this year!”</p>
-      <strong>– Amina, Farmer (Tamale)</strong>
-    </div>
-    <div class="testimonial">
-      <i class="ri-double-quotes-l quote-icon"></i>
-      <p>“Before joining Agro Loan, I struggled to get financial support. Now, I can easily apply for loans and buy fertilizers right when I need them.”</p>
-      <strong>– Adjoa, Farmer (Ho)</strong>
-    </div>
-    <div class="testimonial">
-      <i class="ri-double-quotes-l quote-icon"></i>
-      <p>“As an agent, I’ve connected dozens of farmers to life-changing funding. The digital platform makes the whole process transparent.”</p>
-      <strong>– Efua, Agent (Cape Coast)</strong>
-    </div>
-    <div class="testimonial">
-      <i class="ri-double-quotes-l quote-icon"></i>
-      <p>“Agro Loan’s innovative approach is bridging the gap between finance and agriculture in rural communities. A game changer.”</p>
-      <strong>– Kwame Mensah, EcoBank Ghana</strong>
-    </div>
+  <div class="container">
+      <h2 class="section-title">Trusted by <span>Farmers</span> Across Ghana</h2>
+      
+      <div id="testimonial-wrapper">
+        <div class="testimonial active">
+          <i class="ri-double-quotes-l quote-icon"></i>
+          <p>“Agro Loan helped me expand my maize farm. The process was simple, and the agent guided me all the way. I doubled my harvest this year!”</p>
+          <strong>– Amina, Farmer (Tamale)</strong>
+        </div>
+        <div class="testimonial">
+          <i class="ri-double-quotes-l quote-icon"></i>
+          <p>“Before joining Agro Loan, I struggled to get financial support. Now, I can easily apply for loans and buy fertilizers right when I need them.”</p>
+          <strong>– Adjoa, Farmer (Ho)</strong>
+        </div>
+        <div class="testimonial">
+          <i class="ri-double-quotes-l quote-icon"></i>
+          <p>“As an agent, I’ve connected dozens of farmers to life-changing funding. The digital platform makes the whole process transparent.”</p>
+          <strong>– Efua, Agent (Cape Coast)</strong>
+        </div>
+        <div class="testimonial">
+          <i class="ri-double-quotes-l quote-icon"></i>
+          <p>“Agro Loan’s innovative approach is bridging the gap between finance and agriculture in rural communities. A game changer.”</p>
+          <strong>– Kwame Mensah, EcoBank Ghana</strong>
+        </div>
+      </div>
   </div>
 </section>
 
 <!-- Partners Section -->
 <section class="partners reveal">
-    <div style="text-align:center; margin-bottom:40px;">
-        <h2 class="section-title" style="font-size: 1.8rem; margin-bottom:10px;">Our Ecosystem Partners</h2>
-    </div>
-    <div class="partner-logos">
-        <img src="../assets/images/ecobank.png" alt="EcoBank" onerror="this.style.display='none'">
-        <img src="../assets/images/agrifund.png" alt="AgriFund" onerror="this.style.display='none'">
-        <img src="../assets/images/agrotech.png" alt="Ghana AgroTech" onerror="this.style.display='none'">
-        <img src="../assets/images/adb.png" alt="ADB" onerror="this.style.display='none'">
+    <div class="container">
+        <div style="text-align:center; margin-bottom:40px;">
+            <h2 class="section-title" style="font-size: 1.8rem; margin-bottom:10px;">Our Ecosystem Partners</h2>
+        </div>
+        <div class="partner-logos">
+            <img src="../assets/images/ecobank.png" alt="EcoBank" onerror="this.style.display='none'">
+            <img src="../assets/images/agrifund.png" alt="AgriFund" onerror="this.style.display='none'">
+            <img src="../assets/images/agrotech.png" alt="Ghana AgroTech" onerror="this.style.display='none'">
+            <img src="../assets/images/adb.png" alt="ADB" onerror="this.style.display='none'">
+        </div>
     </div>
 </section>
 
@@ -791,7 +819,7 @@ const scrollReveal = () => {
     });
 };
 window.addEventListener('scroll', scrollReveal);
-scrollReveal(); // Trigger once on load
+scrollReveal();
 
 // --- Testimonial Rotator ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -799,16 +827,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!testimonials.length) return;
   
   let idx = 0;
-  const intervalTime = 5000; // 5 seconds
+  const intervalTime = 5000;
 
   setInterval(() => {
-    // Remove active from current
     testimonials[idx].classList.remove('active');
-    
-    // Increment index
     idx = (idx + 1) % testimonials.length;
-    
-    // Add active to new
     testimonials[idx].classList.add('active');
   }, intervalTime);
 });

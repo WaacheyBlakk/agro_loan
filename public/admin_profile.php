@@ -22,7 +22,7 @@ if (!$admin) {
     die("Admin record not found.");
 }
 
-$username = $admin['name'];
+$username = $admin['name'] ?? ($_SESSION['name'] ?? 'Admin');
 // Extract initials for avatar
 $initials = strtoupper(substr($username, 0, 1));
 ?>
@@ -75,12 +75,15 @@ $initials = strtoupper(substr($username, 0, 1));
         display: flex;
         flex-direction: column;
         padding: 20px;
-        transition: width 0.3s ease;
+        transition: width 0.3s ease, padding 0.3s ease;
         z-index: 100;
         box-shadow: 4px 0 10px rgba(0,0,0,0.1);
     }
 
-    .sidebar.collapsed { width: var(--sidebar-collapsed); padding: 20px 10px; }
+    .sidebar.collapsed { 
+        width: var(--sidebar-collapsed); 
+        padding: 20px 10px; 
+    }
 
     .brand {
         display: flex;
@@ -92,13 +95,20 @@ $initials = strtoupper(substr($username, 0, 1));
     }
 
     .brand img {
-        width: 40px; height: 40px; border-radius: 8px; object-fit: cover;
+        width: 40px; 
+        height: 40px; 
+        border-radius: 8px; 
+        object-fit: cover;
         border: 2px solid rgba(255,255,255,0.2);
     }
 
     .brand h2 {
-        font-size: 20px; font-weight: 600; white-space: nowrap;
-        opacity: 1; transition: opacity 0.2s; margin: 0;
+        font-size: 20px; 
+        font-weight: 600; 
+        white-space: nowrap;
+        opacity: 1; 
+        transition: opacity 0.2s; 
+        margin: 0;
     }
 
     .sidebar.collapsed .brand h2 { opacity: 0; width: 0; }
@@ -106,48 +116,102 @@ $initials = strtoupper(substr($username, 0, 1));
     .nav { display: flex; flex-direction: column; gap: 8px; flex: 1; }
 
     .nav-link {
-        display: flex; align-items: center; gap: 14px; padding: 12px 15px;
-        color: #d1fae5; text-decoration: none; border-radius: 10px;
-        transition: all 0.2s ease; white-space: nowrap; font-weight: 500;
+        display: flex; 
+        align-items: center; 
+        gap: 14px; 
+        padding: 12px 15px;
+        color: #d1fae5; 
+        text-decoration: none; 
+        border-radius: 10px;
+        transition: all 0.2s ease; 
+        white-space: nowrap; 
+        font-weight: 500;
     }
 
-    .nav-link:hover { background: rgba(255,255,255,0.1); color: #fff; transform: translateX(4px); }
-    .nav-link.active { background: var(--secondary); color: #fff; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+    .nav-link:hover { 
+        background: rgba(255,255,255,0.1); 
+        color: #fff; 
+        transform: translateX(4px); 
+    }
+
+    .nav-link.active { 
+        background: var(--secondary); 
+        color: #fff; 
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); 
+    }
+
     .nav-link svg { width: 20px; height: 20px; }
 
     .sidebar.collapsed .nav-link { justify-content: center; padding: 12px; }
     .sidebar.collapsed .nav-link span { display: none; }
+    .sidebar.collapsed .nav-link:hover { transform: none; }
 
     .logout-btn {
-        background: rgba(239, 68, 68, 0.1); color: #fca5a5;
-        border: 1px solid rgba(239, 68, 68, 0.2); padding: 12px;
-        border-radius: 10px; cursor: pointer; display: flex;
-        align-items: center; justify-content: center; gap: 10px;
-        font-family: inherit; font-weight: 600; transition: 0.2s; width: 100%;
+        background: rgba(239, 68, 68, 0.1); 
+        color: #fca5a5;
+        border: 1px solid rgba(239, 68, 68, 0.2); 
+        padding: 12px;
+        border-radius: 10px; 
+        cursor: pointer; 
+        display: flex;
+        align-items: center; 
+        justify-content: center; 
+        gap: 10px;
+        font-family: inherit; 
+        font-weight: 600; 
+        transition: 0.2s; 
+        width: 100%;
     }
+    
     .logout-btn:hover { background: var(--danger); color: white; }
     .sidebar.collapsed .logout-btn span { display: none; }
 
     /* --- MAIN CONTENT --- */
     .main {
-        flex: 1; display: flex; flex-direction: column;
-        overflow-y: auto; position: relative;
+        flex: 1; 
+        display: flex; 
+        flex-direction: column;
+        min-width: 0;
+        overflow-y: auto; 
+        position: relative;
     }
 
+    /* TOPBAR */
     .topbar {
-        background: var(--bg-card); padding: 15px 30px;
-        display: flex; justify-content: space-between; align-items: center;
-        box-shadow: var(--shadow); position: sticky; top: 0; z-index: 50;
+        background: var(--bg-card); 
+        padding: 15px 30px;
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center;
+        box-shadow: var(--shadow); 
+        position: sticky; 
+        top: 0; 
+        z-index: 50;
     }
 
-    .toggle-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 5px; }
+    .toggle-btn { 
+        background: transparent; 
+        border: none; 
+        color: var(--text-muted); 
+        cursor: pointer; 
+        padding: 5px; 
+    }
     .toggle-btn:hover { color: var(--primary); }
 
     .user-profile { display: flex; align-items: center; gap: 10px; }
-    .user-avatar-mini {
-        width: 35px; height: 35px; background: var(--primary); color: white;
-        border-radius: 50%; display: flex; align-items: center; justify-content: center;
-        font-weight: bold; font-size: 14px;
+    
+    .user-avatar {
+        width: 35px; 
+        height: 35px; 
+        background: var(--primary); 
+        color: white;
+        border-radius: 50%; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center;
+        font-weight: bold; 
+        font-size: 14px;
+        flex-shrink: 0;
     }
 
     /* --- PROFILE SPECIFIC --- */
@@ -178,7 +242,7 @@ $initials = strtoupper(substr($username, 0, 1));
     .profile-body {
         padding: 0 40px 40px 40px;
         text-align: center;
-        margin-top: 10px; /* Pulls content up over the banner */
+        margin-top: -60px; /* Pulls content up over the banner cleanly */
     }
 
     .large-avatar {
@@ -204,7 +268,14 @@ $initials = strtoupper(substr($username, 0, 1));
         font-weight: 700;
     }
 
-    .profile-name { font-size: 28px; font-weight: 700; color: var(--text-main); margin: 0; }
+    .profile-name { 
+        font-size: 26px; 
+        font-weight: 700; 
+        color: var(--text-main); 
+        margin: 0; 
+        word-break: break-word;
+    }
+    
     .profile-role-badge { 
         display: inline-block; 
         background: #f3f4f6; 
@@ -214,7 +285,7 @@ $initials = strtoupper(substr($username, 0, 1));
         font-size: 14px; 
         font-weight: 500; 
         margin-top: 8px;
-        margin-bottom: 30px;
+        margin-bottom: 25px;
     }
 
     .info-grid {
@@ -231,20 +302,44 @@ $initials = strtoupper(substr($username, 0, 1));
         border: 1px solid var(--border-color);
         border-radius: 12px;
         transition: 0.2s;
+        min-width: 0;
     }
 
     .info-item:hover { border-color: var(--primary); background: #f0fdfa; }
 
     .info-icon {
-        width: 40px; height: 40px;
-        background: #e0e7ff; color: #4338ca;
+        width: 40px; 
+        height: 40px;
+        background: #e0e7ff; 
+        color: #4338ca;
         border-radius: 10px;
-        display: flex; align-items: center; justify-content: center;
+        display: flex; 
+        align-items: center; 
+        justify-content: center;
         margin-right: 15px;
+        flex-shrink: 0;
     }
     
-    .info-content small { display: block; color: var(--text-muted); font-size: 12px; margin-bottom: 2px; }
-    .info-content span { font-weight: 600; color: var(--text-main); font-size: 16px; }
+    .info-content {
+        min-width: 0;
+        flex: 1;
+    }
+
+    .info-content small { 
+        display: block; 
+        color: var(--text-muted); 
+        font-size: 12px; 
+        margin-bottom: 2px; 
+    }
+    
+    .info-content span { 
+        font-weight: 600; 
+        color: var(--text-main); 
+        font-size: 15px; 
+        display: block;
+        overflow-wrap: break-word;
+        word-break: break-all;
+    }
 
     .btn-primary {
         display: flex;
@@ -252,7 +347,7 @@ $initials = strtoupper(substr($username, 0, 1));
         justify-content: center;
         gap: 10px;
         width: 100%;
-        margin-top: 30px;
+        margin-top: 25px;
         background: var(--primary);
         color: white;
         padding: 14px;
@@ -265,14 +360,39 @@ $initials = strtoupper(substr($username, 0, 1));
     .btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); }
 
     @keyframes fadeIn {
-        from { opacity:0; transform: translateY(15px); }
-        to { opacity:1; transform: translateY(0); }
+        from { opacity: 0; transform: translateY(15px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 
+    /* --- RESPONSIVE / MOBILE VIEW --- */
     @media (max-width: 768px) {
-        .sidebar { position: fixed; height: 100%; width: 0; padding: 0; }
-        .sidebar.active { width: var(--sidebar-width); padding: 20px; }
-        .page-content { padding: 20px; }
+        .sidebar { 
+            position: fixed; 
+            height: 100%; 
+            width: 0; 
+            padding: 0; 
+            overflow: hidden; 
+        }
+        .sidebar.active { 
+            width: var(--sidebar-width); 
+            padding: 20px; 
+        }
+        .main { 
+            margin-left: 0; 
+        }
+        .topbar {
+            padding: 12px 20px;
+        }
+        .page-content { 
+            padding: 20px 15px; 
+            min-height: auto;
+        }
+        .profile-body {
+            padding: 0 20px 30px 20px;
+        }
+        .profile-name {
+            font-size: 22px;
+        }
     }
 </style>
 </head>
@@ -329,7 +449,7 @@ $initials = strtoupper(substr($username, 0, 1));
     <main class="main">
         <!-- TOPBAR -->
         <header class="topbar">
-            <button id="toggleBtn" class="toggle-btn">
+            <button id="toggleBtn" class="toggle-btn" aria-label="Toggle Navigation">
                 <i data-feather="menu"></i>
             </button>
             <div class="user-profile">
@@ -337,7 +457,7 @@ $initials = strtoupper(substr($username, 0, 1));
                     <div style="font-size:14px; font-weight:600;"><?= htmlspecialchars($username) ?></div>
                     <div style="font-size:12px; color:var(--text-muted);">Administrator</div>
                 </div>
-                <div class="user-avatar-mini">
+                <div class="user-avatar">
                     <?= $initials ?>
                 </div>
             </div>
@@ -358,19 +478,18 @@ $initials = strtoupper(substr($username, 0, 1));
                     </div>
 
                     <!-- Name & Role -->
-                    <h1 class="profile-name"><?= htmlspecialchars($admin['name']); ?></h1>
+                    <h1 class="profile-name"><?= htmlspecialchars($admin['name'] ?? $username); ?></h1>
                     <span class="profile-role-badge">System Administrator</span>
 
                     <!-- Info Grid -->
                     <div class="info-grid">
-                        
                         <div class="info-item">
                             <div class="info-icon">
                                 <i data-feather="mail"></i>
                             </div>
                             <div class="info-content">
                                 <small>Email Address</small>
-                                <span><?= htmlspecialchars($admin['email']); ?></span>
+                                <span><?= htmlspecialchars($admin['email'] ?? 'N/A'); ?></span>
                             </div>
                         </div>
 
@@ -390,10 +509,9 @@ $initials = strtoupper(substr($username, 0, 1));
                             </div>
                             <div class="info-content">
                                 <small>Account ID</small>
-                                <span>#<?= htmlspecialchars($admin['id']); ?></span>
+                                <span>#<?= htmlspecialchars($admin['id'] ?? $admin_id); ?></span>
                             </div>
                         </div>
-
                     </div>
 
                     <!-- Action Button -->
@@ -409,15 +527,15 @@ $initials = strtoupper(substr($username, 0, 1));
         // Initialize Feather Icons
         feather.replace();
 
-        // Sidebar Logic
+        // Sidebar Toggle Logic
         const toggleBtn = document.getElementById("toggleBtn");
         const sidebar = document.getElementById("sidebar");
 
         toggleBtn.addEventListener("click", () => {
             if (window.innerWidth <= 768) {
-                sidebar.classList.toggle("active");
+                sidebar.classList.toggle("active"); // Mobile behavior
             } else {
-                sidebar.classList.toggle("collapsed");
+                sidebar.classList.toggle("collapsed"); // Desktop behavior
             }
         });
     </script>

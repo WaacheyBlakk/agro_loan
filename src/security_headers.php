@@ -1,17 +1,6 @@
 <?php
 // src/security_headers.php
-//
-// USAGE: require_once this as the very first line of every public/*.php
-// page (before any HTML/output and BEFORE session_start()), e.g.:
-//   require_once __DIR__ . '/../src/security_headers.php';
-//   session_start();
 
-// --- Session cookie hardening ---
-// Must run before session_start() is called by the page.
-// SameSite=Lax also gives free CSRF protection on the AJAX/JSON endpoints
-// (cart_add.php, wishlist_*.php, confirm_delivery.php, etc.) that can't
-// easily carry a csrf_token field, since cross-site POSTs won't include
-// this cookie at all.
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
         'lifetime' => 0,
